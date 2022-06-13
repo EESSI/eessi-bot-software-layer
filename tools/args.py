@@ -23,4 +23,9 @@ def parse():
         "-f", "--file",
         help="use event data from a JSON file",
     )
+
+    parser.add_argument(
+        "-p", "--port", default=3000,
+        help="listen on a specific port for events (default 3000)",
+    )
     return parser.parse_args()
