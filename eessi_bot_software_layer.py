@@ -97,7 +97,7 @@ def main():
         # Run as web app
         app = create_app(klass=EESSIBotSoftwareLayer)
         log("EESSI bot for software layer started!")
-        waitress.serve(app, listen='*:%s'%(opts.port))
+        waitress.serve(app, listen='*:%s' % opts.port)
 
 if __name__ == '__main__':
     main()
