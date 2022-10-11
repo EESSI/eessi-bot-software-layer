@@ -80,6 +80,8 @@ def build_easystack_from_pr(pr, event_info):
     # TODO rename to base_repo_name?
     repo_name = pr.base.repo.full_name
     log("build_easystack_from_pr: pr.base.repo.full_name '%s'" % pr.base.repo.full_name)
+    branch_name = pr.base.ref
+    log("build_easystack_from_pr: pr.base.repo.ref '%s'" % pr.base.ref)
 
     jobs = []
     for arch_target,slurm_opt in arch_target_map.items():
@@ -93,6 +95,7 @@ def build_easystack_from_pr(pr, event_info):
         #  NOTE, patching method seems to fail sometimes, using a different method
         #    * patching method
         #      git clone https://github.com/REPO_NAME arch_job_dir
+        #      git checkout BRANCH (is stored as ref for base record in PR)
         #      curl -L https://github.com/REPO_NAME/pull/PR_NUMBER.patch > arch_job_dir/PR_NUMBER.patch
         #    (execute the next one in arch_job_dir)
         #      git am PR_NUMBER.patch
@@ -116,6 +119,18 @@ def build_easystack_from_pr(pr, event_info):
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
         log("Cloned repo!\nStdout %s\nStderr: %s" % (cloned_repo.stdout,cloned_repo.stderr))
+
+        git_checkout_cmd = ' '.join([
+            'git checkout',
+            branch_name,
+        ])
+        log("Checkout branch '%s' by running '%s' in directory '%s'" % (branch_name,git_checkout_cmd,arch_job_dir))
+        checkout_repo = subprocess.run(git_checkout_cmd,
+                                     cwd=arch_job_dir,
+                                     shell=True,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+        log("Checked out branch!\nStdout %s\nStderr: %s" % (checkout_repo.stdout,checkout_repo.stderr))
 
         curl_cmd = 'curl -L https://github.com/%s/pull/%s.patch > %s.patch' % (repo_name,pr.number,pr.number)
         log("Obtain patch by running '%s' in directory '%s'" % (curl_cmd,arch_job_dir))
@@ -225,21 +240,22 @@ def build_easystack_from_pr(pr, event_info):
         # create _bot_job<jobid>.metadata file in submission directory
         bot_jobfile = configparser.ConfigParser()
         bot_jobfile['PR'] = { 'repo' : repo_name, 'pr_number' : pr.number }
+        # obtain arch from job[1] which has the format OS/ARCH
+        arch_name = '-'.join(job[1].split('/')[1:])
+        bot_jobfile['ARCH'] = { 'architecture' : arch_name, 'os' : job[1].split('/')[0], 'slurm_opt' : job[2] }
         bot_jobfile_path = os.path.join(job[0], '_bot_job%s.metadata' % job_id)
         with open(bot_jobfile_path, 'w') as bjf:
             bot_jobfile.write(bjf)
 
         # report submitted jobs (incl architecture, ...)
-        job_comment = 'Job `%s` on `%s`' % (job_id, app_name)
-        # obtain arch from job[1] which has the format OS/ARCH
-        arch_name = '-'.join(job[1].split('/')[1:])
-        job_comment += ' for `%s`' % arch_name
+        job_comment = 'New job on instance `%s`' % app_name
+        job_comment += ' for architecture `%s`' % arch_name
         job_comment += ' in job dir `%s`\n' % symlink
         job_comment += '|date|job status|comment|\n'
         job_comment += '|----------|----------|------------------------|\n'
 
         dt = datetime.now(timezone.utc)
-        job_comment += '|%s|submitted|job waits for release by job manager|' % (dt.strftime("%b %d %X %Z %Y"))
+        job_comment += '|%s|submitted|job id `%s` awaits release by job manager|' % (dt.strftime("%b %d %X %Z %Y"), job_id)
 
         # repo_name = pr.base.repo.full_name # already set above
         repo = gh.get_repo(repo_name)

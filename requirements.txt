@@ -2,3 +2,5 @@ PyGithub
 Waitress
 cryptography
 PyGHee>=0.0.2
+GitPython
+Requests

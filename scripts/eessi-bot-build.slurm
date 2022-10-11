@@ -127,6 +127,28 @@ else
   echo "eessi-bot-build.slurm: no modules to be loaded"
 fi
 
+source init/minimal_eessi_env  # for $EESSI_PILOT_VERSION and $EESSI_OS_TYPE
+
+software_subdir=
+for i in {1..9};
+do
+  echo "attempt $i to determine software_subdir"
+  raw_output=$(./build_container.sh run ${eessi_tmpdir} python3 /eessi_bot_job/eessi_software_subdir.py ${generic_opt} 2>&1)
+  echo "raw output of eessi_software_subdir.py: '$raw_output'"
+  software_subdir=$(echo $raw_output | tail -1 | sed 's/.* //g')
+  echo "software_subdir: '$software_subdir'"
+  # check if software_subdir has the format:
+  #   CPU_FAMILY/ARCH_IDENTIFIER
+  if [[ $software_subdir == *"/"* ]]; then
+    echo "software_subdir seems well formatted"
+    break
+  else
+    n=$((1<<$i))
+    echo "sleep $n secs (using exponential backoff)"
+    sleep $n
+  fi
+done
+
 # run standard EESSI software-layer install script
 #   in compat layer environment inside build container
 ./build_container.sh run ${eessi_tmpdir} \
@@ -135,12 +157,6 @@ fi
 # create tarball for the above build and place it in some specific
 #   directory on shared disk (just in main directory of job)
 #   see https://github.com/EESSI/eessi-bot-software-layer/issues/7
-
-source init/minimal_eessi_env  # for $EESSI_PILOT_VERSION and $EESSI_OS_TYPE
-
-echo "raw output of eessi_software_subdir.py: '$(./build_container.sh run ${eessi_tmpdir} python3 /eessi_bot_job/eessi_software_subdir.py ${generic_opt} 2>&1)'"
-software_subdir=$(./build_container.sh run ${eessi_tmpdir} python3 /eessi_bot_job/eessi_software_subdir.py ${generic_opt} 2>&1 | tail -1 | sed 's/.* //g')
-echo "software_subdir: '$software_subdir'"
 
 timestamp=$(date +%s)
 

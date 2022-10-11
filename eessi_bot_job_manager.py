@@ -188,9 +188,9 @@ class EESSIBotSoftwareLayerJobManager:
                     # NOTE adjust search string if format changed by event
                     #        handler (separate process running
                     #        eessi_bot_software_layer.py)
-                    cms = '^Job `%s` on `%s`.*' % (
-                            new_job['jobid'],
-                            config.get_section('github').get('app_name'))
+                    cms = '.*submitted.*job id `%s`.*' % new_job['jobid']
+#                            new_job['jobid'],
+#                            config.get_section('github').get('app_name'))
 
                     comment_match = re.search(cms, comment.body)
 
@@ -273,9 +273,10 @@ class EESSIBotSoftwareLayerJobManager:
                 # NOTE adjust search string if format changed by event
                 #        handler (separate process running
                 #        eessi_bot_software_layer.py)
-                cms = '^Job `%s` on `%s`.*' % (
-                        finished_job['jobid'],
-                        config.get_section('github').get('app_name'))
+                cms = '.*submitted.*job id `%s`.*' % finished_job['jobid']
+#                cms = '^Job `%s` on `%s`.*' % (
+#                        finished_job['jobid'],
+#                        config.get_section('github').get('app_name'))
 
                 comment_match = re.search(cms, comment.body)
 

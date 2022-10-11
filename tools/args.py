@@ -39,4 +39,24 @@ def parse():
         help="limits the processing to a specific job id or list of comma-separated list of job ids",
     )
 
+    parser.add_argument(
+        "-o", "--original-job-dir",
+        help="original job directory when resubmitting",
+    )
+
+    parser.add_argument(
+        "-m", "--modified-job-dir",
+        help="directory containing modifications to the original job",
+    )
+
+    parser.add_argument(
+        "-n", "--pr-number",
+        help="number of the pull request",
+    )
+
+    parser.add_argument(
+        "-r", "--repository-name",
+        help="name of the repository including username, e.g, USER/repository",
+    )
+
     return parser.parse_args()
