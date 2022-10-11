@@ -216,21 +216,22 @@ def build_easystack_from_pr(pr, event_info):
         # create _bot_job<jobid>.metadata file in submission directory
         bot_jobfile = configparser.ConfigParser()
         bot_jobfile['PR'] = { 'repo' : repo_name, 'pr_number' : pr.number }
+        # obtain arch from job[1] which has the format OS/ARCH
+        arch_name = '-'.join(job[1].split('/')[1:])
+        bot_jobfile['ARCH'] = { 'architecture' : arch_name, 'os' : job[1].split('/')[0], 'slurm_opt' : job[2] }
         bot_jobfile_path = os.path.join(job[0], '_bot_job%s.metadata' % job_id)
         with open(bot_jobfile_path, 'w') as bjf:
             bot_jobfile.write(bjf)
 
         # report submitted jobs (incl architecture, ...)
-        job_comment = 'Job `%s` on `%s`' % (job_id, app_name)
-        # obtain arch from job[1] which has the format OS/ARCH
-        arch_name = '-'.join(job[1].split('/')[1:])
-        job_comment += ' for `%s`' % arch_name
+        job_comment = 'New job on instance `%s`' % app_name
+        job_comment += ' for architecture `%s`' % arch_name
         job_comment += ' in job dir `%s`\n' % symlink
         job_comment += '|date|job status|comment|\n'
         job_comment += '|----------|----------|------------------------|\n'
 
         dt = datetime.now(timezone.utc)
-        job_comment += '|%s|submitted|job waits for release by job manager|' % (dt.strftime("%b %d %X %Z %Y"))
+        job_comment += '|%s|submitted|job id `%s` awaits release by job manager|' % (dt.strftime("%b %d %X %Z %Y"), job_id)
 
         repo = gh.get_repo(repo_name)
         pull_request = repo.get_pull(pr.number)
