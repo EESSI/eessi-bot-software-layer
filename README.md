@@ -107,7 +107,10 @@ At the [app settings page](https://github.com/settings/apps) click "New GitHub A
 - GitHub App name: give the app a name of you choice
 - Homepage URL: use the Smee.io channel (https://smee.io/CHANNEL-ID) created in [Step 1](#step1)
 - Webhook URL: use the Smee.io channel (https://smee.io/CHANNEL-ID) created in [Step 1](#step1)
-- Webhook secret: create a secret token which is used to verify the webhook sender
+- Webhook secret: create a secret token which is used to verify the webhook sender. For example:
+  ```shell
+  python3 -c 'import secrets; print(secrets.token_hex(64))'
+  ```
 - Permissions: assign permissions to the app it needs (e.g., read access to commits, issues, pull requests); those can be changed later on; some permissions (e.g., metadata) will be selected automatically because of others you have chosen
 - Events: subscribe the app to events it shall react on (e.g., related to pull requests)
 - Select that the app can only be installed by this (your) GitHub account
@@ -148,7 +151,6 @@ pwd
 git fetch origin pull/24/head:PR24
 git checkout PR24
 ```
-Note the output of `pwd`. This will be used to replace `PATH_TO_EESSI_BOT` in the configuration file `app.cfg` (see [Step 5.4](#step5.4)).
 
 The EESSI bot requires some Python packages to be installed. It is recommended to install these in a virtual environment based on Python 3.7 or newer. See the below sequence for an example on how to set up the environment, to activate it and to install the requirements for the EESSI bot. The sequence assumes that you are in the directory containing the bot's script:
 ```
@@ -174,7 +176,7 @@ Then try to install the requirements with
 pip3 install --user -r requirements.txt
 ```
 
-Alternatively, you may try to install some of the dependencies by fixing their version. For example, on the CitC cluster (https://github.com/EESSI/hackathons/tree/main/2021-12/citc) installing PyGithub failed due to some problem installing its dependency PyNaCl. Apparently, PyGithub only required version 1.4.0 of PyNaCl but the most recent version 1.5.0 failed to install. Hence, when installing PyNaCl version 1.4.0 first, then PyGithub could be installed. Example commands
+Alternatively, you may try to install some of the dependencies by fixing their version. For example, on the [EESSI CitC cluster](https://github.com/EESSI/hackathons/tree/main/2021-12/citc) installing PyGithub failed due to some problem installing its dependency PyNaCl. Apparently, PyGithub only required version 1.4.0 of PyNaCl but the most recent version 1.5.0 failed to install. Hence, when installing PyNaCl version 1.4.0 first, then PyGithub could be installed. Example commands
 
 ```
 pip3 install --user PyNaCl==1.4.0
@@ -183,22 +185,11 @@ pip3 install --user -r requirements.txt
 
 ### <a name="step4.1"></a>Step 4.1 Using a development version/branch of PyGHee
 
-The above command `pip3 install --user -r requirements.txt` installs the latest release of the PyGHee library. If you want to use a development version/branch, i.e., what is available from GitHub or your own local copy, you have to set `PYTHONPATH` correctly. Assuming the library's main directory is `SOME_PATH/PyGHee` do the following in the terminal/shell/script where you run the bot:
+The above command `pip3 install --user -r requirements.txt` installs the latest release of the PyGHee library. If you want to use a development version/branch, i.e., what is available from GitHub or your own local copy, you have to set `$PYTHONPATH` correctly. Assuming the library's main directory is `SOME_PATH/PyGHee` do the following in the terminal/shell/script where you run the bot:
   
 ```
-export PYTHONPATH=SOME_PATH/PyGHee
+export PYTHONPATH=SOME_PATH/PyGHee:$PYTHONPATH
 ```
-
-As of today, [PR#3 of PyGHee](https://github.com/boegel/PyGHee/pull/3) is not being merged yet. Hence, you need to do the following to use it for running the EESSI bot.
-
-```
-cd SOME_PATH
-git clone https://github.com/boegel/PyGHee.git
-cd PyGHee
-git fetch origin pull/3/head:PR3
-git checkout PR3
-```
-and set PYTHONPATH as described above before you run the event handler. The job manager might use the version installed with `pip`. The only change of PR#3 is the added function `read_event_from_json`. However, for better reproducibility it could be useful to run both components with the same version of PyGHee.
 
 ## <a name="step5"></a>Step 5: Configuring the EESSI bot on the `bot machine`
 
@@ -240,17 +231,17 @@ The example file (`app.cfg.example`) includes notes on what you have to adjust t
 ### Section `[github]`
 The section `[github]` contains information for connecting to GitHub:
 ```
-app_id = 199740
+app_id = 123456
 ```
-Replace '199740' with the id of your GitHub App. You find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). On the opened page you will find the `app_id` in the section headed "About" listed as 'App ID'.
+Replace '123456' with the id of your GitHub App. You find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). On the opened page you will find the `app_id` in the section headed "About" listed as 'App ID'.
 ```
 app_name = 'MY-bot'
 ```
 Is a short name representing your bot. It will appear in comments to a pull request. For example, it could include the name of the cluster where the bot runs and a label representing the user that runs the bot: `CitC-TR`. *NOTE avoid putting an actual username here as it will be visible on potentially publicly accessible GitHub pages.*
 ```
-installation_id = 25669742
+installation_id = 12345678
 ```
-Replace '256669742' with the id of the installation of your GitHub App (installed in [Step 3](#step3)). You find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). For determining the `installation_id` select "Install App" in the menu on the left-hand side. Then click on the gearwheel button of the installation (to the right of the "Installed" label). The URL of the resulting page contains the `installation_id` -- the number after the last "/". The `installation_id` is also provided in the payload of every event within the top-level record named "installation". You can see the events and their payload on the webpage of your Smee.io channel (https://smee.io/CHANNEL-ID). Alternatively, you can see the events in the "Advanced" section of your GitHub App: Open the page [GitHub Apps](https://github.com/settings/apps), then select the app you have registered in [Step 2](#step2), and choose "Advanced" in the menu on the left-hand side.
+Replace '12345678' with the id of the installation of your GitHub App (installed in [Step 3](#step3)). You find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). For determining the `installation_id` select "Install App" in the menu on the left-hand side. Then click on the gearwheel button of the installation (to the right of the "Installed" label). The URL of the resulting page contains the `installation_id` -- the number after the last "/". The `installation_id` is also provided in the payload of every event within the top-level record named "installation". You can see the events and their payload on the webpage of your Smee.io channel (https://smee.io/CHANNEL-ID). Alternatively, you can see the events in the "Advanced" section of your GitHub App: Open the page [GitHub Apps](https://github.com/settings/apps), then select the app you have registered in [Step 2](#step2), and choose "Advanced" in the menu on the left-hand side.
 ```
 private_key = PATH_TO_PRIVATE_KEY
 ```
@@ -339,7 +330,7 @@ This is the full path to the Slurm command used for manipulating existing jobs. 
 The bot consists of three components, the Smee client, the event handler and the job manager. Running the Smee client was explained in [Step 1](#step1).
 
 ## <a name="step6.1"></a>Step 6.1: Running the event handler
-As the event handler may run for a long time, it is adviced to run it in a `screen` or `tmux` session.
+As the event handler may run for a long time, it is advised to run it in a `screen` or `tmux` session.
 
 The event handler is provided by the Python script `eessi_bot_software_layer.py`.
 Change directory to `eessi-bot-software-layer` (which was created by cloning the
@@ -359,7 +350,7 @@ The event handler writes log information to the file `pyghee.log`.
 Note, if you run the bot on a frontend of a cluster with multiple frontends make sure that both the Smee client and the event handler run on the same machine.
 
 ## <a name="step6.2"></a>Step 6.2: Running the job manager
-As the job manager may run for a long time, it is adviced to run it in a `screen` or `tmux` session.
+As the job manager may run for a long time, it is advised to run it in a `screen` or `tmux` session.
 
 The job manager is provided by the Python script `eessi_bot_job_manager_layer.py`. You can run the job manager from the directory `eessi-bot-software-layer` simply by
 

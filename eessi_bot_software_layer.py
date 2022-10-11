@@ -68,7 +68,6 @@ class EESSIBotSoftwareLayer(PyGHee):
         Handle opening of a pull request.
         """
         log("PR opened: waiting for label bot:build")
-        #build_easystack_from_pr(pr, event_info)
 
 
     def handle_pull_request_event(self, event_info, log_file=None):

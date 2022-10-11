@@ -1,8 +1,8 @@
 # Also see documentation at https://github.com/EESSI/eessi-bot-software-layer/blob/main/README.md#step5.5
 
 [github]
-# replace '199740' with the ID of your GitHub App
-app_id = 199740
+# replace '123456' with the ID of your GitHub App; see https://github.com/settings/apps
+app_id = 123456
 
 # a short (!) name for your app instance that can be used for example
 #   when adding/updating a comment to a PR
@@ -14,11 +14,11 @@ app_id = 199740
 #      potentially publicly accessible GitHub pages.
 app_name = MY-bot
 
-# replace '25669742' with the ID of the installation of your GitHub App
+# replace '12345678' with the ID of the installation of your GitHub App
 #   (can be derived by creating an event and then checking for the list
 #   of sent events and its payload either via the Smee channel's web page
 #   or via the Advanced section of your GitHub App on github.com)
-installation_id = 25669742
+installation_id = 12345678
 
 # path to the private key that was generated when the GitHub App was registered
 private_key = PATH_TO_PRIVATE_KEY

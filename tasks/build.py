@@ -92,18 +92,12 @@ def build_easystack_from_pr(pr, event_info):
         # download pull request to arch_job_dir
         #  - PyGitHub doesn't seem capable of doing that (easily);
         #  - for now, keep it simple and just execute the commands (anywhere) (note 'git clone' requires that destination is an empty directory)
-        #  NOTE, patching method seems to fail sometimes, using a different method
         #    * patching method
         #      git clone https://github.com/REPO_NAME arch_job_dir
         #      git checkout BRANCH (is stored as ref for base record in PR)
         #      curl -L https://github.com/REPO_NAME/pull/PR_NUMBER.patch > arch_job_dir/PR_NUMBER.patch
         #    (execute the next one in arch_job_dir)
         #      git am PR_NUMBER.patch
-        #    * fetching method
-        #      git clone https://github.com/REPO_NAME arch_job_dir
-        #      cd arch_job_dir
-        #      git fetch origin pull/PR_NUMBER/head:prPR_NUMBER
-        #      git checkout prPR_NUMBER
         #
         #  - REPO_NAME is repo_name
         #  - PR_NUMBER is pr.number
@@ -149,24 +143,6 @@ def build_easystack_from_pr(pr, event_info):
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
         log("Applied patch!\nStdout %s\nStderr: %s" % (patched.stdout,patched.stderr))
-
-        #fetch_cmd = 'git fetch origin pull/%s/head:pr%s' % (pr.number,pr.number)
-        #log("Fetch pull request %s into local branch %s by running cmd '%s'" % (pr.number,'pr'+str(pr.number),fetch_cmd))
-        #fetched = subprocess.run(fetch_cmd,
-        #                         cwd=arch_job_dir,
-        #                         shell=True,
-        #                         stdout=subprocess.PIPE,
-        #                         stderr=subprocess.PIPE)
-        #log("Fetched PR %s!\nStdout %s\nStderr: %s" % (pr.number,fetched.stdout,fetched.stderr))
-
-        #checkout_cmd = 'git checkout pr%s' % pr.number
-        #log("Checkout branch %s that contains pull request %s by running cmd '%s'" % ('pr'+str(pr.number),pr.number,checkout_cmd))
-        #checkedout = subprocess.run(checkout_cmd,
-        #                            cwd=arch_job_dir,
-        #                            shell=True,
-        #                            stdout=subprocess.PIPE,
-        #                            stderr=subprocess.PIPE)
-        #log("Checked out PR %s!\nStdout %s\nStderr: %s" % (pr.number,checkedout.stdout,checkedout.stderr))
 
         # check if we need to apply local customizations:
         #   is cvmfs_customizations defined? yes, apply it
@@ -257,7 +233,6 @@ def build_easystack_from_pr(pr, event_info):
         dt = datetime.now(timezone.utc)
         job_comment += '|%s|submitted|job id `%s` awaits release by job manager|' % (dt.strftime("%b %d %X %Z %Y"), job_id)
 
-        # repo_name = pr.base.repo.full_name # already set above
         repo = gh.get_repo(repo_name)
         pull_request = repo.get_pull(pr.number)
         pull_request.create_issue_comment(job_comment)
