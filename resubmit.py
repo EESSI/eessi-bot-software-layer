@@ -274,6 +274,38 @@ while os.path.exists(os.path.join(original_job_dir, 'rerun_%03d' % run)):
 rerun_job_dir = os.path.join(original_job_dir, 'rerun_%03d' % run)
 print("rerun job dir ..: %s" % rerun_job_dir)
 
+# (first) obtain some config values
+# [buildenv]
+buildenv = config.get_section('buildenv')
+jobs_base_dir = buildenv.get('jobs_base_dir')
+print("jobs_base_dir '%s'" % jobs_base_dir)
+local_tmp = buildenv.get('local_tmp')
+print("local_tmp '%s'" % local_tmp)
+build_job_script = buildenv.get('build_job_script')
+print("build_job_script '%s'" % build_job_script)
+submit_command = buildenv.get('submit_command')
+print("submit_command '%s'" % submit_command)
+slurm_params = buildenv.get('slurm_params')
+print("slurm_params '%s'" % slurm_params)
+http_proxy = buildenv.get('http_proxy') or ''
+print("http_proxy '%s'" % http_proxy)
+https_proxy = buildenv.get('https_proxy') or ''
+print("https_proxy '%s'" % https_proxy)
+load_modules = buildenv.get('load_modules') or ''
+print("load_modules '%s'" % load_modules)
+cvmfs_customizations = {}
+try:
+    cvmfs_customizations_str = buildenv.get('cvmfs_customizations')
+    print("cvmfs_customizations '%s'" % cvmfs_customizations_str)
+
+    if cvmfs_customizations_str != None:
+        cvmfs_customizations = json.loads(cvmfs_customizations_str)
+
+    print("cvmfs_customizations '%s'" % json.dumps(cvmfs_customizations))
+except json.decoder.JSONDecodeError as e:
+    print(e)
+    error(f'Value for cvmfs_customizations ({cvmfs_customizations_str}) could not be decoded.')
+
 # (2) prepare contents of rerun directory
 #   (2a) get repo name and pr number from metadata file
 #   (2b) get original PR, patch and apply patch (same method used by
@@ -309,7 +341,21 @@ if not obtain_pull_request(original_job_dir,
                            base_ref):
     print("failed to obtain pull request")
     sys.exit(-2)
+
 # TODO do customizations
+# check if we need to apply local customizations:
+#   is cvmfs_customizations defined? yes, apply it
+if len(cvmfs_customizations) > 0:
+    # for each entry/key, append value to file
+    for key in cvmfs_customizations.keys():
+        basename = os.path.basename(key)
+        jobcfgfile = os.path.join(rerun_job_dir, basename)
+        with open(jobcfgfile, "a") as file_object:
+            file_object.write(cvmfs_customizations[key] + '\n')
+
+        # TODO (maybe) create mappings_file to be used by
+        #      eessi-bot-build.slurm to init SINGULARITY_BIND;
+        #      for now, only existing mappings may be customized
 
 # (2c) copy contents from directory that contains changes
 if opts.modified_job_dir is not None:
@@ -351,26 +397,6 @@ for comment in comments:
         break
 
 # prepare command for submission
-# (first) obtain some config values
-# [buildenv]
-buildenv = config.get_section('buildenv')
-jobs_base_dir = buildenv.get('jobs_base_dir')
-print("jobs_base_dir '%s'" % jobs_base_dir)
-local_tmp = buildenv.get('local_tmp')
-print("local_tmp '%s'" % local_tmp)
-build_job_script = buildenv.get('build_job_script')
-print("build_job_script '%s'" % build_job_script)
-submit_command = buildenv.get('submit_command')
-print("submit_command '%s'" % submit_command)
-slurm_params = buildenv.get('slurm_params')
-print("slurm_params '%s'" % slurm_params)
-http_proxy = buildenv.get('http_proxy') or ''
-print("http_proxy '%s'" % http_proxy)
-https_proxy = buildenv.get('https_proxy') or ''
-print("https_proxy '%s'" % https_proxy)
-load_modules = buildenv.get('load_modules') or ''
-print("load_modules '%s'" % load_modules)
-
 command_line = ' '.join([
     submit_command, # app.cfg
     slurm_params, # app.cfg
