@@ -145,21 +145,18 @@ def get_arch_info(jobid: int, directory: str = None) -> Tuple[str, str, str]:
 #  NOTE, patching method seems to fail sometimes, using a different method
 #    * patching method
 #      git clone https://github.com/REPO_NAME arch_job_dir
+#      git checkout base_ref_of_PR
 #      curl -L https://github.com/REPO_NAME/pull/PR_NUMBER.patch > arch_job_dir/PR_NUMBER.patch
 #    (execute the next one in arch_job_dir)
 #      git am PR_NUMBER.patch
-#    * fetching method
-#      git clone https://github.com/REPO_NAME arch_job_dir
-#      cd arch_job_dir
-#      git fetch origin pull/PR_NUMBER/head:prPR_NUMBER
-#      git checkout prPR_NUMBER
 #
 #  - REPO_NAME is repo_name
 #  - PR_NUMBER is pr.number
 def obtain_pull_request(work_directory: str,
                         target_directory: str,
                         repository_name: str,
-                        pull_request_number: int) -> bool:
+                        pull_request_number: int,
+                        base_ref: str) -> bool:
 
     # TODO check if target_directory already exists under work_directory
     # (1) clone repo
@@ -169,7 +166,14 @@ def obtain_pull_request(work_directory: str,
     assert cloned_repo.__class__ is Repo
     print("Cloned repo '%s' into '%s'." % (repo_url, target_path))
 
-    # (2) optain patch for pull request
+    git = Git(target_path)
+
+    # (2) checkout base branch
+    print("Checking out base branch: '%s'" % base_ref)
+    status, co_out, co_err = git.checkout(base_ref, with_extended_output = True)
+    print("Checked out branch: status %d, out '%s', err '%s'" % (status, co_out, co_err) )
+
+    # (3) optain patch for pull request
     patch_file = pull_request_number + '.patch'
     patch_url = repo_url + '/pull/' + patch_file
     patch_target = os.path.join(target_path, patch_file)
@@ -178,8 +182,7 @@ def obtain_pull_request(work_directory: str,
         p.write(r.text)
     print("Stored patch under '%s'." % patch_target)
 
-    # (3) apply patch
-    git = Git(target_path)
+    # (4) apply patch
     status, am_out, am_err = git.am(patch_target, with_extended_output = True)
     print("Applied patch: status %d, out '%s', err '%s'" % (status, am_out, am_err) )
 
@@ -292,12 +295,18 @@ print("archictecture ..: %s" % arch_name)
 print("operating system: %s" % os_name)
 print("job params .....: %s" % slurm_opt)
 
+gh = github.get_instance()
+repo = gh.get_repo(repo_name)
+pr   = repo.get_pull(int(pr_number))
+base_ref = pr.base.ref
+
 # (2b) get original PR, patch and apply patch (same method used by
 #      event handler) + do customizations (cvmfs, ...)
 if not obtain_pull_request(original_job_dir,
                            rerun_job_dir,
                            repo_name,
-                           pr_number):
+                           pr_number,
+                           base_ref):
     print("failed to obtain pull request")
     sys.exit(-2)
 # TODO do customizations
@@ -326,11 +335,6 @@ with open(bot_jobfile_path, 'w') as bjf:
 # - access to app.cfg requires that config app.cfg is read with
 #      'config.read_file("app.cfg")'
 #      should be done early in this script
-gh = github.get_instance()
-repo = gh.get_repo(repo_name)
-pr   = repo.get_pull(int(pr_number))
-base_ref = pr.base.ref
-
 comments = pr.get_issue_comments()
 comment_id = ''
 for comment in comments:
