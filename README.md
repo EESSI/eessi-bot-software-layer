@@ -115,7 +115,7 @@ At the [app settings page](https://github.com/settings/apps) click "New GitHub A
   -  Make sure to assign read and write access to the Pull request in Repository permissions section; These  permisions can be changed later on; 
   -  Make sure to accept the new permissions  from the install app section. Select Install App option from the menu on the left hand side. 
   -  Then select the wheel right next to your installed app or use the link https://github.com/settings/installations/INSTALLATION_ID 
-  -  Once the page open you’ll be able to accept the new permissions there. 
+  -  Once the page open you'll be able to accept the new permissions there. 
   -  Some permissions (e.g., metadata) will be selected automatically because of others you have chosen.
 
 - Events: subscribe the app to events it shall react on (e.g., related to pull requests)
@@ -265,7 +265,7 @@ The section `[buildenv]` contains information about the build environment.
 build_job_script = PATH_TO_EESSI_BOT/scripts/eessi-bot-build.slurm
 ```
 This points to the job script which will be submitted by the event handler.
-The CVMFS configuration could be commented out unless there’s a need to customize the CVMFS configuration.
+The CVMFS configuration could be commented out unless there's a need to customize the CVMFS configuration.
 ```
 cvmfs_customizations = { "/etc/cvmfs/default.local": "CVMFS_HTTP_PROXY=\"http://PROXY_DNS_NAME:3128|http://PROXY_IP_ADDRESS:3128\"" }
 ```
@@ -397,7 +397,7 @@ Method 1:
    - open the link https://github.com/YOUR_GITHUB_ACCOUNT/software-layer/compare/main...EESSI:software-layer:add-CaDiCaL-9.3.0?expand=1
    - create the label bot:build if it's not there.
    - Create the pull request.
-   - Don’t merge the Pull request. It is important to close the pull request or delete the bot:build label after testing it. It can be added again for the other test. 
+   - Don't merge the Pull request. It is important to close the pull request or delete the bot:build label after testing it. It can be added again for the other test. 
 If the above method is followed then there will be no need to create another Github account for the test which is shown in the following Method 2.
 
 Method 2:
