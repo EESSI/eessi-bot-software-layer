@@ -1,10 +1,13 @@
 import glob
 import os
 import re
+import subprocess
 
+from connections import github
+from datetime import datetime, timezone
 from tools import config
+
 from pyghee.utils import log
-from datetime import datetime
 
 def determine_pr_dirs(pr_number):
     """
@@ -77,14 +80,62 @@ def check_build_status(slurm_out, eessi_tarballs):
 
     return False
 
+def update_pr_comment(tarball, repo_name, pr_number):
+    """
+    Update PR comment which contains specific tarball name.
+    """
+    # update PR comments (look for comments with build-ts.tar.gz)
+    dt = datetime.now(timezone.utc)
+    comment_update = '\n|%s|staged|uploaded `%s` to S3 bucket|' % (dt.strftime("%b %d %X %Z %Y"), tarball)
 
-def deploy_build(pd, build, ts):
+    gh = github.get_instance()
+    repo = gh.get_repo(repo_name)
+    pull_request = repo.get_pull(pr_number)
+    comments = pull_request.get_issue_comments()
+    for comment in comments:
+        # NOTE adjust search string if format changed by event
+        #        handler (separate process running
+        #        eessi_bot_software_layer.py)
+        cms = '.*%s.*' % tarball
+    
+        comment_match = re.search(cms, comment.body)
+
+        if comment_match:
+            print("update_pr_comment(): found comment with id %s" % comment.id)
+            issue_comment = pull_request.get_issue_comment(int(comment.id))
+            original_body = issue_comment.body
+            issue_comment.edit(original_body + comment_update)
+            break
+
+
+def deploy_build(pd, build, ts, repo_name, pr_number):
     """
     Deploy build.
     """
-    print("found build: %s/%s-%d.tar.gz" % (pd, build, ts))
+    tarball = '%s-%d.tar.gz' % (build, ts)
+    abs_path = '%s/%s' % (pd, tarball)
+    print("found build: %s" % abs_path)
     # TODO run script eessi-upload-to-staging pd/build-ts.tar.gz
+    deploycfg = config.get_section('deploycfg')
+    upload_to_s3_script = deploycfg.get('upload_to_s3_script')
+    options = deploycfg.get('options')
+    bucket = deploycfg.get('bucket')
 
+    upload_cmd = ' '.join([
+            upload_to_s3_script,
+            abs_path,
+        ])
+    d = dict(os.environ)
+    d["OPTIONS"] = options
+    d["bucket"] = bucket
+    print("Upload %s to bucket '%s' by running '%s' with options '%s'" % (abs_path, bucket, upload_cmd, options))
+    upload_to_s3 = subprocess.run(upload_cmd,
+                                  env=d,
+                                  shell=True,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
+    print("Uploaded to S3 bucket!\nStdout %s\nStderr: %s" % (upload_to_s3.stdout,upload_to_s3.stderr))
+    update_pr_comment(tarball, repo_name, pr_number)
 
 def deploy_built_artefacts(pr, event_info):
     """
@@ -139,9 +190,11 @@ def deploy_built_artefacts(pr, event_info):
             last_successful[build_pre] = { 'pr_dir': sb['pr_dir'], 'timestamp': timestamp }
 
     # 4) call function to deploy a single artefact per software subdir
+    #    - update PR comments (look for comments with build-ts.tar.gz)
+    repo_name = pr.base.repo.full_name
+
     for build in last_successful.keys():
         pd = last_successful[build]['pr_dir']
         ts = last_successful[build]['timestamp']
-        deploy_build(pd, build, ts)
-        print("found build: %s/%s-%d.tar.gz" % (pd, build, ts))
+        deploy_build(pd, build, ts, repo_name, pr.number)
 

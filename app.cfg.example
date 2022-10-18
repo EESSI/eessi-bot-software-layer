@@ -68,6 +68,17 @@ slurm_params = --hold
 submit_command = /usr/bin/sbatch
 
 
+[deploycfg]
+# script for uploading built software packages to S3 bucket
+upload_to_s3_script = PATH_TO_INFRASTRUCTURE_REPO/eessi-upload-to-staging
+
+# URL to S3/minio bucket via $OPTIONS
+options = --endpoint-url URL_TO_S3_SERVER
+
+# bucket name
+bucket = nessi-2021.12
+
+
 [architecturetargets]
 # defines both for which architectures the bot will build
 #   and what submission parameters shall be used
