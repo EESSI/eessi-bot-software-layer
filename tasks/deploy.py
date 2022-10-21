@@ -136,6 +136,14 @@ def deploy_build(job_dir, build_target, timestamp, repo_name, pr_number):
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
     log("Uploaded to S3 bucket!\nStdout %s\nStderr: %s" % (upload_to_s3.stdout,upload_to_s3.stderr))
+    # TODO check for errors
+    # add file to 'job_dir/../uploaded.txt'
+    pr_base_dir = os.path.dirname(job_dir)
+    uploaded_txt = os.path.join(pr_base_dir, 'uploaded.txt')
+    uploaded_file = open(uploaded_txt, "a")
+    uploaded_file.write('%s\n' % abs_path)
+    uploaded_file.close()
+
     update_pr_comment(tarball, repo_name, pr_number)
 
 def uploaded_before(build_target, job_dir):
@@ -154,8 +162,10 @@ def uploaded_before(build_target, job_dir):
         for line in uploaded_file:
             if re_build_target.match(line):
                 log("found earlier upload: %s" % line.strip())
+                uploaded_file.close()
                 return line.strip()
         log("file '%s' exists, no uploads for '%s' though" % (uploaded_txt, build_target))
+        uploaded_file.close()
         return None
     else:
         log("file '%s' does not exist, hence no uploads for '%s' yet" % (uploaded_txt, build_target))
@@ -207,8 +217,8 @@ def deploy_built_artefacts(pr, event_info):
     #      'latest': deploy only the last (use timestamp in filename) for each build target
     #      'once': deploy only latest if none for this build target has been deployed before
     # data structures:
-    #  - IN: successes: list of dictionaries {pr_dir, slurm_out, eessi_tarballs}
-    #  - OUT: to_be_deployed: dictionary (key=build_target) of dictionaries {pr_dir,timestamp}
+    #  - IN: successes: list of dictionaries {job_dir, slurm_out, eessi_tarballs}
+    #  - OUT: to_be_deployed: dictionary (key=build_target) of dictionaries {job_dir,timestamp}
     to_be_deployed = {}
     for sb in successes:
         # all tarballs for job
