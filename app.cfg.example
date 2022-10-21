@@ -78,6 +78,15 @@ options = --endpoint-url URL_TO_S3_SERVER
 # bucket name
 bucket = nessi-2021.12
 
+# upload policy: defines what policy is used for uploading built artefacts
+#                to an S3 bucket
+# 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
+# 'latest': for each build target (eessi-VERSION-{software,init,compat}-OS-ARCH)
+#           only upload the latest built artefact
+# 'once'  : only once upload any built artefact for the build target
+# 'none'  : do not upload any built artefacts
+upload_policy = once
+
 
 [architecturetargets]
 # defines both for which architectures the bot will build

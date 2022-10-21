@@ -307,6 +307,34 @@ submit_command = /usr/bin/sbatch
 ```
 This is the full path to the Slurm command used for submitting batch jobs. You may want to verify if `sbatch` is provided at that path or determine its actual location (`which sbatch`).
 
+### Section `[deploycfg]`
+The section `[deploycfg]` defines settings for uploading built artefacts (tarballs) to an S3 bucket.
+```
+upload_to_s3_script = PATH_TO_SCRIPTS/eessi-upload-to-staging
+```
+Provides the location for the script used for uploading built software packages to an S3 bucket. Note, `PATH_TO_SCRIPTS` can be any directory on the filesystem accessible by jobs.
+
+```
+options = --endpoint-url URL_TO_S3_SERVER
+```
+Provides an endpoint (URL) to a server hosting an S3 bucket. The server could be hosted by a public Cloud provider or running on a private environment, for example, using Minio. The bucket will be periodically scanned for uploaded tarballs.
+
+```
+bucket = eessi-staging
+```
+Name of the bucket used for uploading of tarballs. The bucket must be available on the server provided via `options`.
+
+```
+upload_policy = once
+```
+The `upload_policy` defines what policy is used for uploading built artefacts to an S3 bucket.
+|:--------|:--------------------------------|
+|Value|Policy|
+|`all`|Upload all artefacts (mulitple uploads of the same artefact possible).|
+|`latest`|For each build target (prefix in tarball name `eessi-VERSION-{software,init,compat}-OS-ARCH)` only upload the latest built artefact.|
+|`once`|Only once upload any built artefact for the build target.|
+|`none`|Do not upload any built artefacts.|
+
 ### Section `[architecturetargets]`
 The section `[architecturetargets]` defines for which targets (OS/SUBDIR), e.g., `linux/amd/zen2` the EESSI bot should submit jobs and what additional `sbatch` parameters will be used for requesting a compute node with the CPU microarchitecture needed to build the software stack.
 ```
