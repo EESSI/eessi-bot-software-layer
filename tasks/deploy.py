@@ -119,19 +119,22 @@ def deploy_build(job_dir, build_target, timestamp, repo_name, pr_number):
     # run 'eessi-upload-to-staging job_dir/build_target-timestamp.tar.gz'
     deploycfg = config.get_section('deploycfg')
     upload_to_s3_script = deploycfg.get('upload_to_s3_script')
-    options = deploycfg.get('options')
-    bucket = deploycfg.get('bucket')
+    endpoint_url = deploycfg.get('endpoint_url') or ''
+    bucket_name = deploycfg.get('bucket_name')
 
-    upload_cmd = ' '.join([
-            upload_to_s3_script,
-            abs_path,
-        ])
-    d = dict(os.environ)
-    d["OPTIONS"] = options
-    d["bucket"] = bucket
-    log("Upload %s to bucket '%s' by running '%s' with options '%s'" % (abs_path, bucket, upload_cmd, options))
+    cmd_args = [ upload_to_s3_script, ]
+    if len(bucket_name) > 0:
+        cmd_args.extend([ '--bucket-name', bucket_name ])
+    if len(endpoint_url) > 0:
+        cmd_args.extend([ '--endpoint-url', endpoint_url ])
+    cmd_args.extend([ '--repository', repo_name ])
+    cmd_args.extend([ '--pull-request', pr_number ])
+    cmd_args.append(abs_path)
+    upload_cmd = ' '.join(cmd_args)
+
+    log("Upload '%s' to bucket '%s' by running '%s' with endpoint_url '%s'" % (abs_path, bucket_name if len(bucket_name) > 0 else "DEFAULT", upload_cmd, endpoint_url if len(endpoint_url) > 0 else "EMPTY"))
+
     upload_to_s3 = subprocess.run(upload_cmd,
-                                  env=d,
                                   shell=True,
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)

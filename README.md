@@ -315,14 +315,14 @@ upload_to_s3_script = PATH_TO_SCRIPTS/eessi-upload-to-staging
 Provides the location for the script used for uploading built software packages to an S3 bucket. Note, `PATH_TO_SCRIPTS` can be any directory on the filesystem accessible by jobs.
 
 ```
-options = --endpoint-url URL_TO_S3_SERVER
+endpoint_url = URL_TO_S3_SERVER
 ```
-Provides an endpoint (URL) to a server hosting an S3 bucket. The server could be hosted by a public Cloud provider or running on a private environment, for example, using Minio. The bucket will be periodically scanned for uploaded tarballs.
+Provides an endpoint (URL) to a server hosting an S3 bucket. The server could be hosted by a public Cloud provider or running on a private environment, for example, using Minio. The bot uploads tarballs to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
 
 ```
-bucket = eessi-staging
+bucket_name = eessi-staging
 ```
-Name of the bucket used for uploading of tarballs. The bucket must be available on the server provided via `options`.
+Name of the bucket used for uploading of tarballs. The bucket must be available on the default server (`https://${bucket_name}.s3.amazonaws.com`) or the one provided via `endpoint_url`.
 
 ```
 upload_policy = once

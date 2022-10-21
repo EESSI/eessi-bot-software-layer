@@ -1,0 +1,187 @@
+#!/bin/bash
+
+function upload_to_staging_bucket
+{
+  _file=$1
+  _bucket=$2
+  _path=$3
+  _endpoint_url=$4
+
+  _options=
+  if [[ ! -z "${_endpoint_url}" ]]; then
+    _options="--endpoint-url ${_endpoint_url}"
+  fi
+  aws ${_options} s3 cp "${_file}" s3://${_bucket}/${_path}
+}
+
+# This needs expanding etc.
+function check_file_name
+{
+  filename=$1
+  if ( echo ${filename} | grep ^eessi > /dev/null && 
+    echo ${filename} | grep -E '(compat|init|software)' > /dev/null ); then
+    return 0
+  else
+    return 1
+  fi
+}
+
+function create_metadata_file
+{
+  _tarball=$1
+  _url=$2
+  _repository=$3
+  _pull_request=$4
+
+  _tmpfile=$(mktemp)
+
+  jq -n \
+    --arg un $(whoami) \
+    --arg ip $(curl -s https://checkip.amazonaws.com) \
+    --arg hn "$(hostname -f)" \
+    --arg fn "$(basename ${_tarball})" \
+    --arg sz "$(du -b "${_tarball}" | awk '{print $1}')" \
+    --arg ct "$(date -r "${_tarball}")" \
+    --arg sha256 "$(sha256sum "${_tarball}" | awk '{print $1}')" \
+    --arg url "${_url}" \
+    --arg repo "${_repository}" \
+    --arg pr "${_pull_request}" \
+    '{
+       uploader: {username: $un, ip: $ip, hostname: $hn},
+       payload: {filename: $fn, size: $sz, ctime: $ct, sha256sum: $sha256, url: $url},
+       link2pr: {repo: $repo, pr: $pr},
+     }' > "${_tmpfile}"
+
+  echo "${_tmpfile}"
+}
+
+function display_help
+{
+  echo "Usage: $0 [OPTIONS] <filenames>"                                        >&2
+#  echo "  -b | --bucket-base           -  depending on provider it could be"    >&2
+#  echo "           one of (replace uppercase parts with values for your env)"   >&2
+#  echo "             https://S3MINIO_SERVER_PORT/BUCKET/ for Minio"             >&2
+#  echo "             https://BUCKET.s3.amazonaws.com/ AWS S3"                   >&2
+  echo "  -e | --endpoint-url URL      -  endpoint url (needed for non AWS S3)" >&2
+  echo "  -h | --help                  -  display this usage information"       >&2
+  echo "  -n | --bucket-name BUCKET    -  bucket name (same as BUCKET above)"   >&2
+  echo "  -p | --pull-request NUMBER   -  a pull request NUMBER; used to"       >&2
+  echo "                                  link the upload to a PR"              >&2
+  echo "  -r | --repository FULL_NAME  -  a repository name ACCOUNT/REPONAME;"  >&2
+  echo "                                  used to link the upload to a PR"      >&2
+}
+
+if [[ $# -lt 1 ]]; then
+    display_help
+    exit 1
+fi
+
+
+# process command line args
+POSITIONAL_ARGS=()
+
+# depends on which service hosts the bucket
+#   minio: https://MINIO_SERVER:MINIO_PORT/{bucket_name}/
+#   s3aws: https://{bucket_name}.s3.amazonaws.com/
+# should be contructable from endpoint_url and bucket_name
+bucket_base=
+# default bucket is eessi-staging
+bucket_name="eessi-staging"
+# provided via options in app.cfg
+endpoint_url=
+pull_request=
+repository=
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+# we assume bucket_base can be constructed as follows
+#   {endpoint_url}/{bucket}/ (if endpoint_url provided)
+# or
+#   https://{bucket}.s3.amazonaws.com/ (if no endpoint_url provided)
+#    -b|--bucket-base)
+#      bucket_base="$2"
+#      shift 2
+#      ;;
+    -e|--endpoint-url)
+      endpoint_url="$2"
+      shift 2
+      ;;
+    -h|--help)
+      display_help
+      exit 0
+      ;;
+    -n|--bucket-name)
+      bucket_name="$2"
+      shift 2
+      ;;
+    -p|--pull-request)
+      pull_request="$2"
+      shift 2
+      ;;
+    -r|--repository)
+      repository="$2"
+      shift 2
+      ;;
+    -*|--*)
+      echo "Error: Unknown option: $1" >&2
+      exit 1
+      ;;
+    *)  # No more options
+      POSITIONAL_ARGS+=("$1") # save positional arg
+      shift
+      ;;
+  esac
+done
+
+# infer bucket_base:
+#   if endpoint_url is not set (assume AWS S3 is used),
+#     bucket_base=https://${bucket_name}.s3.amazonaws.com/
+#   if endpoint_url is set (assume non AWS S3, eg minio, is used),
+#     bucket_base=${endpoint_url}/${bucket_name}/
+# check if endpoint_url is not set
+if [[ -z "${endpoint_url}" ]]; then
+  # assume AWS S3 being used
+  bucket_base=https://${bucket_name}.s3.amazonaws.com
+else
+  # assume non AWS S3 being used or AWS S3 with bucket not in DNS
+  bucket_base=${endpoint_url}/${bucket_name}
+fi
+
+for file in "$*"; do
+  # eessi-${pilot_version}-software-${os}-`echo ${cpu_arch_subdir} \
+  #   | tr '/' '-'`-${timestamp}.tar.gz"
+  if [[ -r "${file}" && -f "${file}" &&  -s "${file}" ]]; then
+    basefile=$( basename ${file} )
+    if check_file_name ${basefile}; then
+      if tar tf "${file}" | head -n1 > /dev/null; then
+        aws_path=$(basename ${file} | tr -s '-' '/' \
+		 | perl -pe 's/^eessi.//;' | perl -pe 's/\.tar\.gz$//;' )
+        aws_file=$(basename ${file})
+        echo "Creating metadata file"
+	url="${bucket_base}/${aws_path}/${aws_file}"
+        metadata_file=$(create_metadata_file "${file}" "${url}" \
+		                             "${repository}" "${pull_request}")
+        echo Uploading to "${url}"
+        upload_to_staging_bucket \
+		"${file}" \
+		"${bucket_name}" \
+		"${aws_path}/${aws_file}" \
+		"${endpoint_url}"
+        upload_to_staging_bucket \
+		"${metadata_file}" \
+		"${bucket_name}" \
+		"${aws_path}/${aws_file}.meta.txt" \
+		"${endpoint_url}"
+      else
+        echo "'${file}' is not a tar file."
+        exit 1
+      fi
+    else
+      echo "${file} does not look like an eessi layer filename!"
+      exit 1
+    fi
+  else
+      echo "'${file}' is not a readable non zero-sized file."
+      exit 1
+  fi
+done

@@ -72,11 +72,18 @@ submit_command = /usr/bin/sbatch
 # script for uploading built software packages to S3 bucket
 upload_to_s3_script = PATH_TO_INFRASTRUCTURE_REPO/eessi-upload-to-staging
 
-# URL to S3/minio bucket via $OPTIONS
-options = --endpoint-url URL_TO_S3_SERVER
+# URL to S3/minio bucket via ${_options}
+#   if attribute is set, bucket_base will be constructed as follows
+#     bucket_base=${endpoint_url}/${bucket_name}
+#   otherwise, bucket_base will be constructed as follows
+#     bucket_base=https://${bucket_name}.s3.amazonaws.com
+# - The former variant is used for non AWS S3 services, eg, minio, or when
+#   the bucket name is not provided in the hostname (see latter case).
+# - The latter variant is used for AWS S3 services.
+endpoint_url = URL_TO_S3_SERVER
 
 # bucket name
-bucket = nessi-2021.12
+bucket_name = nessi-2021.12
 
 # upload policy: defines what policy is used for uploading built artefacts
 #                to an S3 bucket
