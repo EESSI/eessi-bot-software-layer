@@ -133,6 +133,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# restore potentially parsed filename(s) into $*
+set -- "${POSITIONAL_ARGS[@]}"
+
 # infer bucket_base:
 #   if endpoint_url is not set (assume AWS S3 is used),
 #     bucket_base=https://${bucket_name}.s3.amazonaws.com/
@@ -147,6 +150,7 @@ else
   bucket_base=${endpoint_url}/${bucket_name}
 fi
 
+#echo "remaining args: '$*'"
 for file in "$*"; do
   # eessi-${pilot_version}-software-${os}-`echo ${cpu_arch_subdir} \
   #   | tr '/' '-'`-${timestamp}.tar.gz"
@@ -161,6 +165,10 @@ for file in "$*"; do
 	url="${bucket_base}/${aws_path}/${aws_file}"
         metadata_file=$(create_metadata_file "${file}" "${url}" \
 		                             "${repository}" "${pull_request}")
+	#echo "metadata_file: '${metadata_file}'"
+	echo "metadata:"
+	cat ${metadata_file}
+
         echo Uploading to "${url}"
         upload_to_staging_bucket \
 		"${file}" \

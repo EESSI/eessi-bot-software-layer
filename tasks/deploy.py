@@ -128,7 +128,7 @@ def deploy_build(job_dir, build_target, timestamp, repo_name, pr_number):
     if len(endpoint_url) > 0:
         cmd_args.extend([ '--endpoint-url', endpoint_url ])
     cmd_args.extend([ '--repository', repo_name ])
-    cmd_args.extend([ '--pull-request', pr_number ])
+    cmd_args.extend([ '--pull-request', str(pr_number) ])
     cmd_args.append(abs_path)
     upload_cmd = ' '.join(cmd_args)
 
@@ -144,7 +144,8 @@ def deploy_build(job_dir, build_target, timestamp, repo_name, pr_number):
     pr_base_dir = os.path.dirname(job_dir)
     uploaded_txt = os.path.join(pr_base_dir, 'uploaded.txt')
     uploaded_file = open(uploaded_txt, "a")
-    uploaded_file.write('%s\n' % abs_path)
+    job_plus_tarball = os.path.join(os.path.basename(job_dir), tarball)
+    uploaded_file.write('%s\n' % job_plus_tarball)
     uploaded_file.close()
 
     update_pr_comment(tarball, repo_name, pr_number)
@@ -160,13 +161,17 @@ def uploaded_before(build_target, job_dir):
     uploaded_txt = os.path.join(pr_base_dir, 'uploaded.txt')
     if os.path.exists(uploaded_txt):
         # do stuff
-        re_build_target = re.compile('^%s-.*.tar.gz$' % build_target)
+        re_string = '.*%s-.*.tar.gz.*' % build_target
+        log("searching for '%s' in '%s'" % (re_string, uploaded_txt))
+        re_build_target = re.compile(re_string)
         uploaded_file = open(uploaded_txt, "r")
         for line in uploaded_file:
             if re_build_target.match(line):
                 log("found earlier upload: %s" % line.strip())
                 uploaded_file.close()
                 return line.strip()
+            else:
+                log("line '%s' did NOT match '%s'" % (line, re_string))
         log("file '%s' exists, no uploads for '%s' though" % (uploaded_txt, build_target))
         uploaded_file.close()
         return None
@@ -200,7 +205,7 @@ def deploy_built_artefacts(pr, event_info):
     #    - each job is stored in a directory given by its job ID
     #    - these job directories are stored under jobs_base_dir/YYYY.MM/pr_<id> ---> we may have
     #      to scan multiple YYYY.MM directories
-    job_dirs = determine_pr_dirs(pr.number)
+    job_dirs = determine_job_dirs(pr.number)
     log("job_dirs = '%s'" % ','.join(job_dirs))
 
     # 2) for each build check the status of jobs (SUCCESS or FAILURE)
@@ -250,11 +255,11 @@ def deploy_built_artefacts(pr, event_info):
             else:
                 deploy = True
         elif upload_policy == 'once':
-            uploaded_before = uploaded_before(build_target, job_dir)
-            if uploaded_before is None:
+            uploaded = uploaded_before(build_target, job_dir)
+            if uploaded is None:
                 deploy = True
             else:
-                log("tarball for '%s' has been uploaded before ('%s')" % (build_target, uploaded_before))
+                log("tarball for '%s' has been uploaded before ('%s')" % (build_target, uploaded))
 
         if deploy:
             to_be_deployed[build_target] = { 'job_dir': sb['job_dir'], 'timestamp': timestamp }
