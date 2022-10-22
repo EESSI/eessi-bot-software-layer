@@ -82,6 +82,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+#set -- "${POSITIONAL_ARGS[@]}"
+
 echo "Starting eessi-bot-build-slurm.sh"
 
 echo -n "updating \$eessi_tmpdir: '$eessi_tmpdir' -> "
