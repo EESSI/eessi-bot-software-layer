@@ -87,7 +87,7 @@ def update_pr_comment(tarball, repo_name, pr_number):
     """
     # update PR comments (look for comments with build-ts.tar.gz)
     dt = datetime.now(timezone.utc)
-    comment_update = '\n|%s|staged|uploaded `%s` to S3 bucket|' % (dt.strftime("%b %d %X %Z %Y"), tarball)
+    comment_update = '\n|%s|uploaded|transferred `%s` to S3 bucket|' % (dt.strftime("%b %d %X %Z %Y"), tarball)
 
     gh = github.get_instance()
     repo = gh.get_repo(repo_name)
