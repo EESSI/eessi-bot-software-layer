@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import time
+import os.path
 
 from connections import github
 from datetime import datetime, timezone
@@ -159,12 +160,24 @@ class EESSIBotSoftwareLayerJobManager:
             job_metadata_path = '%s/_bot_job%s.metadata' % (
                     match.group(1),
                     new_job['jobid'])
+           
             metadata = configparser.ConfigParser()
             try:
                 metadata.read(job_metadata_path)
             except Exception as e:
                 print(e)
                 error(f'Unable to read job metadata file {job_metadata_path}!')
+            
+             
+            #check if metadata file exist
+            isfile = os.path.isfile(job_metadata_path)
+
+            print("The test for metafile returns", isfile)
+
+            if isfile is False:
+                print("this is a non bot job and it can't be processed")
+                return None
+
             # get section
             if 'PR' in metadata:
                 metadata_pr = metadata['PR']
@@ -245,7 +258,6 @@ class EESSIBotSoftwareLayerJobManager:
         #        in tools/config.py
         metadata_file = '_bot_job%s.metadata' % finished_job['jobid']
         job_metadata_path = os.path.join(job_dir,metadata_file)
-
         metadata = configparser.ConfigParser()
         try:
             metadata.read(job_metadata_path)
@@ -253,6 +265,15 @@ class EESSIBotSoftwareLayerJobManager:
             print(e)
             error(f'Unable to read job metadata file {job_metadata_path}!')
 
+        #check if metadata file exist
+        isfile = os.path.isfile(job_metadata_path)
+        print("The test for metafile returns", isfile)
+                
+        if isfile is False:
+            print("this is a non bot job and it can't be processed")
+            return None
+
+       
         # get section
         if 'PR' in metadata:
             metadata_pr = metadata['PR']
