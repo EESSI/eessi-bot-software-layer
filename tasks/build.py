@@ -14,8 +14,6 @@
 import configparser
 import json
 import os
-import subprocess
-import time
 
 from connections import github
 from datetime import datetime, timezone
@@ -77,7 +75,7 @@ def get_build_env_cfg():
         cvmfs_customizations_str = buildenv.get(CVMFS_CUSTOMIZATIONS)
         log("cvmfs_customizations '%s'" % cvmfs_customizations_str)
 
-        if cvmfs_customizations_str != None:
+        if cvmfs_customizations_str is not None:
             cvmfs_customizations = json.loads(cvmfs_customizations_str)
 
         log("cvmfs_customizations '%s'" % json.dumps(cvmfs_customizations))
