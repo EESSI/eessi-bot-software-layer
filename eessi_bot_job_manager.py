@@ -28,7 +28,6 @@
 #
 
 import configparser
-import json
 import glob
 import os
 import re
