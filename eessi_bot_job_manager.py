@@ -36,6 +36,7 @@ import time
 
 from connections import github
 from tools.args import parse_common_args, job_manager_parse
+from tools.github import get_comment, update_comment
 from datetime import datetime, timezone
 from tools import config
 
@@ -286,34 +287,23 @@ class EESSIBotSoftwareLayerJobManager:
             # (b) find & get comment for this job
             # only get comment if we don't know its id yet
             if "comment_id" not in new_job:
-                comments = pr.get_issue_comments()
-                for comment in comments:
-                    # NOTE adjust search string if format changed by event
-                    #        handler (separate process running
-                    #        eessi_bot_event_handler.py)
-                    cms = f".*submitted.*job id `{new_job['jobid']}`.*"
-
-                    comment_match = re.search(cms, comment.body)
-
-                    if comment_match:
-                        log(
-                            "process_new_job(): found comment with id %s"
-                            % comment.id,
-                            self.logfile,
-                        )
-                        new_job["comment_id"] = comment.id
-                        break
+                new_job_cmnt = get_comment(pr, new_job['jobid'])
+                if new_job_cmnt:
+                    log(
+                        "process_new_job(): found comment with id %s"
+                        % new_job_cmnt.id,
+                        self.logfile,
+                    )
+                    new_job["comment_id"] = new_job_cmnt.id
 
             # (c) add a row to the table
             # add row to status table if we found a comment
             if "comment_id" in new_job:
-                issue_comment = pr.get_issue_comment(int
-                                                     (new_job["comment_id"]))
-                original_body = issue_comment.body
                 dt = datetime.now(timezone.utc)
                 update = "\n|%s|" % dt.strftime("%b %d %X %Z %Y")
                 update += "released|job awaits launch by Slurm scheduler|"
-                issue_comment.edit(original_body + update)
+                update_comment(new_job["comment_id"], pr, update)
+
             else:
                 log(
                     "process_new_job(): did not obtain/find a comment"
@@ -335,6 +325,7 @@ class EESSIBotSoftwareLayerJobManager:
 
     # job_manager.process_finished_job(known_jobs[fj])
     def process_finished_job(self, finished_job):
+
         # check result
         #   ("No missing packages!", "eessi-.*.tar.gz")
         #   TODO as is, this requires knowledge about the build process.
@@ -375,24 +366,15 @@ class EESSIBotSoftwareLayerJobManager:
 
         # determine comment to be updated
         if "comment_id" not in finished_job:
-            comments = pull_request.get_issue_comments()
-            for comment in comments:
-                # NOTE adjust search string if format changed by event
-                #        handler (separate process running
-                #        eessi_bot_event_handler.py)
-                cms = f".*submitted.*job id `{finished_job['jobid']}`.*"
+            finished_job_cmnt = get_comment(pull_request, finished_job['jobid'])
 
-                comment_match = re.search(cms, comment.body)
-
-                if comment_match:
-                    log(
-                        "process_finished_job(): found comment with id %s"
-                        % comment.id,
-                        self.logfile,
-                    )
-                    finished_job["comment_id"] = comment.id
-                    break
-
+            if finished_job_cmnt:
+                log(
+                    "process_finished_job(): found comment with id %s"
+                    % finished_job_cmnt.id,
+                    self.logfile,
+                )
+                finished_job["comment_id"] = finished_job_cmnt.id
         # analyse job result
         slurm_out = os.path.join(sym_dst, "slurm-%s.out" %
                                  finished_job["jobid"])
@@ -508,12 +490,8 @@ class EESSIBotSoftwareLayerJobManager:
         # (c) add a row to the table
         # add row to status table if we found a comment
         if "comment_id" in finished_job:
-            issue_comment = pull_request.get_issue_comment(
-                int(finished_job["comment_id"])
-            )
-            original_body = issue_comment.body
-            dt = datetime.now(timezone.utc)
-            issue_comment.edit(original_body + comment_update)
+            update_comment(finished_job["comment_id"], pull_request, comment_update)
+
         else:
             log(
                 "process_finished_job(): did not obtain/find a "
