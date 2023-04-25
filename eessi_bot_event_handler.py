@@ -13,6 +13,7 @@
 #
 # license: GPLv2
 #
+import json
 import waitress
 import sys
 import tasks.build as build
@@ -25,6 +26,9 @@ from tasks.deploy import deploy_built_artefacts
 
 from pyghee.lib import PyGHee, create_app, get_event_info, read_event_from_json
 from pyghee.utils import log
+
+from requests.structures import CaseInsensitiveDict
+from collections import namedtuple
 
 
 class EESSIBotSoftwareLayer(PyGHee):
@@ -61,6 +65,8 @@ class EESSIBotSoftwareLayer(PyGHee):
         issue_url = request_body['issue']['url']
         comment_author = request_body['comment']['user']['login']
         comment_txt = request_body['comment']['body']
+        if comment_txt.lower()[:6] == "replay":
+            self.replay_event(comment_txt)
         self.log("Comment posted in %s by @%s: %s", issue_url, comment_author, comment_txt)
         self.log("issue_comment event handled!")
 
@@ -137,6 +143,26 @@ class EESSIBotSoftwareLayer(PyGHee):
         else:
             self.log("No handler for PR action '%s'", action)
 
+    def replay_event(self, comment):
+        """Replay an event stored in the file system
+
+        Args:
+            comment (string): The comment which triggered the replay event
+        """
+        event_name = comment[7:]
+        event_dir = f"events_log/pull_request/labeled/{event_name[:10]}"
+
+        event = namedtuple('Request', ['headers', 'json', 'data'])
+        with open(f"{event_dir}/{event_name}_headers.json", 'r') as jf:
+            headers = json.load(jf)
+            event.headers = CaseInsensitiveDict(headers)
+        with open(f"{event_dir}/{event_name}_body.json", 'r') as jf:
+            body = json.load(jf)
+            event.json = body
+        
+        event_info = get_event_info(event)
+        self.handle_event(event_info)
+
     def start(self, app, port=3000):
         """starts the app and log information in the log file
 
@@ -173,6 +199,7 @@ def main():
     if opts.file:
         app = create_app(klass=EESSIBotSoftwareLayer)
         event = read_event_from_json(opts.file)
+        event.data = ""
         event_info = get_event_info(event)
         app.handle_event(event_info)
     elif opts.cron:
