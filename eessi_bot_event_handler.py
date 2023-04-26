@@ -152,7 +152,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         """
         event = namedtuple('Request', ['headers', 'json', 'data'])
 
-        for (dir, subdirs, files) in os.walk("."):
+        for (dir, _subdirs, files) in os.walk("."):
             if any([event_id in file for file in files]):
                 with open(f"{dir}/{event_id}_headers.json", 'r') as jf:
                     headers = json.load(jf)
@@ -160,7 +160,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                 with open(f"{dir}/{event_id}_body.json", 'r') as jf:
                     body = json.load(jf)
                     event.json = body
-        
+
         event_info = get_event_info(event)
         self.handle_event(event_info)
 
