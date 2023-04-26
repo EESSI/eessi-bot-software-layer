@@ -14,6 +14,7 @@
 # license: GPLv2
 #
 import json
+import os
 import waitress
 import sys
 import tasks.build as build
@@ -66,7 +67,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         comment_author = request_body['comment']['user']['login']
         comment_txt = request_body['comment']['body']
         if comment_txt.lower()[:6] == "replay":
-            self.replay_event(comment_txt)
+            self.replay_event(comment_txt[7:])
         self.log("Comment posted in %s by @%s: %s", issue_url, comment_author, comment_txt)
         self.log("issue_comment event handled!")
 
@@ -143,22 +144,22 @@ class EESSIBotSoftwareLayer(PyGHee):
         else:
             self.log("No handler for PR action '%s'", action)
 
-    def replay_event(self, comment):
+    def replay_event(self, event_id):
         """Replay an event stored in the file system
 
         Args:
-            comment (string): The comment which triggered the replay event
+            event_id (string): The id of the event that should be replayed
         """
-        event_name = comment[7:]
-        event_dir = f"events_log/pull_request/labeled/{event_name[:10]}"
-
         event = namedtuple('Request', ['headers', 'json', 'data'])
-        with open(f"{event_dir}/{event_name}_headers.json", 'r') as jf:
-            headers = json.load(jf)
-            event.headers = CaseInsensitiveDict(headers)
-        with open(f"{event_dir}/{event_name}_body.json", 'r') as jf:
-            body = json.load(jf)
-            event.json = body
+
+        for (dir, subdirs, files) in os.walk("."):
+            if any([event_id in file for file in files]):
+                with open(f"{dir}/{event_id}_headers.json", 'r') as jf:
+                    headers = json.load(jf)
+                    event.headers = CaseInsensitiveDict(headers)
+                with open(f"{dir}/{event_id}_body.json", 'r') as jf:
+                    body = json.load(jf)
+                    event.json = body
         
         event_info = get_event_info(event)
         self.handle_event(event_info)
@@ -199,7 +200,6 @@ def main():
     if opts.file:
         app = create_app(klass=EESSIBotSoftwareLayer)
         event = read_event_from_json(opts.file)
-        event.data = ""
         event_info = get_event_info(event)
         app.handle_event(event_info)
     elif opts.cron:
