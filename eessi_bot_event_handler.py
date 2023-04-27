@@ -13,8 +13,6 @@
 #
 # license: GPLv2
 #
-import json
-import os
 import waitress
 import sys
 import tasks.build as build
@@ -27,9 +25,6 @@ from tasks.deploy import deploy_built_artefacts
 
 from pyghee.lib import PyGHee, create_app, get_event_info, read_event_from_json
 from pyghee.utils import log
-
-from requests.structures import CaseInsensitiveDict
-from collections import namedtuple
 
 
 class EESSIBotSoftwareLayer(PyGHee):
@@ -66,8 +61,6 @@ class EESSIBotSoftwareLayer(PyGHee):
         issue_url = request_body['issue']['url']
         comment_author = request_body['comment']['user']['login']
         comment_txt = request_body['comment']['body']
-        if comment_txt.lower()[:6] == "replay":
-            self.replay_event(comment_txt[7:])
         self.log("Comment posted in %s by @%s: %s", issue_url, comment_author, comment_txt)
         self.log("issue_comment event handled!")
 
@@ -143,26 +136,6 @@ class EESSIBotSoftwareLayer(PyGHee):
             handler(event_info, pr)
         else:
             self.log("No handler for PR action '%s'", action)
-
-    def replay_event(self, event_id):
-        """Replay an event stored in the file system
-
-        Args:
-            event_id (string): The id of the event that should be replayed
-        """
-        event = namedtuple('Request', ['headers', 'json', 'data'])
-
-        for (dir, _subdirs, files) in os.walk("."):
-            if any([event_id in file for file in files]):
-                with open(f"{dir}/{event_id}_headers.json", 'r') as jf:
-                    headers = json.load(jf)
-                    event.headers = CaseInsensitiveDict(headers)
-                with open(f"{dir}/{event_id}_body.json", 'r') as jf:
-                    body = json.load(jf)
-                    event.json = body
-
-        event_info = get_event_info(event)
-        self.handle_event(event_info)
 
     def start(self, app, port=3000):
         """starts the app and log information in the log file
