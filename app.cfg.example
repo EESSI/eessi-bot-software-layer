@@ -120,6 +120,7 @@ arch_target_map = { "linux/x86_64/generic" : "--constraint shape=c4.2xlarge", "l
 [event_handler]
 # path to the log file to log messages for event handler
 log_path = /path/to/eessi_bot_event_handler.log
+event_links_path = /path/to/event_links
 
 
 [job_manager]
