@@ -8,6 +8,7 @@
 # author: Bob Droege (@bedroge)
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Thomas Roeblitz (@trz42)
+# author: Jonas Qvigstad (@jonas-lq)
 #
 # license: GPLv2
 #

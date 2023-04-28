@@ -24,6 +24,7 @@
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Jacob Ziemke (@jacobz137)
 # author: Thomas Roeblitz (@trz42)
+# author: Jonas Qvigstad (@jonas-lq)
 #
 # license: GPLv2
 #

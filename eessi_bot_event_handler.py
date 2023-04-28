@@ -10,6 +10,7 @@
 # author: Bob Droege (@bedroge)
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Thomas Roeblitz (@trz42)
+# author: Jonas Qvigstad (@jonas-lq)
 #
 # license: GPLv2
 #
@@ -153,7 +154,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         event_log_fn = '%sT%s_%s' % (event_date, event_info['time'], event_id)
         event_log_path = os.path.join(events_log_dir, event_type, event_action, event_date, event_log_fn)
-        
+
         event_links_dir = config.read_config()[EVENT_HANDLER][EVENT_LINKS_PATH] + "/event_links"
         if not os.path.exists(event_links_dir):
             os.makedirs(event_links_dir)
