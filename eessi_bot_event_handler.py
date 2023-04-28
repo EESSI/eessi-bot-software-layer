@@ -13,12 +13,14 @@
 #
 # license: GPLv2
 #
+import os
 import waitress
 import sys
 import tasks.build as build
 
 from connections import github
-from tools import config
+from tools import config, run_cmd
+from tools.replay_events import EVENT_LINKS_PATH, EVENT_HANDLER, replay_event
 from tools.args import event_handler_parse
 from tasks.build import check_build_permission, submit_build_jobs, get_repo_cfg
 from tasks.deploy import deploy_built_artefacts
@@ -137,6 +139,37 @@ class EESSIBotSoftwareLayer(PyGHee):
         else:
             self.log("No handler for PR action '%s'", action)
 
+    def handle_event(self, event_info, log_file=None):
+        """
+        Handles events according to PyGHee, in addition to creating symlinks to events logged by PyGHee
+        """
+        super().handle_event(event_info, log_file)
+
+        events_log_dir = os.path.join(os.getcwd(), 'events_log')
+        event_action = event_info['action']
+        event_date = event_info['date']
+        event_id = event_info['id']
+        event_type = event_info['type']
+
+        event_log_fn = '%sT%s_%s' % (event_date, event_info['time'], event_id)
+        event_log_path = os.path.join(events_log_dir, event_type, event_action, event_date, event_log_fn)
+        
+        event_links_dir = config.read_config()[EVENT_HANDLER][EVENT_LINKS_PATH] + "/event_links"
+        if not os.path.exists(event_links_dir):
+            os.makedirs(event_links_dir)
+
+        headers_path = f"{event_log_path}_headers.json"
+        headers_symlink = f"{event_links_dir}/{event_log_fn}_headers.json"
+        if not os.path.exists(headers_symlink):
+            create_headers_symlink = f"ln -s {headers_path} {headers_symlink}"
+            run_cmd(create_headers_symlink, "Create symlink for event headers")
+
+        body_path = f"{event_log_path}_body.json"
+        body_symlink = f"{event_links_dir}/{event_log_fn}_body.json"
+        if not os.path.exists(body_symlink):
+            create_body_symlink = f"ln -s {body_path} {body_symlink}"
+            run_cmd(create_body_symlink, "Create symlink for event body")
+
     def start(self, app, port=3000):
         """starts the app and log information in the log file
 
@@ -164,7 +197,8 @@ def main():
     opts = event_handler_parse()
 
     required_config = {
-        build.SUBMITTED_JOB_COMMENTS: [build.INITIAL_COMMENT, build.AWAITS_RELEASE]
+        build.SUBMITTED_JOB_COMMENTS: [build.INITIAL_COMMENT, build.AWAITS_RELEASE],
+        EVENT_HANDLER: [EVENT_LINKS_PATH]
     }
     # config is read and checked for settings to raise an exception early when the event_handler starts.
     config.check_required_cfg_settings(required_config)
@@ -172,9 +206,7 @@ def main():
 
     if opts.file:
         app = create_app(klass=EESSIBotSoftwareLayer)
-        event = read_event_from_json(opts.file)
-        event_info = get_event_info(event)
-        app.handle_event(event_info)
+        replay_event(app, opts.file)
     elif opts.cron:
         app.log("Running in cron mode")
     else:

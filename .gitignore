@@ -6,3 +6,5 @@ appbackup.cfg
 venv_bot_p37
 *.swo
 events_log/
+event_links/
+venv
