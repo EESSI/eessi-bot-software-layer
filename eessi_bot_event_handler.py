@@ -26,7 +26,7 @@ from tools.args import event_handler_parse
 from tasks.build import check_build_permission, submit_build_jobs, get_repo_cfg
 from tasks.deploy import deploy_built_artefacts
 
-from pyghee.lib import PyGHee, create_app, get_event_info, read_event_from_json
+from pyghee.lib import PyGHee, create_app
 from pyghee.utils import log
 
 
