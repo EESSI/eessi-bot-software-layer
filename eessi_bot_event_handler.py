@@ -18,6 +18,7 @@ import os
 import waitress
 import sys
 import tasks.build as build
+import tasks.deploy as deploy
 
 from connections import github
 from tools import config, run_cmd
@@ -199,7 +200,9 @@ def main():
 
     required_config = {
         build.SUBMITTED_JOB_COMMENTS: [build.INITIAL_COMMENT, build.AWAITS_RELEASE],
-        EVENT_HANDLER: [EVENT_LINKS_PATH]
+        EVENT_HANDLER: [EVENT_LINKS_PATH],
+        build.BUILDENV: [build.NO_BUILD_PERMISSION_COMMENT],
+        deploy.DEPLOYCFG: [deploy.NO_DEPLOY_PERMISSION_COMMENT]
     }
     # config is read and checked for settings to raise an exception early when the event_handler starts.
     config.check_required_cfg_settings(required_config)

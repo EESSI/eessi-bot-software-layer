@@ -5,6 +5,7 @@
 # EESSI software layer, see https://github.com/EESSI/software-layer
 #
 # author: Thomas Roeblitz (@trz42)
+# author: Jonas Qvigstad (@jonas-lq)
 #
 # license: GPLv2
 #
@@ -17,7 +18,7 @@ from connections import github
 from datetime import datetime, timezone
 from pyghee.utils import log
 from tasks.build import get_build_env_cfg
-from tools import config, run_cmd
+from tools import config, run_cmd, pr_comments
 
 JOBS_BASE_DIR = "jobs_base_dir"
 DEPLOYCFG = "deploycfg"
@@ -26,6 +27,7 @@ ENDPOINT_URL = "endpoint_url"
 BUCKET_NAME = "bucket_name"
 UPLOAD_POLICY = "upload_policy"
 DEPLOY_PERMISSION = "deploy_permission"
+NO_DEPLOY_PERMISSION_COMMENT = "no_deploy_permission_comment"
 
 
 def determine_job_dirs(pr_number):
@@ -405,7 +407,11 @@ def deploy_built_artefacts(pr, event_info):
     # permission to trigger the deployment
     if labeler not in deploy_permission.split():
         log(f"{funcname}(): GH account '{labeler}' is not authorized to deploy")
-        # TODO update PR comments for this bot instance?
+        no_deploy_permission_comment = deploy_cfg.get(NO_DEPLOY_PERMISSION_COMMENT)
+        repo_name = event_info["raw_request_body"]["repository"]["full_name"]
+        pr_comments.create_comment(repo_name,
+                                   pr.number,
+                                   no_deploy_permission_comment.format(deploy_labeler=labeler))
         return
     else:
         log(f"{funcname}(): GH account '{labeler}' is authorized to deploy")

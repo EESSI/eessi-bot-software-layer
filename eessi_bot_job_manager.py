@@ -677,6 +677,10 @@ def main():
             #        " %s due to parameter '--jobs %s'" % (
             #          nj,opts.jobs), job_manager.logfile)
 
+        # remove non bot jobs from current_jobs
+        for job in non_bot_jobs:
+            current_jobs.pop(job)
+
         running_jobs = job_manager.determine_running_jobs(current_jobs)
         log(
             "job manager main loop: running_jobs='%s'" %
@@ -686,7 +690,7 @@ def main():
 
         for rj in running_jobs:
             if not job_manager.job_filter or rj in job_manager.job_filter:
-                job_manager.process_running_jobs(known_jobs[rj])
+                job_manager.process_running_jobs(current_jobs[rj])
 
         finished_jobs = job_manager.determine_finished_jobs(
                         known_jobs, current_jobs)
@@ -703,10 +707,6 @@ def main():
             #    log("job manager main loop: skipping finished "
             #        "job %s due"" to parameter '--jobs %s'" % (fj,opts.jobs),
             #        " job_manager.logfile)"
-
-        # remove non bot jobs from current_jobs
-        for job in non_bot_jobs:
-            current_jobs.pop(job)
 
         known_jobs = current_jobs
 

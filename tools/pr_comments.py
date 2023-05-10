@@ -8,11 +8,13 @@
 # author: Bob Droege (@bedroge)
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Thomas Roeblitz (@trz42)
+# author: Jonas Qvigstad (@jonas-lq)
 #
 # license: GPLv2
 #
 import re
 
+from connections import github
 from pyghee.utils import log
 from retry import retry
 from retry.api import retry_call
@@ -77,3 +79,17 @@ def update_comment(cmnt_id, pr, update, log_file=None):
     else:
         log(f"no comment with id {cmnt_id}, skipping update '{update}'",
             log_file=log_file)
+
+
+def create_comment(repo_name, pr_number, comment):
+    """create a comment on a pr
+
+    Args:
+        repo_name (str): name of the repo with the pr
+        pr_number (int): number of the pr within the repo
+        comment (string): new comment
+    """
+    gh = github.get_instance()
+    repo = gh.get_repo(repo_name)
+    pull_request = repo.get_pull(pr_number)
+    pull_request.create_issue_comment(comment)

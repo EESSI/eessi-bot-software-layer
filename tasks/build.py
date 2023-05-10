@@ -23,7 +23,7 @@ from connections import github
 from datetime import datetime, timezone
 from pyghee.utils import log, error
 from retry.api import retry_call
-from tools import config, run_cmd
+from tools import config, run_cmd, pr_comments
 
 AWAITS_RELEASE = "awaits_release"
 BUILDENV = "buildenv"
@@ -41,6 +41,7 @@ SLURM_PARAMS = "slurm_params"
 SUBMITTED_JOB_COMMENTS = "submitted_job_comments"
 SUBMIT_COMMAND = "submit_command"
 BUILD_PERMISSION = "build_permission"
+NO_BUILD_PERMISSION_COMMENT = "no_build_permission_comment"
 ARCHITECTURE_TARGETS = "architecturetargets"
 REPO_TARGETS = "repo_targets"
 REPO_TARGET_MAP = "repo_target_map"
@@ -655,7 +656,11 @@ def check_build_permission(pr, event_info):
     build_labeler = event_info['raw_request_body']['sender']['login']
     if build_labeler not in build_permission.split():
         log(f"{funcname}(): GH account '{build_labeler}' is not authorized to build")
-        # TODO update PR comments for this bot instance?
+        no_build_permission_comment = buildenv.get(NO_BUILD_PERMISSION_COMMENT)
+        repo_name = event_info["raw_request_body"]["repository"]["full_name"]
+        pr_comments.create_comment(repo_name,
+                                   pr.number,
+                                   no_build_permission_comment.format(build_labeler=build_labeler))
         return False
     else:
         log(f"{funcname}(): GH account '{build_labeler}' is authorized to build")
