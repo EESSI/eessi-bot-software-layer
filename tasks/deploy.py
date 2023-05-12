@@ -412,7 +412,7 @@ def deploy_built_artefacts(pr, event_info):
             "but this person does not have permission to trigger deployments"
         )
         no_deploy_permission_comment = deploy_cfg.get(
-            NO_DEPLOY_PERMISSION_COMMENT, 
+            NO_DEPLOY_PERMISSION_COMMENT,
             default_no_deploy_permission_comment
         )
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]

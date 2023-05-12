@@ -663,8 +663,8 @@ def check_build_permission(pr, event_info):
     if build_labeler not in build_permission.split():
         log(f"{funcname}(): GH account '{build_labeler}' is not authorized to build")
         default_no_build_permission_comment = (
-        "Label `bot:build` has been set by user `{build_labeler}`, "
-        "but this person does not have permission to trigger builds"
+            "Label `bot:build` has been set by user `{build_labeler}`, "
+            "but this person does not have permission to trigger builds"
         )
         no_build_permission_comment = buildenv.get(NO_BUILD_PERMISSION_COMMENT, default_no_build_permission_comment)
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
