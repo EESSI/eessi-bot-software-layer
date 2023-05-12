@@ -407,7 +407,14 @@ def deploy_built_artefacts(pr, event_info):
     # permission to trigger the deployment
     if labeler not in deploy_permission.split():
         log(f"{funcname}(): GH account '{labeler}' is not authorized to deploy")
-        no_deploy_permission_comment = deploy_cfg.get(NO_DEPLOY_PERMISSION_COMMENT)
+        default_no_deploy_permission_comment = (
+            "Label `bot:deploy` has been set by user `{deploy_labeler}`, "
+            "but this person does not have permission to trigger deployments"
+        )
+        no_deploy_permission_comment = deploy_cfg.get(
+            NO_DEPLOY_PERMISSION_COMMENT, 
+            default_no_deploy_permission_comment
+        )
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
                                    pr.number,

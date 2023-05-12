@@ -562,17 +562,24 @@ def create_pr_comment(job, job_id, app_name, pr_number, repo_name, gh, symlink):
     dt = datetime.now(timezone.utc)
 
     # construct initial job comment
-    submitted_job_comments_cfg = config.read_config()[SUBMITTED_JOB_COMMENTS]
-    job_comment = (f"{submitted_job_comments_cfg[INITIAL_COMMENT]}"
-                   f"\n|date|job status|comment|\n"
-                   f"|----------|----------|------------------------|\n"
-                   f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                   f"submitted|"
-                   f"{submitted_job_comments_cfg[AWAITS_RELEASE]}|").format(app_name=app_name,
-                                                                            arch_name=arch_name,
-                                                                            symlink=symlink,
-                                                                            repo_id=job.repo_id,
-                                                                            job_id=job_id)
+    default_initial_comment = (
+        "New job on instance `{app_name}` for architecture `{arch_name}` "
+        "for repository `{repo_id}` in job dir `{symlink}`"
+    )
+    default_awaits_release = "job id `{job_id}` awaits release by job manager"
+    submitted_job_comments_cfg = config.read_config().get(SUBMITTED_JOB_COMMENTS, {})
+    job_comment = (
+        f"{submitted_job_comments_cfg.get(INITIAL_COMMENT, default_initial_comment)}"
+        f"\n|date|job status|comment|\n"
+        f"|----------|----------|------------------------|\n"
+        f"|{dt.strftime('%b %d %X %Z %Y')}|"
+        f"submitted|"
+        f"{submitted_job_comments_cfg.get(AWAITS_RELEASE, default_awaits_release)}|"
+    ).format(app_name=app_name,
+             arch_name=arch_name,
+             symlink=symlink,
+             repo_id=job.repo_id,
+             job_id=job_id)
 
     # create comment to pull request
     repo = gh.get_repo(repo_name)
@@ -655,7 +662,11 @@ def check_build_permission(pr, event_info):
     build_labeler = event_info['raw_request_body']['sender']['login']
     if build_labeler not in build_permission.split():
         log(f"{funcname}(): GH account '{build_labeler}' is not authorized to build")
-        no_build_permission_comment = buildenv.get(NO_BUILD_PERMISSION_COMMENT)
+        default_no_build_permission_comment = (
+        "Label `bot:build` has been set by user `{build_labeler}`, "
+        "but this person does not have permission to trigger builds"
+        )
+        no_build_permission_comment = buildenv.get(NO_BUILD_PERMISSION_COMMENT, default_no_build_permission_comment)
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
                                    pr.number,

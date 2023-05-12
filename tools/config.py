@@ -29,7 +29,7 @@ def read_config(path='app.cfg'):
     except Exception as err:
         error(f"{fn}(): Unable to read configuration file {path}!\n{err}")
 
-    return config
+    return dict(config)
 
 
 def check_required_cfg_settings(req_settings, path="app.cfg"):

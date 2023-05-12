@@ -141,7 +141,7 @@ poll_interval = 60
 # full path to the command for manipulating existing jobs
 scontrol_command = /usr/bin/scontrol
 
-# variable 'initial_comment' under 'submitted_job_comments' should not be changed as the bot's code uses regular expression pattern to identify a matching comment
+# variable 'awaits_release' under 'submitted_job_comments' should not be changed as the bot's code uses regular expression pattern to identify a matching comment
 [submitted_job_comments]
 initial_comment = New job on instance `{app_name}` for architecture `{arch_name}` for repository `{repo_id}` in job dir `{symlink}` 
 awaits_release = job id `{job_id}` awaits release by job manager 
