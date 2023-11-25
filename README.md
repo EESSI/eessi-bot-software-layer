@@ -35,15 +35,15 @@ On the `bot machine` we need a tool which receives events relayed from
 client for this. The Smee client can be run via a container as follows
 
 ```
-singularity pull docker://deltaprojects/smee-client
-singularity run smee-client_latest.sif --url https://smee.io/CHANNEL-ID
+singularity pull docker://ghcr.io/probot/smee.io
+singularity run smee.io_latest.sif --url https://smee.io/CHANNEL-ID
 ```
 
 or
 
 ```
-singularity pull docker://deltaprojects/smee-client
-singularity run smee-client_latest.sif --port 3030 --url https://smee.io/CHANNEL-ID
+singularity pull docker://ghcr.io/probot/smee.io
+singularity run smee.io_latest.sif --port 3030 --url https://smee.io/CHANNEL-ID
 ```
 
 for specifying a different port than the default (3000).
