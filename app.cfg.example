@@ -147,6 +147,28 @@ deploy_permission =
 # template for comment when user who set a label has no permission to trigger deploying tarballs
 no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
 
+# settings for where (directory) in the S3 bucket to store the metadata file and
+# the tarball
+# - Can be a string value to always use the same 'prefix' regardless of the target
+#   CVMFS repository, or can be a mapping of a target repository id (see also
+#   repo_target_map) to a prefix.
+# - The prefix itself can use some (environment) variables that are set within
+#   the script. Currently those are:
+#   * 'github_repository' (which would be expanded to the full name of the GitHub
+#     repository, e.g., 'EESSI/software-layer'),
+#   * 'legacy_aws_path' (which expands to the legacy/old prefix being used for
+#     storing tarballs/metadata files) and
+#   * 'pull_request_number' (which would be expanded to the number of the pull
+#     request from which the tarball originates).
+# - The list of supported variables can be shown by running
+#   `scripts/eessi-upload-to-staging --list-variables`.
+# - Examples:
+#   metadata_prefix = {"eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
+#   tarball_prefix = {"eessi-pilot-2023.06": "", "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
+# If left empty, the old/legacy prefix is being used.
+metadata_prefix =
+tarball_prefix =
+
 
 [architecturetargets]
 # defines both for which architectures the bot will build
@@ -219,3 +241,13 @@ no_matching_tarball = No tarball matching `{tarball_pattern}` found in job dir.
 multiple_tarballs = Found {num_tarballs} tarballs in job dir - only 1 matching `{tarball_pattern}` expected.
 job_result_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job results file `{filename}` does not exist in job directory, or parsing it failed.</li><li>No artefacts were found/reported.</li></ul></details>
 job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job test file `{filename}` does not exist in job directory, or parsing it failed.</li></ul></details>
+
+[download_pr_comments]
+git_clone_failure = Unable to clone the target repository. 
+git_clone_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_.
+git_checkout_failure = Unable to checkout to the correct branch.
+git_checkout_tip = _Tip: Ensure that the branch name is correct and the target branch is available._
+curl_failure = Unable to download the `.diff` file.
+curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
+git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
+git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._

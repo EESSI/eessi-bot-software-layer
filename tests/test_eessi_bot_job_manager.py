@@ -10,35 +10,16 @@
 #
 # license: GPLv2
 #
-import os
+
 import shutil
 
 from eessi_bot_job_manager import EESSIBotSoftwareLayerJobManager
 
 
-def test_read_job_pr_metadata(tmpdir):
+def test_determine_running_jobs():
     # copy needed app.cfg from tests directory
     shutil.copyfile("tests/test_app.cfg", "app.cfg")
 
-    # if metadata file does not exist, we should get None as return value
-    job_manager = EESSIBotSoftwareLayerJobManager()
-    path = os.path.join(tmpdir, 'test.metadata')
-    assert job_manager.read_job_pr_metadata(path) is None
-
-    with open(path, 'w') as fp:
-        fp.write('''[PR]
-        repo=test
-        pr_number=12345''')
-
-    metadata_pr = job_manager.read_job_pr_metadata(path)
-    expected = {
-        "repo": "test",
-        "pr_number": "12345",
-    }
-    assert metadata_pr == expected
-
-
-def test_determine_running_jobs():
     job_manager = EESSIBotSoftwareLayerJobManager()
 
     assert job_manager.determine_running_jobs({}) == []

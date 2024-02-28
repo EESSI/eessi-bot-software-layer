@@ -1,6 +1,22 @@
 This file contains a description of the major changes to the EESSI
 build-and-deploy bot. For more detailed information, please see the git log.
 
+v0.4.0 (28 February 2024)
+--------------------------
+
+This is a minor release of the EESSI build-and-deploy bot.
+
+Bug fixes:
+* fixes issue using wrong values when using the `bot: status` command (#251)
+
+Improvements:
+* make bot report when preparing the job working directory failed, for example due to merge conflict in a pull request (#248)
+* adding the pull request comment id to the metadata file that is uploaded to the
+  the S3 bucket (#247, #249, #250, #253)
+* enabling configurable upload directories for tarball and metadata file (#254)
+* only make bot respond to pull request comments that contain a bot command (#257)
+
+
 v0.3.0 (30 January 2024)
 --------------------------
 

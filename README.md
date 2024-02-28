@@ -404,6 +404,20 @@ submit_command = /usr/bin/sbatch
 ```
 `submit_command` is the full path to the Slurm job submission command used for submitting batch jobs. You may want to verify if `sbatch` is provided at that path or determine its actual location (using `which sbatch`).
 
+```
+build_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+```
+`build_permission` defines which GitHub accounts have the permission to trigger
+build jobs, i.e., for which accounts the bot acts on `bot: build ...` commands.
+If the value is left empty, everyone can trigger build jobs.
+
+```
+no_build_permission_comment = The `bot: build ...` command has been used by user `{build_labeler}`, but this person does not have permission to trigger builds.
+```
+`no_build_permission_comment` defines a comment (template) that is used when
+the account trying to trigger build jobs has no permission to do so.
+
+
 #### `[bot_control]` section
 
 The `[bot_control]` section contains settings for configuring the feature to
@@ -484,6 +498,43 @@ no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_
 This defines a message that is added to the status table in a PR comment
 corresponding to a job whose tarball should have been uploaded (e.g., after
 setting the `bot:deploy` label).
+
+
+```
+metadata_prefix = LOCATION_WHERE_METADATA_FILE_GETS_DEPOSITED
+tarball_prefix = LOCATION_WHERE_TARBALL_GETS_DEPOSITED
+```
+
+These two settings are used to define where (which directory) in the S3 bucket
+(see `bucket_name` above) the metadata file and the tarball will be stored. The
+value `LOCATION...` can be a string value to always use the same 'prefix'
+regardless of the target CVMFS repository, or can be a mapping of a target
+repository id (see also `repo_target_map` below) to a prefix.
+
+The prefix itself can use some (environment) variables that are set within
+the upload script (see `tarball_upload_script` above). Currently those are:
+ * `'${github_repository}'` (which would be expanded to the full name of the GitHub
+   repository, e.g., `EESSI/software-layer`),
+ * `'${legacy_aws_path}'` (which expands to the legacy/old prefix being used for
+   storing tarballs/metadata files, the old prefix is
+   `EESSI_VERSION/TARBALL_TYPE/OS_TYPE/CPU_ARCHITECTURE/TIMESTAMP/`), _and_
+ * `'${pull_request_number}'` (which would be expanded to the number of the pull
+   request from which the tarball originates).
+Note, it's important to single-quote (`'`) the variables as shown above, because
+they may likely not be defined when the bot calls the upload script.
+
+The list of supported variables can be shown by running
+`scripts/eessi-upload-to-staging --list-variables`.
+
+**Examples:**
+```
+metadata_prefix = {"eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
+tarball_prefix = {
+    "eessi-pilot-2023.06": "",
+    "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"
+    }
+```
+If left empty, the old/legacy prefix is being used.
 
 #### `[architecturetargets]` section
 
@@ -656,6 +707,53 @@ job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for de
 ```
 `job_test_unknown_fmt` is used in case no test file (produced by `bot/check-test.sh`
 provided by target repository) was found.
+
+
+#### `[download_pr_comments]` section
+
+The `[download_pr_comments]` section sets templates for messages related to
+downloading the contents of a pull request.
+```
+git_clone_failure = Unable to clone the target repository.
+```
+`git_clone_failure` is shown when `git clone` failed.
+
+```
+git_clone_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_.
+```
+`git_clone_tip` should contain some hint on how to deal with the issue. It is shown when `git clone` failed.
+
+```
+git_checkout_failure = Unable to checkout to the correct branch.
+```
+`git_checkout_failure` is shown when `git checkout` failed.
+
+```
+git_checkout_tip = _Tip: Ensure that the branch name is correct and the target branch is available._
+```
+`git_checkout_tip` should contain some hint on how to deal with the failure. It
+is shown when `git checkout` failed.
+
+```
+curl_failure = Unable to download the `.diff` file.
+```
+`curl_failure` is shown when downloading the `PR_NUMBER.diff`
+```
+curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
+```
+`curl_tip` should help in how to deal with failing downloads of the `.diff` file.
+
+```
+git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
+```
+`git_apply_failure` is shown when applying the `.diff` file with `git apply`
+failed.
+
+```
+git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
+```
+`git_apply_tip` should guide the contributor/maintainer about resolving the cause
+of `git apply` failing.
 
 # Instructions to run the bot components
 

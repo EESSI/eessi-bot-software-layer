@@ -42,7 +42,7 @@ from pyghee.utils import log
 from connections import github
 from tools import config, run_cmd
 from tools.args import job_manager_parse
-from tools.job_metadata import read_metadata_file
+from tools.job_metadata import read_job_metadata_from_file, read_metadata_file
 from tools.pr_comments import get_submitted_job_comment, update_comment
 
 
@@ -251,24 +251,6 @@ class EESSIBotSoftwareLayerJobManager:
 
         return finished_jobs
 
-    def read_job_pr_metadata(self, job_metadata_path):
-        """
-        Read job metadata file and return the contents of the 'PR' section.
-
-        Args:
-            job_metadata_path (string): path to job metadata file
-
-        Returns:
-            (ConfigParser): instance of ConfigParser corresponding to the 'PR'
-                section or None
-        """
-        # reuse function from module tools.job_metadata to read metadata file
-        metadata = read_metadata_file(job_metadata_path, self.logfile)
-        if metadata and "PR" in metadata:
-            return metadata["PR"]
-        else:
-            return None
-
     def read_job_result(self, job_result_file_path):
         """
         Read job result file and return the contents of the 'RESULT' section.
@@ -350,7 +332,7 @@ class EESSIBotSoftwareLayerJobManager:
 
             # assuming that a bot job's working directory contains a metadata
             # file, its existence is used to check if the job belongs to the bot
-            metadata_pr = self.read_job_pr_metadata(job_metadata_path)
+            metadata_pr = read_job_metadata_from_file(job_metadata_path, self.logfile)
 
             if metadata_pr is None:
                 log(f"No metadata file found at {job_metadata_path} for job {job_id}, so skipping it",
@@ -446,7 +428,7 @@ class EESSIBotSoftwareLayerJobManager:
         job_metadata_path = os.path.join(job_dir, metadata_file)
 
         # check if metadata file exist
-        metadata_pr = self.read_job_pr_metadata(job_metadata_path)
+        metadata_pr = read_job_metadata_from_file(job_metadata_path, self.logfile)
         if metadata_pr is None:
             raise Exception("Unable to find metadata file")
 
@@ -591,7 +573,7 @@ class EESSIBotSoftwareLayerJobManager:
         # obtain id of PR comment to be updated (from file '_bot_jobID.metadata')
         metadata_file = f"_bot_job{job_id}.metadata"
         job_metadata_path = os.path.join(new_symlink, metadata_file)
-        metadata_pr = self.read_job_pr_metadata(job_metadata_path)
+        metadata_pr = read_job_metadata_from_file(job_metadata_path, self.logfile)
         if metadata_pr is None:
             raise Exception("Unable to find metadata file ... skip updating PR comment")
 
@@ -685,6 +667,13 @@ def main():
     if max_iter != 0:
         known_jobs = job_manager.get_known_jobs()
     while max_iter < 0 or i < max_iter:
+        # sleep poll_interval seconds (not for the first iteration)
+        if i != 0:
+            log(
+                "job manager main loop: sleep %d seconds" % poll_interval,
+                job_manager.logfile,
+            )
+            time.sleep(poll_interval)
         log("job manager main loop: iteration %d" % i, job_manager.logfile)
         log(
             "job manager main loop: known_jobs='%s'" % ",".join(
@@ -692,7 +681,12 @@ def main():
             job_manager.logfile,
         )
 
-        current_jobs = job_manager.get_current_jobs()
+        try:
+            current_jobs = job_manager.get_current_jobs()
+        except RuntimeError:
+            i = i + 1
+            continue
+
         log(
             "job manager main loop: current_jobs='%s'" % ",".join(
                 current_jobs.keys()),
@@ -747,13 +741,7 @@ def main():
 
         known_jobs = current_jobs
 
-        # sleep poll_interval seconds (only if at least one more iteration)
-        if max_iter < 0 or i + 1 < max_iter:
-            log(
-                "job manager main loop: sleep %d seconds" % poll_interval,
-                job_manager.logfile,
-            )
-            time.sleep(poll_interval)
+        # add one iteration to the loop
         i = i + 1
 
 

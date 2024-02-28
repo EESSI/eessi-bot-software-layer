@@ -20,6 +20,19 @@ from pyghee.utils import log
 from tools.filter import EESSIBotActionFilter, EESSIBotActionFilterError
 
 
+def contains_any_bot_command(body):
+    """
+    Checks if argument contains any bot command.
+
+    Args:
+        body (string): possibly multi-line string that may contain a bot command
+
+    Returns:
+        (bool): True if bot command found, False otherwise
+    """
+    return any(map(get_bot_command, body.split('\n')))
+
+
 def get_bot_command(line):
     """
     Retrieve bot command from a line.

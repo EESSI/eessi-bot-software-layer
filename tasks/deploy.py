@@ -26,6 +26,7 @@ from connections import github
 from tasks.build import CFG_DIRNAME, JOB_CFG_FILENAME, JOB_REPO_ID, JOB_REPOSITORY
 from tasks.build import get_build_env_cfg
 from tools import config, pr_comments, run_cmd
+from tools.job_metadata import read_job_metadata_from_file
 
 
 BUCKET_NAME = "bucket_name"
@@ -33,7 +34,9 @@ DEPLOYCFG = "deploycfg"
 DEPLOY_PERMISSION = "deploy_permission"
 ENDPOINT_URL = "endpoint_url"
 JOBS_BASE_DIR = "jobs_base_dir"
+METADATA_PREFIX = "metadata_prefix"
 NO_DEPLOY_PERMISSION_COMMENT = "no_deploy_permission_comment"
+TARBALL_PREFIX = "tarball_prefix"
 TARBALL_UPLOAD_SCRIPT = "tarball_upload_script"
 UPLOAD_POLICY = "upload_policy"
 
@@ -72,6 +75,26 @@ def determine_job_dirs(pr_number):
     job_directories = glob.glob(glob_str)
 
     return job_directories
+
+
+def determine_pr_comment_id(job_dir):
+    """
+    Determine pr_comment_id by reading _bot_job{JOBID}.metadata in job_dir.
+
+    Args:
+        job_dir (string): working directory of the job
+
+    Returns:
+        (int): id of comment corresponding to job in pull request or -1
+    """
+    # assumes that last part of job_dir encodes the job's id
+    job_id = os.path.basename(os.path.normpath(job_dir))
+    job_metadata_file = os.path.join(job_dir, f"_bot_job{job_id}.metadata")
+    job_metadata = read_job_metadata_from_file(job_metadata_file)
+    if job_metadata and "pr_comment_id" in job_metadata:
+        return int(job_metadata["pr_comment_id"])
+    else:
+        return -1
 
 
 def determine_slurm_out(job_dir):
@@ -167,9 +190,9 @@ def check_build_status(slurm_out, eessi_tarballs):
     return False
 
 
-def update_pr_comment(tarball, repo_name, pr_number, state, msg):
+def update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, state, msg):
     """
-    Update pull request comment which contains specific tarball name.
+    Update pull request comment for the given comment id or tarball name
 
     Args:
         tarball (string): name of tarball that is looked for in a PR comment
@@ -181,36 +204,18 @@ def update_pr_comment(tarball, repo_name, pr_number, state, msg):
     Returns:
         None (implicitly)
     """
-    funcname = sys._getframe().f_code.co_name
-
     gh = github.get_instance()
     repo = gh.get_repo(repo_name)
     pull_request = repo.get_pull(pr_number)
 
-    # TODO does this always return all comments?
-    comments = pull_request.get_issue_comments()
-    for comment in comments:
-        # NOTE
-        # adjust search string if format changed by event handler
-        # (separate process running eessi_bot_event_handler.py)
-        re_tarball = f".*{tarball}.*"
-        comment_match = re.search(re_tarball, comment.body)
+    issue_comment = pr_comments.determine_issue_comment(pull_request, pr_comment_id, tarball)
+    if issue_comment:
+        dt = datetime.now(timezone.utc)
+        comment_update = (f"\n|{dt.strftime('%b %d %X %Z %Y')}|{state}|"
+                          f"transfer of `{tarball}` to S3 bucket {msg}|")
 
-        if comment_match:
-            log(f"{funcname}(): found comment with id {comment.id}")
-
-            issue_comment = pull_request.get_issue_comment(int(comment.id))
-
-            dt = datetime.now(timezone.utc)
-            comment_update = (f"\n|{dt.strftime('%b %d %X %Z %Y')}|{state}|"
-                              f"transfer of `{tarball}` to S3 bucket {msg}|")
-
-            # append update to existing comment
-            issue_comment.edit(issue_comment.body + comment_update)
-
-            # leave 'for' loop (only update one comment, because tarball
-            # should only be referenced in one comment)
-            break
+        # append update to existing comment
+        issue_comment.edit(issue_comment.body + comment_update)
 
 
 def append_tarball_to_upload_log(tarball, job_dir):
@@ -232,7 +237,7 @@ def append_tarball_to_upload_log(tarball, job_dir):
         upload_log.write(f"{job_plus_tarball}\n")
 
 
-def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number):
+def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number, pr_comment_id):
     """
     Upload built tarball to an S3 bucket.
 
@@ -242,6 +247,7 @@ def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number):
         timestamp (int): timestamp of the tarball
         repo_name (string): repository of the pull request
         pr_number (int): number of the pull request
+        pr_comment_id (int): id of the pull request comment
 
     Returns:
         None (implicitly)
@@ -258,10 +264,20 @@ def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number):
     tarball_upload_script = deploycfg.get(TARBALL_UPLOAD_SCRIPT)
     endpoint_url = deploycfg.get(ENDPOINT_URL) or ''
     bucket_spec = deploycfg.get(BUCKET_NAME)
+    metadata_prefix = deploycfg.get(METADATA_PREFIX)
+    tarball_prefix = deploycfg.get(TARBALL_PREFIX)
 
     # if bucket_spec value looks like a dict, try parsing it as such
     if bucket_spec.lstrip().startswith('{'):
         bucket_spec = json.loads(bucket_spec)
+
+    # if metadata_prefix value looks like a dict, try parsing it as such
+    if metadata_prefix.lstrip().startswith('{'):
+        metadata_prefix = json.loads(metadata_prefix)
+
+    # if tarball_prefix value looks like a dict, try parsing it as such
+    if tarball_prefix.lstrip().startswith('{'):
+        tarball_prefix = json.loads(tarball_prefix)
 
     jobcfg_path = os.path.join(job_dir, CFG_DIRNAME, JOB_CFG_FILENAME)
     jobcfg = config.read_config(jobcfg_path)
@@ -274,14 +290,48 @@ def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number):
         # bucket spec may be a mapping of target repo id to bucket name
         bucket_name = bucket_spec.get(target_repo_id)
         if bucket_name is None:
-            update_pr_comment(tarball, repo_name, pr_number, "not uploaded",
+            update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
                               f"failed (no bucket specified for {target_repo_id})")
             return
         else:
             log(f"Using bucket for {target_repo_id}: {bucket_name}")
     else:
-        update_pr_comment(tarball, repo_name, pr_number, "not uploaded",
+        update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
                           f"failed (incorrect bucket spec: {bucket_spec})")
+        return
+
+    if isinstance(metadata_prefix, str):
+        metadata_prefix_arg = metadata_prefix
+        log(f"Using specified metadata prefix: {metadata_prefix_arg}")
+    elif isinstance(metadata_prefix, dict):
+        # metadata prefix spec may be a mapping of target repo id to metadata prefix
+        metadata_prefix_arg = metadata_prefix.get(target_repo_id)
+        if metadata_prefix_arg is None:
+            update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
+                              f"failed (no metadata prefix specified for {target_repo_id})")
+            return
+        else:
+            log(f"Using metadata prefix for {target_repo_id}: {metadata_prefix_arg}")
+    else:
+        update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
+                          f"failed (incorrect metadata prefix spec: {metadata_prefix_arg})")
+        return
+
+    if isinstance(tarball_prefix, str):
+        tarball_prefix_arg = tarball_prefix
+        log(f"Using specified tarball prefix: {tarball_prefix_arg}")
+    elif isinstance(tarball_prefix, dict):
+        # tarball prefix spec may be a mapping of target repo id to tarball prefix
+        tarball_prefix_arg = tarball_prefix.get(target_repo_id)
+        if tarball_prefix_arg is None:
+            update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
+                              f"failed (no tarball prefix specified for {target_repo_id})")
+            return
+        else:
+            log(f"Using tarball prefix for {target_repo_id}: {tarball_prefix_arg}")
+    else:
+        update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
+                          f"failed (incorrect tarball prefix spec: {tarball_prefix_arg})")
         return
 
     # run 'eessi-upload-to-staging {abs_path}'
@@ -295,8 +345,13 @@ def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number):
         cmd_args.extend(['--bucket-name', bucket_name])
     if len(endpoint_url) > 0:
         cmd_args.extend(['--endpoint-url', endpoint_url])
+    if len(metadata_prefix_arg) > 0:
+        cmd_args.extend(['--metadata-prefix', metadata_prefix_arg])
     cmd_args.extend(['--repository', repo_name])
-    cmd_args.extend(['--pull-request', str(pr_number)])
+    cmd_args.extend(['--pull-request-number', str(pr_number)])
+    cmd_args.extend(['--pr-comment-id', str(pr_comment_id)])
+    if len(tarball_prefix_arg) > 0:
+        cmd_args.extend(['--tarball-prefix', tarball_prefix_arg])
     cmd_args.append(abs_path)
     upload_cmd = ' '.join(cmd_args)
 
@@ -307,11 +362,11 @@ def upload_tarball(job_dir, build_target, timestamp, repo_name, pr_number):
         # add file to 'job_dir/../uploaded.txt'
         append_tarball_to_upload_log(tarball, job_dir)
         # update pull request comment
-        update_pr_comment(tarball, repo_name, pr_number, "uploaded",
+        update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "uploaded",
                           "succeeded")
     else:
         # update pull request comment
-        update_pr_comment(tarball, repo_name, pr_number, "not uploaded",
+        update_pr_comment(tarball, repo_name, pr_number, pr_comment_id, "not uploaded",
                           "failed")
 
 
@@ -371,10 +426,13 @@ def determine_successful_jobs(job_dirs):
     for job_dir in job_dirs:
         slurm_out = determine_slurm_out(job_dir)
         eessi_tarballs = determine_eessi_tarballs(job_dir)
+        pr_comment_id = determine_pr_comment_id(job_dir)
+
         if check_build_status(slurm_out, eessi_tarballs):
             log(f"{funcname}(): SUCCESSFUL build in '{job_dir}'")
             successes.append({'job_dir': job_dir,
                               'slurm_out': slurm_out,
+                              'pr_comment_id': pr_comment_id,
                               'eessi_tarballs': eessi_tarballs})
         else:
             log(f"{funcname}(): FAILED build in '{job_dir}'")
@@ -403,9 +461,9 @@ def determine_tarballs_to_deploy(successes, upload_policy):
     log(f"{funcname}(): num successful jobs {len(successes)}")
 
     to_be_deployed = {}
-    for s in successes:
+    for job in successes:
         # all tarballs for successful job
-        tarballs = s["eessi_tarballs"]
+        tarballs = job["eessi_tarballs"]
         log(f"{funcname}(): num tarballs {len(tarballs)}")
 
         # full path to first tarball for successful job
@@ -438,7 +496,7 @@ def determine_tarballs_to_deploy(successes, upload_policy):
             else:
                 deploy = True
         elif upload_policy == "once":
-            uploaded = uploaded_before(build_target, s["job_dir"])
+            uploaded = uploaded_before(build_target, job["job_dir"])
             if uploaded is None:
                 deploy = True
             else:
@@ -447,7 +505,8 @@ def determine_tarballs_to_deploy(successes, upload_policy):
                     f"{indent_fname}has been uploaded through '{uploaded}'")
 
         if deploy:
-            to_be_deployed[build_target] = {"job_dir": s["job_dir"],
+            to_be_deployed[build_target] = {"job_dir": job["job_dir"],
+                                            "pr_comment_id": job["pr_comment_id"],
                                             "timestamp": timestamp}
 
     return to_be_deployed
@@ -518,4 +577,5 @@ def deploy_built_artefacts(pr, event_info):
     for target, job in to_be_deployed.items():
         job_dir = job['job_dir']
         timestamp = job['timestamp']
-        upload_tarball(job_dir, target, timestamp, repo_name, pr.number)
+        pr_comment_id = job['pr_comment_id']
+        upload_tarball(job_dir, target, timestamp, repo_name, pr.number, pr_comment_id)

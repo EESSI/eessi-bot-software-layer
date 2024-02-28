@@ -48,6 +48,27 @@ def create_comment(repo_name, pr_number, comment):
     return pull_request.create_issue_comment(comment)
 
 
+def determine_issue_comment(pull_request, pr_comment_id, search_pattern=None):
+    """
+    Determine issue comment for a given id or using a search pattern.
+
+    Args:
+        pull_request (github.PullRequest.PullRequest): instance representing the pull request
+        pr_comment_id (int): number of the comment to the pull request to be returned
+        search_pattern (string): pattern used to determine the comment to the pull request to be returned
+
+    Returns:
+        github.IssueComment.IssueComment instance or None (note, github refers to
+            PyGithub, not the github from the internal connections module)
+    """
+
+    if pr_comment_id != -1:
+        return pull_request.get_issue_comment(pr_comment_id)
+    else:
+        # use search pattern to determine issue comment
+        return get_comment(pull_request, search_pattern)
+
+
 @retry(Exception, tries=5, delay=1, backoff=2, max_delay=30)
 def get_comment(pr, search_pattern):
     """

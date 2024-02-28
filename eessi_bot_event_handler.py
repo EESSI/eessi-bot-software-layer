@@ -31,7 +31,8 @@ import tasks.deploy as deploy
 from tasks.deploy import deploy_built_artefacts
 from tools import config
 from tools.args import event_handler_parse
-from tools.commands import EESSIBotCommand, EESSIBotCommandError, get_bot_command
+from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
+    contains_any_bot_command, get_bot_command
 from tools.permissions import check_command_permission
 from tools.pr_comments import create_comment
 
@@ -113,7 +114,25 @@ class EESSIBotSoftwareLayer(PyGHee):
         # currently, only commands in new comments are supported
         #  - commands have the syntax 'bot: COMMAND [ARGS*]'
 
-        # first check if sender is authorized to send any command
+        # only scan for commands in newly created comments
+        if action == 'created':
+            comment_received = request_body['comment']['body']
+            self.log(f"comment action '{action}' is handled")
+        else:
+            # NOTE we do not respond to an updated PR comment with yet another
+            #      new PR comment, because it would make the bot very noisy or
+            #      worse could result in letting the bot enter an endless loop
+            self.log(f"comment action '{action}' not handled")
+            return
+        # at this point we know that we are handling a new comment
+
+        # check if comment does not contain a bot command
+        if not contains_any_bot_command(comment_received):
+            self.log("comment does not contain a bot comment; not processing it further")
+            return
+        # at this point we know that the comment contains a bot command
+
+        # check if sender is authorized to send any command
         # - this serves a double purpose:
         #   1. check permission
         #   2. skip any comment updates that were done by the bot itself
@@ -149,17 +168,6 @@ class EESSIBotSoftwareLayer(PyGHee):
             return
         else:
             self.log(f"account `{sender}` has permission to send commands to bot")
-
-        # only scan for commands in newly created comments
-        if action == 'created':
-            comment_received = request_body['comment']['body']
-            self.log(f"comment action '{action}' is handled")
-        else:
-            # NOTE we do not respond to an updated PR comment with yet another
-            #      new PR comment, because it would make the bot very noisy or
-            #      worse could result in letting the bot enter an endless loop
-            self.log(f"comment action '{action}' not handled")
-            return
 
         # search for commands in comment
         comment_response = ''

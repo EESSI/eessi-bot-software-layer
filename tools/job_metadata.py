@@ -80,3 +80,28 @@ def read_metadata_file(metadata_path, log_file=None):
     else:
         log(f"No metadata file found at {metadata_path}.", log_file)
         return None
+
+
+def read_job_metadata_from_file(filepath, log_file=None):
+    """
+    Read job metadata from file
+
+    Args:
+        filepath (string): path to job metadata file
+        log_file (string): path to log file
+
+    Returns:
+        job_metadata (dict): dictionary containing job metadata or None
+    """
+
+    metadata = read_metadata_file(filepath, log_file=log_file)
+    if metadata:
+        # get PR section
+        if "PR" in metadata:
+            metadata_pr = metadata["PR"]
+        else:
+            metadata_pr = {}
+        return metadata_pr
+    else:
+        log(f"Metadata file '{filepath}' does not exist or could not be read")
+        return None

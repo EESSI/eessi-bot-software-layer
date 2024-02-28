@@ -41,7 +41,8 @@ function create_metadata_file
   _tarball=$1
   _url=$2
   _repository=$3
-  _pull_request=$4
+  _pull_request_number=$4
+  _pull_request_comment_id=$5
 
   _tmpfile=$(mktemp)
 
@@ -55,11 +56,12 @@ function create_metadata_file
     --arg sha256 "$(sha256sum "${_tarball}" | awk '{print $1}')" \
     --arg url "${_url}" \
     --arg repo "${_repository}" \
-    --arg pr "${_pull_request}" \
+    --arg pr "${_pull_request_number}" \
+    --arg pr_comment_id "${_pull_request_comment_id}" \
     '{
        uploader: {username: $un, ip: $ip, hostname: $hn},
        payload: {filename: $fn, size: $sz, ctime: $ct, sha256sum: $sha256, url: $url},
-       link2pr: {repo: $repo, pr: $pr},
+       link2pr: {repo: $repo, pr: $pr, pr_comment_id: $pr_comment_id},
      }' > "${_tmpfile}"
 
   echo "${_tmpfile}"
@@ -67,14 +69,30 @@ function create_metadata_file
 
 function display_help
 {
-  echo "Usage: $0 [OPTIONS] <filenames>"                                        >&2
-  echo "  -e | --endpoint-url URL      -  endpoint url (needed for non AWS S3)" >&2
-  echo "  -h | --help                  -  display this usage information"       >&2
-  echo "  -n | --bucket-name BUCKET    -  bucket name (same as BUCKET above)"   >&2
-  echo "  -p | --pull-request NUMBER   -  a pull request NUMBER; used to"       >&2
-  echo "                                  link the upload to a PR"              >&2
-  echo "  -r | --repository FULL_NAME  -  a repository name ACCOUNT/REPONAME;"  >&2
-  echo "                                  used to link the upload to a PR"      >&2
+  echo "Usage: $0 [OPTIONS] <filenames>"                                           >&2
+  echo "  -e | --endpoint-url URL        -  endpoint url (needed for non AWS S3)"  >&2
+  echo "  -h | --help                    -  display this usage information"        >&2
+  echo "  -i | --pr-comment-id           -  identifier of a PR comment; may be"    >&2
+  echo "                                    used to efficiently determine the PR"  >&2
+  echo "                                    comment to be updated during the"      >&2
+  echo "                                    ingestion procedure"                   >&2
+  echo "  -l | --list-variables          -  list variables that are available"     >&2
+  echo "                                    for expansion"                         >&2
+  echo "  -m | --metadata-prefix PREFIX  -  a directory to which the metadata"     >&2
+  echo "                                    file shall be uploaded; BASH variable" >&2
+  echo "                                    expansion will be applied; arg '-l'"   >&2
+  echo "                                    lists variables that are defined at"   >&2
+  echo "                                    the time of expansion"                 >&2
+  echo "  -n | --bucket-name BUCKET      -  bucket name (same as BUCKET above)"    >&2
+  echo "  -p | --pull-request-number INT -  a pull request number (INT); used to"  >&2
+  echo "                                    link the upload to a PR"               >&2
+  echo "  -r | --repository FULL_NAME    -  a repository name ACCOUNT/REPONAME;"   >&2
+  echo "                                    used to link the upload to a PR"       >&2
+  echo "  -t | --tarball-prefix PREFIX   -  a directory to which the tarball"      >&2
+  echo "                                    shall be uploaded; BASH variable"      >&2
+  echo "                                    expansion will be applied; arg '-l'"   >&2
+  echo "                                    lists variables that are defined at"   >&2
+  echo "                                    the time of expansion"                 >&2
 }
 
 if [[ $# -lt 1 ]]; then
@@ -97,8 +115,19 @@ bucket_name="eessi-staging"
 
 # provided via options in the bot's config file app.cfg
 endpoint_url=
-pull_request=
-repository=
+
+# provided via command line arguments
+pr_comment_id="none"
+pull_request_number="none"
+github_repository="EESSI/software-layer"
+
+# provided via options in the bot's config file app.cfg and/or command line argument
+metadata_prefix=
+tarball_prefix=
+
+# other variables
+legacy_aws_path=
+variables="github_repository legacy_aws_path pull_request_number"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -110,16 +139,36 @@ while [[ $# -gt 0 ]]; do
       display_help
       exit 0
       ;;
+    -l|--list-variables)
+      echo "variables that will be expanded: name (default value)"
+      for var in ${variables}
+      do
+        echo "    ${var} (${!var:-unset})"
+      done
+      exit 0
+      ;;
+    -i|--pr-comment-id)
+      pr_comment_id="$2"
+      shift 2
+      ;;
+    -m|--metadata-prefix)
+      metadata_prefix="$2"
+      shift 2
+      ;;
     -n|--bucket-name)
       bucket_name="$2"
       shift 2
       ;;
-    -p|--pull-request)
-      pull_request="$2"
+    -p|--pull-request-number)
+      pull_request_number="$2"
       shift 2
       ;;
     -r|--repository)
-      repository="$2"
+      github_repository="$2"
+      shift 2
+      ;;
+    -t|--tarball-prefix)
+      tarball_prefix="$2"
       shift 2
       ;;
     -*|--*)
@@ -155,22 +204,50 @@ for file in "$*"; do
     basefile=$( basename ${file} )
     if check_file_name ${basefile}; then
       if tar tf "${file}" | head -n1 > /dev/null; then
-        aws_path=$(basename ${file} | tr -s '-' '/' \
+        # 'legacy_aws_path' might be used in tarball_prefix or metadata_prefix
+        # its purpose is to support the old/legacy method to derive the location
+        # where to store the tarball and metadata file
+        export legacy_aws_path=$(basename ${file} | tr -s '-' '/' \
                  | perl -pe 's/^eessi.//;' | perl -pe 's/\.tar\.gz$//;' )
+        if [ -z ${tarball_prefix} ]; then
+          aws_path=${legacy_aws_path}
+        else
+          export pull_request_number
+          export github_repository
+          aws_path=$(envsubst <<< "${tarball_prefix}")
+        fi
         aws_file=$(basename ${file})
         echo "Creating metadata file"
         url="${bucket_base}/${aws_path}/${aws_file}"
-        metadata_file=$(create_metadata_file "${file}" "${url}" \
-                                             "${repository}" "${pull_request}")
+        echo "create_metadata_file file=${file} \
+                                   url=${url} \
+                                   github_repository=${github_repository} \
+                                   pull_request_number=${pull_request_number} \
+                                   pr_comment_id=${pr_comment_id}"
+        metadata_file=$(create_metadata_file "${file}" \
+                                             "${url}" \
+                                             "${github_repository}" \
+                                             "${pull_request_number}" \
+                                             "${pr_comment_id}")
         echo "metadata:"
         cat ${metadata_file}
 
         echo Uploading to "${url}"
+        echo "  store tarball at ${aws_path}/${aws_file}"
         upload_to_staging_bucket \
                 "${file}" \
                 "${bucket_name}" \
                 "${aws_path}/${aws_file}" \
                 "${endpoint_url}"
+
+        if [ -z ${metadata_prefix} ]; then
+          aws_path=${legacy_aws_path}
+        else
+          export pull_request_number
+          export github_repository
+          aws_path=$(envsubst <<< "${metadata_prefix}")
+        fi
+        echo "  store metadata file at ${aws_path}/${aws_file}.meta.txt"
         upload_to_staging_bucket \
                 "${metadata_file}" \
                 "${bucket_name}" \
