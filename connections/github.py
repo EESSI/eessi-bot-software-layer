@@ -5,6 +5,9 @@
 # EESSI software layer, see https://github.com/EESSI/software-layer
 #
 # author: Bob Droege (@bedroge)
+# author: Hafsa Naeem (@hafsa-naeem)
+# author: Jacob Ziemke (@jacobz137)
+# author: Lara Ramona Peeters (@laraPPr)
 # author: Thomas Roeblitz (@trz42)
 #
 # license: GPLv2
@@ -43,10 +46,10 @@ def get_token():
 
     global _token
     cfg = config.read_config()
-    github_cfg = cfg['github']
-    app_id = github_cfg.get('app_id')
-    installation_id = github_cfg.get('installation_id')
-    private_key_path = github_cfg.get('private_key')
+    github_cfg = cfg[config.SECTION_GITHUB]
+    app_id = github_cfg.get(config.GITHUB_SETTING_APP_ID)
+    installation_id = github_cfg.get(config.GITHUB_SETTING_INSTALLATION_ID)
+    private_key_path = github_cfg.get(config.GITHUB_SETTING_PRIVATE_KEY)
     private_key = ''
 
     with open(private_key_path, 'r') as private_key_file:

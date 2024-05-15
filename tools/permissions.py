@@ -18,9 +18,6 @@ from pyghee.utils import log
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from tools import config
 
-BOT_CONTROL = "bot_control"
-COMMAND_PERMISSION = "command_permission"
-
 
 def check_command_permission(account):
     """
@@ -38,10 +35,10 @@ def check_command_permission(account):
 
     cfg = config.read_config()
 
-    bot_ctrl = cfg[BOT_CONTROL]
+    bot_ctrl = cfg[config.SECTION_BOT_CONTROL]
 
     # read command permission from configuration (defined in file app.cfg)
-    command_permission = bot_ctrl.get(COMMAND_PERMISSION, '')
+    command_permission = bot_ctrl.get(config.BOT_CONTROL_SETTING_COMMAND_PERMISSION, '')
 
     log(f"{fn}(): command permission '{command_permission}'")
 

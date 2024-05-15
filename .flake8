@@ -1,3 +1,11 @@
+# This file is part of the EESSI build-and-deploy bot,
+# see https://github.com/EESSI/eessi-bot-software-layer
+#
+# author: Kenneth Hoste (@boegel)
+#
+# license: GPLv2
+#
+
 [flake8]
 max-line-length = 120
 

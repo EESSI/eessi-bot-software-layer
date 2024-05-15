@@ -175,7 +175,9 @@ You can exit the virtual environment simply by running `deactivate`.
 
 ### <a name="step4.1"></a>Step 4.1: Installing tools to access S3 bucket
 
-The [`scripts/eessi-upload-to-staging`](https://github.com/EESSI/eessi-bot-software-layer/blob/main/scripts/eessi-upload-to-staging) script uploads a tarball and an associated metadata file to an S3 bucket.
+The
+[`scripts/eessi-upload-to-staging`](https://github.com/EESSI/eessi-bot-software-layer/blob/main/scripts/eessi-upload-to-staging)
+script uploads an artefact and an associated metadata file to an S3 bucket.
 
 It needs two tools for this:
 * the `aws` command to actually upload the files;
@@ -444,14 +446,17 @@ information about the result of the command that was run (can be empty).
 
 The `[deploycfg]` section defines settings for uploading built artefacts (tarballs).
 ```
-tarball_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
+artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 ```
-`tarball_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
+`artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
 
 ```
 endpoint_url = URL_TO_S3_SERVER
 ```
-`endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The server could be hosted by a commercial cloud provider like AWS or Azure, or running in a private environment, for example, using Minio. The bot uploads tarballs to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
+`endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The
+server could be hosted by a commercial cloud provider like AWS or Azure, or
+running in a private environment, for example, using Minio. The bot uploads
+artefacts to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
 
 
 ```ini
@@ -466,7 +471,7 @@ bucket_name = {
 }
 ```
 
-`bucket_name` is the name of the bucket used for uploading of tarballs.
+`bucket_name` is the name of the bucket used for uploading of artefacts.
 The bucket must be available on the default server (`https://${bucket_name}.s3.amazonaws.com`), or the one provided via `endpoint_url`.
 
 `bucket_name` can be specified as a string value to use the same bucket for all target repos, or it can be mapping from target repo id to bucket name.
@@ -481,7 +486,7 @@ The `upload_policy` defines what policy is used for uploading built artefacts to
 |`upload_policy` value|Policy|
 |:--------|:--------------------------------|
 |`all`|Upload all artefacts (mulitple uploads of the same artefact possible).|
-|`latest`|For each build target (prefix in tarball name `eessi-VERSION-{software,init,compat}-OS-ARCH)` only upload the latest built artefact.|
+|`latest`|For each build target (prefix in artefact name `eessi-VERSION-{software,init,compat}-OS-ARCH)` only upload the latest built artefact.|
 |`once`|Only once upload any built artefact for the build target.|
 |`none`|Do not upload any built artefacts.|
 
@@ -496,30 +501,30 @@ deployment), or a space delimited list of GitHub accounts.
 no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
 ```
 This defines a message that is added to the status table in a PR comment
-corresponding to a job whose tarball should have been uploaded (e.g., after
+corresponding to a job whose artefact should have been uploaded (e.g., after
 setting the `bot:deploy` label).
 
 
 ```
 metadata_prefix = LOCATION_WHERE_METADATA_FILE_GETS_DEPOSITED
-tarball_prefix = LOCATION_WHERE_TARBALL_GETS_DEPOSITED
+artefact_prefix = LOCATION_WHERE_TARBALL_GETS_DEPOSITED
 ```
 
 These two settings are used to define where (which directory) in the S3 bucket
-(see `bucket_name` above) the metadata file and the tarball will be stored. The
+(see `bucket_name` above) the metadata file and the artefact will be stored. The
 value `LOCATION...` can be a string value to always use the same 'prefix'
 regardless of the target CVMFS repository, or can be a mapping of a target
 repository id (see also `repo_target_map` below) to a prefix.
 
 The prefix itself can use some (environment) variables that are set within
-the upload script (see `tarball_upload_script` above). Currently those are:
+the upload script (see `artefact_upload_script` above). Currently those are:
  * `'${github_repository}'` (which would be expanded to the full name of the GitHub
    repository, e.g., `EESSI/software-layer`),
  * `'${legacy_aws_path}'` (which expands to the legacy/old prefix being used for
-   storing tarballs/metadata files, the old prefix is
+   storing artefacts/metadata files, the old prefix is
    `EESSI_VERSION/TARBALL_TYPE/OS_TYPE/CPU_ARCHITECTURE/TIMESTAMP/`), _and_
  * `'${pull_request_number}'` (which would be expanded to the number of the pull
-   request from which the tarball originates).
+   request from which the artefact originates).
 Note, it's important to single-quote (`'`) the variables as shown above, because
 they may likely not be defined when the bot calls the upload script.
 
@@ -529,7 +534,7 @@ The list of supported variables can be shown by running
 **Examples:**
 ```
 metadata_prefix = {"eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
-tarball_prefix = {
+artefact_prefix = {
     "eessi-pilot-2023.06": "",
     "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"
     }
@@ -656,46 +661,6 @@ running_job = job `{job_id}` is running
 #### `[finished_job_comments]` section
 
 The `[finished_job_comments]` section sets templates for messages about finished jobs.
-```
-success = :grin: SUCCESS tarball `{tarball_name}` ({tarball_size} GiB) in job dir
-```
-`success` specifies the message for a successful job that produced a tarball.
-
-```
-failure = :cry: FAILURE
-```
-`failure` specifies the message for a failed job.
-
-```
-no_slurm_out = No slurm output `{slurm_out}` in job dir
-```
-`no_slurm_out` specifies the message for missing Slurm output file.
-
-```
-slurm_out = Found slurm output `{slurm_out}` in job dir
-```
-`slurm_out` specifies the message for found Slurm output file.
-
-```
-missing_modules = Slurm output lacks message "No missing modules!".
-```
-`missing_modules` is used to signal the lack of a message that all modules were built.
-
-```
-no_tarball_message = Slurm output lacks message about created tarball.
-```
-`no_tarball_message` is used to signal the lack of a message about a created tarball.
-
-```
-no_matching_tarball = No tarball matching `{tarball_pattern}` found in job dir.
-```
-`no_matching_tarball` is used to signal a missing tarball.
-
-```
-multiple_tarballs = Found {num_tarballs} tarballs in job dir - only 1 matching `{tarball_pattern}` expected.
-```
-`multiple_tarballs` is used to report that multiple tarballs have been found.
-
 ```
 job_result_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for details)_</summary><ul><li>Job results file `{filename}` does not exist in job directory, or parsing it failed.</li><li>No artefacts were found/reported.</li></ul></details>
 ```

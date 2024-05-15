@@ -1,3 +1,19 @@
+# This file is part of the EESSI build-and-deploy bot,
+# see https://github.com/EESSI/eessi-bot-software-layer
+#
+# The bot helps with requests to add software installations to the
+# EESSI software layer, see https://github.com/EESSI/software-layer
+#
+# author: Kenneth Hoste (@boegel)
+# author: Bob Droege (@bedroge)
+# author: Hafsa Naeem (@hafsa-naeem)
+# author: Jonas Qvigstad (@jonas-lq)
+# author: Pedro Santos Neves (@Neves-P)
+# author: Thomas Roeblitz (@trz42)
+#
+# license: GPLv2
+#
+
 # Also see documentation at https://github.com/EESSI/eessi-bot-software-layer/blob/main/README.md#step5.5
 
 [github]
@@ -111,7 +127,7 @@ no_build_permission_comment = Label `bot:build` has been set by user `{build_lab
 
 [deploycfg]
 # script for uploading built software packages
-tarball_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
+artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 
 # URL to S3/minio bucket
 #   if attribute is set, bucket_base will be constructed as follows
@@ -144,11 +160,11 @@ upload_policy = once
 # value can be a space delimited list of GH accounts
 deploy_permission =
 
-# template for comment when user who set a label has no permission to trigger deploying tarballs
+# template for comment when user who set a label has no permission to trigger deploying artefacts
 no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
 
 # settings for where (directory) in the S3 bucket to store the metadata file and
-# the tarball
+# the artefact
 # - Can be a string value to always use the same 'prefix' regardless of the target
 #   CVMFS repository, or can be a mapping of a target repository id (see also
 #   repo_target_map) to a prefix.
@@ -157,17 +173,17 @@ no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_
 #   * 'github_repository' (which would be expanded to the full name of the GitHub
 #     repository, e.g., 'EESSI/software-layer'),
 #   * 'legacy_aws_path' (which expands to the legacy/old prefix being used for
-#     storing tarballs/metadata files) and
+#     storing artefacts/metadata files) and
 #   * 'pull_request_number' (which would be expanded to the number of the pull
-#     request from which the tarball originates).
+#     request from which the artefact originates).
 # - The list of supported variables can be shown by running
 #   `scripts/eessi-upload-to-staging --list-variables`.
 # - Examples:
 #   metadata_prefix = {"eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
-#   tarball_prefix = {"eessi-pilot-2023.06": "", "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
+#   artefact_prefix = {"eessi-pilot-2023.06": "", "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
 # If left empty, the old/legacy prefix is being used.
 metadata_prefix =
-tarball_prefix =
+artefact_prefix =
 
 
 [architecturetargets]
@@ -231,14 +247,6 @@ running_job = job `{job_id}` is running
 
 
 [finished_job_comments]
-success = :grin: SUCCESS tarball `{tarball_name}` ({tarball_size} GiB) in job dir
-failure = :cry: FAILURE
-no_slurm_out = No slurm output `{slurm_out}` in job dir
-slurm_out = Found slurm output `{slurm_out}` in job dir
-missing_modules = Slurm output lacks message "No missing modules!".
-no_tarball_message = Slurm output lacks message about created tarball.
-no_matching_tarball = No tarball matching `{tarball_pattern}` found in job dir.
-multiple_tarballs = Found {num_tarballs} tarballs in job dir - only 1 matching `{tarball_pattern}` expected.
 job_result_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job results file `{filename}` does not exist in job directory, or parsing it failed.</li><li>No artefacts were found/reported.</li></ul></details>
 job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job test file `{filename}` does not exist in job directory, or parsing it failed.</li></ul></details>
 

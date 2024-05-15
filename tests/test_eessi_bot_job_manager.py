@@ -1,4 +1,4 @@
-# Tests for 'job managaer' task of the EESSI build-and-deploy bot,
+# Tests for 'job manager' task of the EESSI build-and-deploy bot,
 # see https://github.com/EESSI/eessi-bot-software-layer
 #
 # The bot helps with requests to add software installations to the
@@ -7,6 +7,7 @@
 # author: Kenneth Hoste (@boegel)
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Jonas Qvigstad (@jonas-lq)
+# author: Thomas Roeblitz (@trz42)
 #
 # license: GPLv2
 #

@@ -4,8 +4,8 @@
 # The bot helps with requests to add software installations to the
 # EESSI software layer, see https://github.com/EESSI/software-layer
 #
-# author: Thomas Roeblitz (@trz42)
 # author: Kenneth Hoste (@boegel)
+# author: Thomas Roeblitz (@trz42)
 #
 # license: GPLv2
 #

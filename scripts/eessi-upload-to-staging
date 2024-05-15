@@ -38,7 +38,7 @@ function check_file_name
 
 function create_metadata_file
 {
-  _tarball=$1
+  _artefact=$1
   _url=$2
   _repository=$3
   _pull_request_number=$4
@@ -50,10 +50,10 @@ function create_metadata_file
     --arg un $(whoami) \
     --arg ip $(curl -s https://checkip.amazonaws.com) \
     --arg hn "$(hostname -f)" \
-    --arg fn "$(basename ${_tarball})" \
-    --arg sz "$(du -b "${_tarball}" | awk '{print $1}')" \
-    --arg ct "$(date -r "${_tarball}")" \
-    --arg sha256 "$(sha256sum "${_tarball}" | awk '{print $1}')" \
+    --arg fn "$(basename ${_artefact})" \
+    --arg sz "$(du -b "${_artefact}" | awk '{print $1}')" \
+    --arg ct "$(date -r "${_artefact}")" \
+    --arg sha256 "$(sha256sum "${_artefact}" | awk '{print $1}')" \
     --arg url "${_url}" \
     --arg repo "${_repository}" \
     --arg pr "${_pull_request_number}" \
@@ -70,6 +70,11 @@ function create_metadata_file
 function display_help
 {
   echo "Usage: $0 [OPTIONS] <filenames>"                                           >&2
+  echo "  -a | --artefact-prefix PREFIX  -  a directory to which the artefact"     >&2
+  echo "                                    shall be uploaded; BASH variable"      >&2
+  echo "                                    expansion will be applied; arg '-l'"   >&2
+  echo "                                    lists variables that are defined at"   >&2
+  echo "                                    the time of expansion"                 >&2
   echo "  -e | --endpoint-url URL        -  endpoint url (needed for non AWS S3)"  >&2
   echo "  -h | --help                    -  display this usage information"        >&2
   echo "  -i | --pr-comment-id           -  identifier of a PR comment; may be"    >&2
@@ -88,11 +93,6 @@ function display_help
   echo "                                    link the upload to a PR"               >&2
   echo "  -r | --repository FULL_NAME    -  a repository name ACCOUNT/REPONAME;"   >&2
   echo "                                    used to link the upload to a PR"       >&2
-  echo "  -t | --tarball-prefix PREFIX   -  a directory to which the tarball"      >&2
-  echo "                                    shall be uploaded; BASH variable"      >&2
-  echo "                                    expansion will be applied; arg '-l'"   >&2
-  echo "                                    lists variables that are defined at"   >&2
-  echo "                                    the time of expansion"                 >&2
 }
 
 if [[ $# -lt 1 ]]; then
@@ -123,7 +123,7 @@ github_repository="EESSI/software-layer"
 
 # provided via options in the bot's config file app.cfg and/or command line argument
 metadata_prefix=
-tarball_prefix=
+artefact_prefix=
 
 # other variables
 legacy_aws_path=
@@ -131,6 +131,10 @@ variables="github_repository legacy_aws_path pull_request_number"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    -a|--artefact-prefix)
+      artefact_prefix="$2"
+      shift 2
+      ;;
     -e|--endpoint-url)
       endpoint_url="$2"
       shift 2
@@ -167,10 +171,6 @@ while [[ $# -gt 0 ]]; do
       github_repository="$2"
       shift 2
       ;;
-    -t|--tarball-prefix)
-      tarball_prefix="$2"
-      shift 2
-      ;;
     -*|--*)
       echo "Error: Unknown option: $1" >&2
       exit 1
@@ -204,17 +204,17 @@ for file in "$*"; do
     basefile=$( basename ${file} )
     if check_file_name ${basefile}; then
       if tar tf "${file}" | head -n1 > /dev/null; then
-        # 'legacy_aws_path' might be used in tarball_prefix or metadata_prefix
+        # 'legacy_aws_path' might be used in artefact_prefix or metadata_prefix
         # its purpose is to support the old/legacy method to derive the location
-        # where to store the tarball and metadata file
+        # where to store the artefact and metadata file
         export legacy_aws_path=$(basename ${file} | tr -s '-' '/' \
                  | perl -pe 's/^eessi.//;' | perl -pe 's/\.tar\.gz$//;' )
-        if [ -z ${tarball_prefix} ]; then
+        if [ -z ${artefact_prefix} ]; then
           aws_path=${legacy_aws_path}
         else
           export pull_request_number
           export github_repository
-          aws_path=$(envsubst <<< "${tarball_prefix}")
+          aws_path=$(envsubst <<< "${artefact_prefix}")
         fi
         aws_file=$(basename ${file})
         echo "Creating metadata file"
@@ -233,7 +233,7 @@ for file in "$*"; do
         cat ${metadata_file}
 
         echo Uploading to "${url}"
-        echo "  store tarball at ${aws_path}/${aws_file}"
+        echo "  store artefact at ${aws_path}/${aws_file}"
         upload_to_staging_bucket \
                 "${file}" \
                 "${bucket_name}" \

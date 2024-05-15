@@ -4,9 +4,13 @@
 # The bot helps with requests to add software installations to the
 # EESSI software layer, see https://github.com/EESSI/software-layer
 #
-# author: Kenneth Hoste (@boegel)
 # author: Bob Droege (@bedroge)
+# author: Kenneth Hoste (@boegel)
 # author: Hafsa Naeem (@hafsa-naeem)
+# author: Jacob Ziemke (@jacobz137)
+# author: Jonas Qvigstad (@jonas-lq)
+# author: Lara Ramona Peeters (@laraPPr)
+# author: Pedro Santos Neves (@Neves-P)
 # author: Thomas Roeblitz (@trz42)
 #
 # license: GPLv2
@@ -27,70 +31,18 @@ from retry.api import retry_call
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
-from tools import config, pr_comments, run_cmd
-from tools.job_metadata import create_metadata_file
+from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 
 
-APP_NAME = "app_name"
-ARCHITECTURE_TARGETS = "architecturetargets"
-AWAITS_RELEASE = "awaits_release"
-BUILDENV = "buildenv"
-BUILD_JOB_SCRIPT = "build_job_script"
-BUILD_LOGS_DIR = "build_logs_dir"
-BUILD_PERMISSION = "build_permission"
-CFG_DIRNAME = "cfg"
-CONTAINER_CACHEDIR = "container_cachedir"
-CURL_FAILURE = "curl_failure"
-CURL_TIP = "curl_tip"
-CVMFS_CUSTOMIZATIONS = "cvmfs_customizations"
+# defaults (used if not specified via, eg, 'app.cfg')
 DEFAULT_JOB_TIME_LIMIT = "24:00:00"
-DOWNLOAD_PR_COMMENTS = "download_pr_comments"
-ERROR_CURL = "curl"
-ERROR_GIT_APPLY = "git apply"
-ERROR_GIT_CHECKOUT = "git checkout"
-ERROR_GIT_CLONE = "curl"
-ERROR_NONE = "none"
-GITHUB = "github"
-GIT_CLONE_FAILURE = "git_clone_failure"
-GIT_CLONE_TIP = "git_clone_tip"
-GIT_CHECKOUT_FAILURE = "git_checkout_failure"
-GIT_CHECKOUT_TIP = "git_checkout_tip"
-GIT_APPLY_FAILURE = "git_apply_failure"
-GIT_APPLY_TIP = "git_apply_tip"
-HTTPS_PROXY = "https_proxy"
-HTTP_PROXY = "http_proxy"
-INITIAL_COMMENT = "initial_comment"
-JOBS_BASE_DIR = "jobs_base_dir"
-JOB_ARCHITECTURE = "architecture"
-JOB_CFG_FILENAME = "job.cfg"
-JOB_CONTAINER = "container"
-JOB_LOCAL_TMP = "local_tmp"
-JOB_HTTPS_PROXY = "https_proxy"
-JOB_HTTP_PROXY = "http_proxy"
-JOB_LOAD_MODULES = "load_modules"
-JOB_OS_TYPE = "os_type"
-JOB_REPOSITORY = "repository"
-JOB_REPOS_CFG_DIR = "repos_cfg_dir"
-JOB_REPO_ID = "repo_id"
-JOB_REPO_NAME = "repo_name"
-JOB_REPO_VERSION = "repo_version"
-JOB_SITECONFIG = "site_config"
-JOB_SOFTWARE_SUBDIR = "software_subdir"
-LOAD_MODULES = "load_modules"
-LOCAL_TMP = "local_tmp"
-NO_BUILD_PERMISSION_COMMENT = "no_build_permission_comment"
-REPOS_CFG_DIR = "repos_cfg_dir"
-REPOS_REPO_NAME = "repo_name"
-REPOS_REPO_VERSION = "repo_version"
-REPOS_CONFIG_BUNDLE = "config_bundle"
-REPOS_CONFIG_MAP = "config_map"
-REPOS_CONTAINER = "container"
-REPO_TARGETS = "repo_targets"
-REPO_TARGET_MAP = "repo_target_map"
-SHARED_FS_PATH = "shared_fs_path"
-SLURM_PARAMS = "slurm_params"
-SUBMITTED_JOB_COMMENTS = "submitted_job_comments"
-SUBMIT_COMMAND = "submit_command"
+
+# error codes used in this file
+_ERROR_CURL = "curl"
+_ERROR_GIT_APPLY = "git apply"
+_ERROR_GIT_CHECKOUT = "git checkout"
+_ERROR_GIT_CLONE = "curl"
+_ERROR_NONE = "none"
 
 
 Job = namedtuple('Job', ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id'))
@@ -113,44 +65,45 @@ def get_build_env_cfg(cfg):
     """
     fn = sys._getframe().f_code.co_name
 
-    buildenv = cfg[BUILDENV]
+    buildenv = cfg[config.SECTION_BUILDENV]
 
-    jobs_base_dir = buildenv.get(JOBS_BASE_DIR)
+    jobs_base_dir = buildenv.get(config.BUILDENV_SETTING_JOBS_BASE_DIR)
     log(f"{fn}(): jobs_base_dir '{jobs_base_dir}'")
-    config_data = {JOBS_BASE_DIR: jobs_base_dir}
-    local_tmp = buildenv.get(LOCAL_TMP)
+    config_data = {config.BUILDENV_SETTING_JOBS_BASE_DIR: jobs_base_dir}
+
+    local_tmp = buildenv.get(config.BUILDENV_SETTING_LOCAL_TMP)
     log(f"{fn}(): local_tmp '{local_tmp}'")
-    config_data[LOCAL_TMP] = local_tmp
+    config_data[config.BUILDENV_SETTING_LOCAL_TMP] = local_tmp
 
-    build_job_script = buildenv.get(BUILD_JOB_SCRIPT)
+    build_job_script = buildenv.get(config.BUILDENV_SETTING_BUILD_JOB_SCRIPT)
     log(f"{fn}(): build_job_script '{build_job_script}'")
-    config_data[BUILD_JOB_SCRIPT] = build_job_script
+    config_data[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT] = build_job_script
 
-    submit_command = buildenv.get(SUBMIT_COMMAND)
+    submit_command = buildenv.get(config.BUILDENV_SETTING_SUBMIT_COMMAND)
     log(f"{fn}(): submit_command '{submit_command}'")
-    config_data[SUBMIT_COMMAND] = submit_command
+    config_data[config.BUILDENV_SETTING_SUBMIT_COMMAND] = submit_command
 
-    slurm_params = buildenv.get(SLURM_PARAMS)
+    slurm_params = buildenv.get(config.BUILDENV_SETTING_SLURM_PARAMS)
     # always submit jobs with hold set, so job manager can release them
     slurm_params += ' --hold'
     log(f"{fn}(): slurm_params '{slurm_params}'")
-    config_data[SLURM_PARAMS] = slurm_params
+    config_data[config.BUILDENV_SETTING_SLURM_PARAMS] = slurm_params
 
-    shared_fs_path = buildenv.get(SHARED_FS_PATH)
+    shared_fs_path = buildenv.get(config.BUILDENV_SETTING_SHARED_FS_PATH)
     log(f"{fn}(): shared_fs_path: '{shared_fs_path}'")
-    config_data[SHARED_FS_PATH] = shared_fs_path
+    config_data[config.BUILDENV_SETTING_SHARED_FS_PATH] = shared_fs_path
 
-    container_cachedir = buildenv.get(CONTAINER_CACHEDIR)
+    container_cachedir = buildenv.get(config.BUILDENV_SETTING_CONTAINER_CACHEDIR)
     log(f"{fn}(): container_cachedir '{container_cachedir}'")
-    config_data[CONTAINER_CACHEDIR] = container_cachedir
+    config_data[config.BUILDENV_SETTING_CONTAINER_CACHEDIR] = container_cachedir
 
-    build_logs_dir = buildenv.get(BUILD_LOGS_DIR)
+    build_logs_dir = buildenv.get(config.BUILDENV_SETTING_BUILD_LOGS_DIR)
     log(f"{fn}(): build_logs_dir '{build_logs_dir}'")
-    config_data[BUILD_LOGS_DIR] = build_logs_dir
+    config_data[config.BUILDENV_SETTING_BUILD_LOGS_DIR] = build_logs_dir
 
     cvmfs_customizations = {}
     try:
-        cvmfs_customizations_str = buildenv.get(CVMFS_CUSTOMIZATIONS)
+        cvmfs_customizations_str = buildenv.get(config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS)
         log("{fn}(): cvmfs_customizations '{cvmfs_customizations_str}'")
 
         if cvmfs_customizations_str is not None:
@@ -161,19 +114,19 @@ def get_build_env_cfg(cfg):
         print(e)
         error(f"{fn}(): Value for cvmfs_customizations ({cvmfs_customizations_str}) could not be decoded.")
 
-    config_data[CVMFS_CUSTOMIZATIONS] = cvmfs_customizations
+    config_data[config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS] = cvmfs_customizations
 
-    http_proxy = buildenv.get(HTTP_PROXY, None)
+    http_proxy = buildenv.get(config.BUILDENV_SETTING_HTTP_PROXY, None)
     log(f"{fn}(): http_proxy '{http_proxy}'")
-    config_data[HTTP_PROXY] = http_proxy
+    config_data[config.BUILDENV_SETTING_HTTP_PROXY] = http_proxy
 
-    https_proxy = buildenv.get(HTTPS_PROXY, None)
+    https_proxy = buildenv.get(config.BUILDENV_SETTING_HTTPS_PROXY, None)
     log(f"{fn}(): https_proxy '{https_proxy}'")
-    config_data[HTTPS_PROXY] = https_proxy
+    config_data[config.BUILDENV_SETTING_HTTPS_PROXY] = https_proxy
 
-    load_modules = buildenv.get(LOAD_MODULES, None)
+    load_modules = buildenv.get(config.BUILDENV_SETTING_LOAD_MODULES, None)
     log(f"{fn}(): load_modules '{load_modules}'")
-    config_data[LOAD_MODULES] = load_modules
+    config_data[config.BUILDENV_SETTING_LOAD_MODULES] = load_modules
 
     return config_data
 
@@ -193,9 +146,9 @@ def get_architecture_targets(cfg):
     """
     fn = sys._getframe().f_code.co_name
 
-    architecture_targets = cfg[ARCHITECTURE_TARGETS]
+    architecture_targets = cfg[config.SECTION_ARCHITECTURETARGETS]
 
-    arch_target_map = json.loads(architecture_targets.get('arch_target_map'))
+    arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
     log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
     return arch_target_map
 
@@ -211,10 +164,11 @@ def get_repo_cfg(cfg):
 
     Returns:
         (dict): dictionary containing repository settings as follows
-           - {REPOS_CFG_DIR: path to repository config directory as defined in 'app.cfg'}
-           - {REPO_TARGET_MAP: json of REPO_TARGET_MAP value as defined in 'app.cfg'}
-           - for all sections [JOB_REPO_ID] defined in REPOS_CFG_DIR/repos.cfg add a
-             mapping {JOB_REPO_ID: dictionary containing settings of that section}
+           - {config.REPO_TARGETS_SETTING_REPOS_CFG_DIR: path to repository config directory as defined in 'app.cfg'}
+           - {config.REPO_TARGETS_SETTING_REPO_TARGET_MAP: json of
+               config.REPO_TARGETS_SETTING_REPO_TARGET_MAP value as defined in 'app.cfg'}
+           - for all sections [repo_id] defined in config.REPO_TARGETS_SETTING_REPOS_CFG_DIR/repos.cfg add a
+             mapping {repo_id: dictionary containing settings of that section}
     """
     fn = sys._getframe().f_code.co_name
 
@@ -224,13 +178,14 @@ def get_repo_cfg(cfg):
     if repo_cfg:
         return repo_cfg
 
-    repo_cfg_org = cfg[REPO_TARGETS]
+    repo_cfg_org = cfg[config.SECTION_REPO_TARGETS]
     repo_cfg = {}
-    repo_cfg[REPOS_CFG_DIR] = repo_cfg_org.get(REPOS_CFG_DIR, None)
+    settings_repos_cfg_dir = config.REPO_TARGETS_SETTING_REPOS_CFG_DIR
+    repo_cfg[settings_repos_cfg_dir] = repo_cfg_org.get(settings_repos_cfg_dir, None)
 
     repo_map = {}
     try:
-        repo_map_str = repo_cfg_org.get(REPO_TARGET_MAP)
+        repo_map_str = repo_cfg_org.get(config.REPO_TARGETS_SETTING_REPO_TARGET_MAP)
         log(f"{fn}(): repo_map '{repo_map_str}'")
 
         if repo_map_str is not None:
@@ -241,13 +196,13 @@ def get_repo_cfg(cfg):
         print(err)
         error(f"{fn}(): Value for repo_map ({repo_map_str}) could not be decoded.")
 
-    repo_cfg[REPO_TARGET_MAP] = repo_map
+    repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP] = repo_map
 
-    if repo_cfg[REPOS_CFG_DIR] is None:
+    if repo_cfg[config.REPO_TARGETS_SETTING_REPOS_CFG_DIR] is None:
         return repo_cfg
 
     # add entries for sections from repos.cfg (one dictionary per section)
-    repos_cfg_file = os.path.join(repo_cfg[REPOS_CFG_DIR], 'repos.cfg')
+    repos_cfg_file = os.path.join(repo_cfg[config.REPO_TARGETS_SETTING_REPOS_CFG_DIR], 'repos.cfg')
     log(f"{fn}(): repos_cfg_file '{repos_cfg_file}'")
     try:
         repos_cfg = configparser.ConfigParser()
@@ -267,7 +222,7 @@ def get_repo_cfg(cfg):
 
         config_map = {}
         try:
-            config_map_str = repos_cfg[repo_id].get(REPOS_CONFIG_MAP)
+            config_map_str = repos_cfg[repo_id].get(cvmfs_repository.REPOS_CFG_CONFIG_MAP)
             log(f"{fn}(): config_map '{config_map_str}'")
 
             if config_map_str is not None:
@@ -278,7 +233,7 @@ def get_repo_cfg(cfg):
             print(err)
             error(f"{fn}(): Value for config_map ({config_map_str}) could not be decoded.")
 
-        repo_cfg[repo_id][REPOS_CONFIG_MAP] = config_map
+        repo_cfg[repo_id][cvmfs_repository.REPOS_CFG_CONFIG_MAP] = config_map
 
     # print full repo_cfg for debugging purposes
     log(f"{fn}(): complete repo_cfg that was just read: {json.dumps(repo_cfg, indent=4)}")
@@ -291,9 +246,9 @@ def create_pr_dir(pr, cfg, event_info):
     Create working directory for job to be submitted. Full path to the working
     directory has the format
 
-    JOBS_BASE_DIR/<year>.<month>/pr_<pr number>/event_<event id>/run_<run number>
+    config.BUILDENV_SETTING_JOBS_BASE_DIR/<year>.<month>/pr_<pr number>/event_<event id>/run_<run number>
 
-    where JOBS_BASE_DIR is defined in the configuration (see 'app.cfg'), year
+    where config.BUILDENV_SETTING_JOBS_BASE_DIR is defined in the configuration (see 'app.cfg'), year
     contains four digits, and month contains two digits
 
     Args:
@@ -313,13 +268,13 @@ def create_pr_dir(pr, cfg, event_info):
     # create directory structure (see discussion of options in
     #   https://github.com/EESSI/eessi-bot-software-layer/issues/7)
     #
-    #   JOBS_BASE_DIR/<year>.<month>/pr_<pr number>/event_<event id>/run_<run number>
+    #   config.BUILDENV_SETTING_JOBS_BASE_DIR/<year>.<month>/pr_<pr number>/event_<event id>/run_<run number>
     #
-    #   where JOBS_BASE_DIR is defined in the configuration (see 'app.cfg'), year
+    #   where config.BUILDENV_SETTING_JOBS_BASE_DIR is defined in the configuration (see 'app.cfg'), year
     #   contains four digits, and month contains two digits
 
     build_env_cfg = get_build_env_cfg(cfg)
-    jobs_base_dir = build_env_cfg[JOBS_BASE_DIR]
+    jobs_base_dir = build_env_cfg[config.BUILDENV_SETTING_JOBS_BASE_DIR]
 
     year_month = datetime.today().strftime('%Y.%m')
     pr_id = 'pr_%s' % pr.number
@@ -367,7 +322,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         git_clone_cmd, "Clone repo", arch_job_dir, raise_on_error=False
         )
     if clone_exit_code != 0:
-        error_stage = ERROR_GIT_CLONE
+        error_stage = _ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
 
     git_checkout_cmd = ' '.join([
@@ -379,7 +334,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         git_checkout_cmd, "checkout branch '%s'" % branch_name, arch_job_dir, raise_on_error=False
         )
     if checkout_exit_code != 0:
-        error_stage = ERROR_GIT_CHECKOUT
+        error_stage = _ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
     curl_cmd = f'curl -L https://github.com/{repo_name}/pull/{pr.number}.diff > {pr.number}.diff'
@@ -388,7 +343,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         curl_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
         )
     if curl_exit_code != 0:
-        error_stage = ERROR_CURL
+        error_stage = _ERROR_CURL
         return curl_output, curl_error, curl_exit_code, error_stage
 
     git_apply_cmd = f'git apply {pr.number}.diff'
@@ -397,11 +352,11 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         git_apply_cmd, "Apply patch", arch_job_dir, raise_on_error=False
         )
     if git_apply_exit_code != 0:
-        error_stage = ERROR_GIT_APPLY
+        error_stage = _ERROR_GIT_APPLY
         return git_apply_output, git_apply_error, git_apply_exit_code, error_stage
 
     # need to return four items also in case everything went fine
-    return 'downloading PR succeeded', 'no error while downloading PR', 0, ERROR_NONE
+    return 'downloading PR succeeded', 'no error while downloading PR', 0, _ERROR_NONE
 
 
 def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage):
@@ -424,23 +379,23 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
     if download_pr_exit_code != 0:
         fn = sys._getframe().f_code.co_name
 
-        download_pr_comments_cfg = config.read_config()[DOWNLOAD_PR_COMMENTS]
-        if error_stage == ERROR_GIT_CLONE:
+        download_pr_comments_cfg = config.read_config()[config.SECTION_DOWNLOAD_PR_COMMENTS]
+        if error_stage == _ERROR_GIT_CLONE:
             download_comment = (f"`{download_pr_error}`"
-                                f"{download_pr_comments_cfg[GIT_CLONE_FAILURE]}"
-                                f"{download_pr_comments_cfg[GIT_CLONE_TIP]}")
-        elif error_stage == ERROR_GIT_CHECKOUT:
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE]}"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP]}")
+        elif error_stage == _ERROR_GIT_CHECKOUT:
             download_comment = (f"`{download_pr_error}`"
-                                f"{download_pr_comments_cfg[GIT_CHECKOUT_FAILURE]}"
-                                f"{download_pr_comments_cfg[GIT_CHECKOUT_TIP]}")
-        elif error_stage == ERROR_CURL:
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE]}"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP]}")
+        elif error_stage == _ERROR_CURL:
             download_comment = (f"`{download_pr_error}`"
-                                f"{download_pr_comments_cfg[CURL_FAILURE]}"
-                                f"{download_pr_comments_cfg[CURL_TIP]}")
-        elif error_stage == ERROR_GIT_APPLY:
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE]}"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP]}")
+        elif error_stage == _ERROR_GIT_APPLY:
             download_comment = (f"`{download_pr_error}`"
-                                f"{download_pr_comments_cfg[GIT_APPLY_FAILURE]}"
-                                f"{download_pr_comments_cfg[GIT_APPLY_TIP]}")
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
 
         download_comment = pr_comments.create_comment(
             repo_name=base_repo_name, pr_number=pr.number, comment=download_comment
@@ -494,7 +449,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     """
     fn = sys._getframe().f_code.co_name
 
-    app_name = cfg[GITHUB].get(APP_NAME)
+    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
     build_env_cfg = get_build_env_cfg(cfg)
     arch_map = get_architecture_targets(cfg)
     repocfg = get_repo_cfg(cfg)
@@ -517,14 +472,15 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     for arch, slurm_opt in arch_map.items():
         arch_dir = arch.replace('/', '_')
         # check if repo_target_map contains an entry for {arch}
-        if arch not in repocfg[REPO_TARGET_MAP]:
+        if arch not in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP]:
             log(f"{fn}(): skipping arch {arch} because repo target map does not define repositories to build for")
             continue
-        for repo_id in repocfg[REPO_TARGET_MAP][arch]:
+        for repo_id in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP][arch]:
             # ensure repocfg contains information about the repository repo_id if repo_id != EESSI
             # Note, EESSI is a bad/misleading name, it should be more like AS_IN_CONTAINER
             if (repo_id != "EESSI" and repo_id != "EESSI-pilot") and repo_id not in repocfg:
-                log(f"{fn}(): skipping repo {repo_id}, it is not defined in repo config {repocfg[REPOS_CFG_DIR]}")
+                log(f"{fn}(): skipping repo {repo_id}, it is not defined in repo"
+                    "config {repocfg[config.REPO_TARGETS_SETTING_REPOS_CFG_DIR]}")
                 continue
 
             # if filter exists, check filter against context = (arch, repo, app_name)
@@ -582,73 +538,81 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
     """
     fn = sys._getframe().f_code.co_name
 
-    jobcfg_dir = os.path.join(job_dir, CFG_DIRNAME)
-    # create ini file job.cfg with entries:
+    jobcfg_dir = os.path.join(job_dir, job_metadata.JOB_CFG_DIRECTORY_NAME)
+    # create ini file job.cfg with entries (some values are taken from the
+    #   arguments of the function, some from settings in 'app.cfg', some from the
+    #   repository's definition, some combine two values):
     # [site_config]
-    # local_tmp = LOCAL_TMP_VALUE
-    # shared_fs_path = SHARED_FS_PATH
-    # build_logs_dir = BUILD_LOGS_DIR
+    # local_tmp = config.BUILDENV_SETTING_LOCAL_TMP
+    # shared_fs_path = config.BUILDENV_SETTING_SHARED_FS_PATH
+    # build_logs_dir = config.BUILDENV_SETTING_BUILD_LOGS_DIR
     #
     # [repository]
-    # repos_cfg_dir = JOB_CFG_DIR
-    # repo_id = JOB_REPO_ID
-    # container = CONTAINER
-    # repo_name = REPO_NAME
-    # repo_version = REPO_VERSION
+    # repos_cfg_dir = job_dir/job_metadata.JOB_CFG_DIRECTORY_NAME
+    # repo_id = repo_id
+    # container = repos_cfg[cvmfs_repository.REPOS_CFG_CONTAINER]
+    # repo_name = repo_cfg[cvmfs_repository.REPOS_CFG_REPO_NAME]
+    # repo_version = repo_cfg[cvmfs_repository.REPOS_CFG_REPO_VERSION]
     #
     # [architecture]
-    # software_subdir = SOFTWARE_SUBDIR
-    # os_type = OS_TYPE
+    # software_subdir = software_subdir
+    # os_type = os_type
     job_cfg = configparser.ConfigParser()
-    job_cfg[JOB_SITECONFIG] = {}
+    job_cfg[job_metadata.JOB_CFG_SITE_CONFIG_SECTION] = {}
     build_env_to_job_cfg_keys = {
-        BUILD_LOGS_DIR: BUILD_LOGS_DIR,
-        CONTAINER_CACHEDIR: CONTAINER_CACHEDIR,
-        HTTP_PROXY: JOB_HTTP_PROXY,
-        HTTPS_PROXY: JOB_HTTPS_PROXY,
-        LOAD_MODULES: JOB_LOAD_MODULES,
-        LOCAL_TMP: JOB_LOCAL_TMP,
-        SHARED_FS_PATH: SHARED_FS_PATH,
+        config.BUILDENV_SETTING_BUILD_LOGS_DIR: job_metadata.JOB_CFG_SITE_CONFIG_BUILD_LOGS_DIR,
+        config.BUILDENV_SETTING_CONTAINER_CACHEDIR: job_metadata.JOB_CFG_SITE_CONFIG_CONTAINER_CACHEDIR,
+        config.BUILDENV_SETTING_HTTP_PROXY: job_metadata.JOB_CFG_SITE_CONFIG_HTTP_PROXY,
+        config.BUILDENV_SETTING_HTTPS_PROXY: job_metadata.JOB_CFG_SITE_CONFIG_HTTPS_PROXY,
+        config.BUILDENV_SETTING_LOAD_MODULES: job_metadata.JOB_CFG_SITE_CONFIG_LOAD_MODULES,
+        config.BUILDENV_SETTING_LOCAL_TMP: job_metadata.JOB_CFG_SITE_CONFIG_LOCAL_TMP,
+        config.BUILDENV_SETTING_SHARED_FS_PATH: job_metadata.JOB_CFG_SITE_CONFIG_SHARED_FS_PATH,
     }
     for build_env_key, job_cfg_key in build_env_to_job_cfg_keys.items():
         if build_env_cfg[build_env_key]:
-            job_cfg[JOB_SITECONFIG][job_cfg_key] = build_env_cfg[build_env_key]
+            job_cfg[job_metadata.JOB_CFG_SITE_CONFIG_SECTION][job_cfg_key] = build_env_cfg[build_env_key]
 
-    job_cfg[JOB_REPOSITORY] = {}
+    job_cfg[job_metadata.JOB_CFG_REPOSITORY_SECTION] = {}
     # directory for repos.cfg
-    # NOTE REPOS_CFG_DIR is a global configuration setting for all repositories,
-    #      hence it is stored in repos_cfg whereas repo_cfg used further below
-    #      contains setting for a specific repository
-    if REPOS_CFG_DIR in repos_cfg and repos_cfg[REPOS_CFG_DIR]:
-        job_cfg[JOB_REPOSITORY][JOB_REPOS_CFG_DIR] = jobcfg_dir
+    # NOTE config.REPO_TARGETS_SETTING_REPOS_CFG_DIR is a global configuration
+    #      setting for all repositories, hence it is stored in repos_cfg whereas
+    #      repo_cfg used further below contains setting for a specific repository
+    repo_section_str = job_metadata.JOB_CFG_REPOSITORY_SECTION
+    cfg_repos_cfg_dir = config.REPO_TARGETS_SETTING_REPOS_CFG_DIR
+    if cfg_repos_cfg_dir in repos_cfg and repos_cfg[cfg_repos_cfg_dir]:
+        job_cfg[repo_section_str][job_metadata.JOB_CFG_REPOSITORY_REPOS_CFG_DIR] = jobcfg_dir
     # repo id
-    job_cfg[JOB_REPOSITORY][JOB_REPO_ID] = repo_id
+    job_cfg[repo_section_str][job_metadata.JOB_CFG_REPOSITORY_REPO_ID] = repo_id
 
     # settings for a specific repository
     if repo_id in repos_cfg:
         repo_cfg = repos_cfg[repo_id]
-        if repo_cfg[REPOS_CONTAINER]:
-            job_cfg[JOB_REPOSITORY][JOB_CONTAINER] = repo_cfg[REPOS_CONTAINER]
-        if repo_cfg[REPOS_REPO_NAME]:
-            job_cfg[JOB_REPOSITORY][JOB_REPO_NAME] = repo_cfg[REPOS_REPO_NAME]
-        if repo_cfg[REPOS_REPO_VERSION]:
-            job_cfg[JOB_REPOSITORY][JOB_REPO_VERSION] = repo_cfg[REPOS_REPO_VERSION]
+        if repo_cfg[cvmfs_repository.REPOS_CFG_CONTAINER]:
+            job_cfg_repo_container = job_metadata.JOB_CFG_REPOSITORY_CONTAINER
+            job_cfg[repo_section_str][job_cfg_repo_container] = repo_cfg[cvmfs_repository.REPOS_CFG_CONTAINER]
+        if repo_cfg[cvmfs_repository.REPOS_CFG_REPO_NAME]:
+            job_cfg_repo_name = job_metadata.JOB_CFG_REPOSITORY_REPO_NAME
+            job_cfg[repo_section_str][job_cfg_repo_name] = repo_cfg[cvmfs_repository.REPOS_CFG_REPO_NAME]
+        if repo_cfg[cvmfs_repository.REPOS_CFG_REPO_VERSION]:
+            job_cfg_repo_version = job_metadata.JOB_CFG_REPOSITORY_REPO_VERSION
+            job_cfg[repo_section_str][job_cfg_repo_version] = repo_cfg[cvmfs_repository.REPOS_CFG_REPO_VERSION]
 
-    job_cfg[JOB_ARCHITECTURE] = {}
-    job_cfg[JOB_ARCHITECTURE][JOB_SOFTWARE_SUBDIR] = software_subdir
-    job_cfg[JOB_ARCHITECTURE][JOB_OS_TYPE] = os_type
+    job_cfg_arch_section = job_metadata.JOB_CFG_ARCHITECTURE_SECTION
+    job_cfg[job_cfg_arch_section] = {}
+    job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_SOFTWARE_SUBDIR] = software_subdir
+    job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_OS_TYPE] = os_type
 
-    # copy repos_cfg[REPOS_CFG_DIR]/repos.cfg to <jobcfg_dir>
-    # copy repos_cfg[REPOS_CFG_DIR]/*.tgz to <jobcfg_dir>
-    if REPOS_CFG_DIR in repos_cfg and repos_cfg[REPOS_CFG_DIR] and os.path.isdir(repos_cfg[REPOS_CFG_DIR]):
-        src = repos_cfg[REPOS_CFG_DIR]
+    # copy contents of directory containing repository configuration to directory
+    # containing job configuration/metadata
+    if cfg_repos_cfg_dir in repos_cfg and repos_cfg[cfg_repos_cfg_dir] and os.path.isdir(repos_cfg[cfg_repos_cfg_dir]):
+        src = repos_cfg[cfg_repos_cfg_dir]
         shutil.copytree(src, jobcfg_dir)
         log(f"{fn}(): copied {src} to {jobcfg_dir}")
 
-    # make sure that <jobcfg_dir> exists
+    # make sure that <jobcfg_dir> exists (in case it wasn't just copied)
     os.makedirs(jobcfg_dir, exist_ok=True)
 
-    jobcfg_file = os.path.join(jobcfg_dir, JOB_CFG_FILENAME)
+    jobcfg_file = os.path.join(jobcfg_dir, job_metadata.JOB_CFG_FILENAME)
     with open(jobcfg_file, "w") as jcf:
         job_cfg.write(jcf)
 
@@ -669,7 +633,7 @@ def submit_job(job, cfg):
     Returns:
         tuple of 2 elements containing
         - (string): id of the submitted job
-        - (string): path JOBS_BASE_DIR/job.year_month/job.pr_id/SLURM_JOBID which
+        - (string): path config.BUILDENV_SETTING_JOBS_BASE_DIR/job.year_month/job.pr_id/SLURM_JOBID which
           is a symlink to the job's working directory (job[0] or job.working_dir)
     """
     fn = sys._getframe().f_code.co_name
@@ -678,7 +642,7 @@ def submit_job(job, cfg):
 
     # add a default time limit of 24h to the job submit command if no other time
     # limit is specified already
-    all_opts_str = " ".join([build_env_cfg[SLURM_PARAMS], job.slurm_opts])
+    all_opts_str = " ".join([build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS], job.slurm_opts])
     all_opts_list = all_opts_str.split(" ")
     if any([(opt.startswith("--time") or opt.startswith("-t")) for opt in all_opts_list]):
         time_limit = ""
@@ -686,11 +650,11 @@ def submit_job(job, cfg):
         time_limit = f"--time={DEFAULT_JOB_TIME_LIMIT}"
 
     command_line = ' '.join([
-        build_env_cfg[SUBMIT_COMMAND],
-        build_env_cfg[SLURM_PARAMS],
+        build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
+        build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],
         time_limit,
         job.slurm_opts,
-        build_env_cfg[BUILD_JOB_SCRIPT],
+        build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT],
     ])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,
@@ -699,14 +663,14 @@ def submit_job(job, cfg):
 
     # sbatch output is 'Submitted batch job JOBID'
     #   parse job id, add it to array of submitted jobs and create a symlink
-    #   from JOBS_BASE_DIR/job.year_month/job.pr_id/SLURM_JOBID to the job's
+    #   from config.BUILDENV_SETTING_JOBS_BASE_DIR/job.year_month/job.pr_id/SLURM_JOBID to the job's
     #   working directory
     log(f"{fn}(): sbatch out: {cmdline_output}")
     log(f"{fn}(): sbatch err: {cmdline_error}")
 
     job_id = cmdline_output.split()[3]
 
-    symlink = os.path.join(build_env_cfg[JOBS_BASE_DIR], job.year_month, job.pr_id, job_id)
+    symlink = os.path.join(build_env_cfg[config.BUILDENV_SETTING_JOBS_BASE_DIR], job.year_month, job.pr_id, job_id)
     log(f"{fn}(): create symlink {symlink} -> {job[0]}")
     os.symlink(job[0], symlink)
 
@@ -738,17 +702,18 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
     dt = datetime.now(timezone.utc)
 
     # construct initial job comment
-    submitted_job_comments_cfg = config.read_config()[SUBMITTED_JOB_COMMENTS]
-    job_comment = (f"{submitted_job_comments_cfg[INITIAL_COMMENT]}"
+    submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
+    job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
                    f"\n|date|job status|comment|\n"
                    f"|----------|----------|------------------------|\n"
                    f"|{dt.strftime('%b %d %X %Z %Y')}|"
                    f"submitted|"
-                   f"{submitted_job_comments_cfg[AWAITS_RELEASE]}|").format(app_name=app_name,
-                                                                            arch_name=arch_name,
-                                                                            symlink=symlink,
-                                                                            repo_id=job.repo_id,
-                                                                            job_id=job_id)
+                   f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE]}|").format(
+                       app_name=app_name,
+                       arch_name=arch_name,
+                       symlink=symlink,
+                       repo_id=job.repo_id,
+                       job_id=job_id)
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
@@ -783,7 +748,7 @@ def submit_build_jobs(pr, event_info, action_filter):
     fn = sys._getframe().f_code.co_name
 
     cfg = config.read_config()
-    app_name = cfg[GITHUB].get(APP_NAME)
+    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
     jobs = prepare_jobs(pr, cfg, event_info, action_filter)
@@ -810,7 +775,7 @@ def submit_build_jobs(pr, event_info, action_filter):
         pr_comment = pr_comments.PRComment(pr.base.repo.full_name, pr.number, pr_comment.id)
 
         # create _bot_job<jobid>.metadata file in the job's working directory
-        create_metadata_file(job, job_id, pr_comment)
+        job_metadata.create_metadata_file(job, job_id, pr_comment)
 
     return job_id_to_comment_map
 
@@ -834,16 +799,16 @@ def check_build_permission(pr, event_info):
 
     cfg = config.read_config()
 
-    buildenv = cfg[BUILDENV]
+    buildenv = cfg[config.SECTION_BUILDENV]
 
-    build_permission = buildenv.get(BUILD_PERMISSION, '')
+    build_permission = buildenv.get(config.BUILDENV_SETTING_BUILD_PERMISSION, '')
 
     log(f"{fn}(): build permission '{build_permission}'")
 
     build_labeler = event_info['raw_request_body']['sender']['login']
     if build_labeler not in build_permission.split():
         log(f"{fn}(): GH account '{build_labeler}' is not authorized to build")
-        no_build_permission_comment = buildenv.get(NO_BUILD_PERMISSION_COMMENT)
+        no_build_permission_comment = buildenv.get(config.BUILDENV_SETTING_NO_BUILD_PERMISSION_COMMENT)
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
                                    pr.number,
@@ -882,7 +847,9 @@ def request_bot_build_issue_comments(repo_name, pr_number):
 
         for comment in comments:
             # iterate through the comments to find the one where the status of the build was in
-            if config.read_config()["submitted_job_comments"]['initial_comment'][:20] in comment['body']:
+            submitted_job_comments_section = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
+            initial_comment_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
+            if initial_comment_fmt[:20] in comment['body']:
 
                 # get archictecture from comment['body']
                 first_line = comment['body'].split('\n')[0]

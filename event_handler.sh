@@ -5,8 +5,8 @@
 # A bot to help with requests to add software installations to the EESSI software layer,
 # see https://github.com/EESSI/software-layer
 #
-# author: Kenneth Hoste (@boegel)
 # author: Bob Droege (@bedroge)
+# author: Kenneth Hoste (@boegel)
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Thomas Roeblitz (@trz42)
 #
