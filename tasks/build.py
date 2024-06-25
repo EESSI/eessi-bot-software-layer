@@ -67,6 +67,10 @@ def get_build_env_cfg(cfg):
 
     buildenv = cfg[config.SECTION_BUILDENV]
 
+    job_name = buildenv.get(config.BUILDENV_SETTING_JOB_NAME)
+    log(f"{fn}(): job_name '{job_name}'")
+    config_data = {config.BUILDENV_SETTING_JOB_NAME: job_name}
+
     jobs_base_dir = buildenv.get(config.BUILDENV_SETTING_JOBS_BASE_DIR)
     log(f"{fn}(): jobs_base_dir '{jobs_base_dir}'")
     config_data = {config.BUILDENV_SETTING_JOBS_BASE_DIR: jobs_base_dir}
@@ -640,6 +644,10 @@ def submit_job(job, cfg):
 
     build_env_cfg = get_build_env_cfg(cfg)
 
+    # the job_name is used to filter jobs in case multiple bot
+    # instances run on the same system
+    job_name = cfg[config.SECTION_BUILDENV].get(config.BUILDENV_SETTING_JOB_NAME)
+
     # add a default time limit of 24h to the job submit command if no other time
     # limit is specified already
     all_opts_str = " ".join([build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS], job.slurm_opts])
@@ -653,9 +661,9 @@ def submit_job(job, cfg):
         build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
         build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],
         time_limit,
-        job.slurm_opts,
-        build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT],
-    ])
+        job.slurm_opts] +
+        ([f"--job-name='{job_name}'"] if job_name else []) +
+        [build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT]])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,
                                                                "submit job for target '%s'" % job.arch_target,

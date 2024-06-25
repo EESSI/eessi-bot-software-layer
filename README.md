@@ -376,6 +376,13 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_name = JOB_NAME
+```
+Replace `JOB_NAME` with a string of at least 3 characters that is used as job
+name when a job is submitted. This is used to filter jobs, e.g., should be used
+to make sure that multiple bot instances can run in the same Slurm environment.
+
+```
 jobs_base_dir = PATH_TO_JOBS_BASE_DIR
 ```
 Replace `PATH_TO_JOBS_BASE_DIR` with an absolute filepath like `/home/YOUR_USER_NAME/jobs` (or another path of your choice). Per job the directory structure under `jobs_base_dir` is `YYYY.MM/pr_PR_NUMBER/event_EVENT_ID/run_RUN_NUMBER/OS+SUBDIR`. The base directory will contain symlinks using the job ids pointing to the job's working directory `YYYY.MM/...`.

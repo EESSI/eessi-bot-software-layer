@@ -87,6 +87,10 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# Used to give all jobs of a bot instance the same name. Can be used to allow
+# multiple bot instances running on the same Slurm cluster.
+job_name = prod
+
 # directory under which the bot prepares directories per job
 #   structure created is as follows: YYYY.MM/pr_PR_NUMBER/event_EVENT_ID/run_RUN_NUMBER/OS+SUBDIR
 jobs_base_dir = $HOME/jobs
