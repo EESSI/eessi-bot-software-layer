@@ -18,6 +18,7 @@
 
 # Standard library imports
 import sys
+from datetime import datetime, timezone
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.lib import create_app, get_event_info, PyGHee, read_event_from_json
@@ -28,7 +29,8 @@ import waitress
 from connections import github
 from tasks.build import check_build_permission, get_architecture_targets, get_repo_cfg, \
     request_bot_build_issue_comments, submit_build_jobs
-from tasks.deploy import deploy_built_artefacts
+from tasks.deploy import deploy_built_artefacts, determine_job_dirs
+from tasks.clean_up import move_to_trash_bin
 from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
@@ -598,6 +600,62 @@ class EESSIBotSoftwareLayer(PyGHee):
         print(log_file_info)
         self.log(log_file_info)
         waitress.serve(app, listen='*:%s' % port)
+
+    def handle_pull_request_closed_event(self, event_info, pr):
+        """
+        Handle events of type pull_request with the action 'closed'. Main action
+        is to scan directories used and move them to the trash_bin when the PR
+        is merged.
+
+        Args:
+        event_info (dict): event received by event_handler
+        pr (github.PullRequest.PullRequest): instance representing the pull request
+
+        Returns:
+        github.IssueComment.IssueComment instance or None (note, github refers to
+        PyGithub, not the github from the internal connections module)
+        """
+
+        # Detect event and only act if PR is merged
+        request_body = event_info['raw_request_body']
+        action = request_body['action']
+        merged = request_body['pull_request']['merged']
+
+        if merged:
+            self.log("PR merged: scanning directories used by PR")
+            self.log(f"pull_request event with action '{action}' and merged '{merged}' will be handled")
+        else:
+            self.log(f"Action '{action}' not handled as 'merged' is '{merged}'")
+            return
+        # at this point we know that we are handling a new merge
+        # NOTE: Permissions to merge are already handled through GitHub, we
+        # don't need to check here
+
+        # 1) determine the jobs that have been run for the PR
+        job_dirs = determine_job_dirs(pr.number)
+
+        # 2) Get trash_bin_dir from configs
+        trash_bin_root_dir = self.cfg[config.SECTION_MERGED_PR][config.MERGED_PR_SETTING_TRASH_BIN_ROOT_DIR]
+
+        repo_name = request_body['repository']['full_name']
+        dt = datetime.now(timezone.utc)
+        trash_bin_dir = "/".join([trash_bin_root_dir, repo_name, dt.strftime('%Y.%m.%d')])
+
+        # Subdirectory with date of move. Also with repository name. Handle symbolic links (later?)
+        # cron job deletes symlinks?
+
+        # 3) move the directories to the trash_bin
+        self.log("Moving directories to trash_bin")
+        move_to_trash_bin(trash_bin_dir, job_dirs)
+
+        # 4) report move to pull request
+        repo_name = pr.base.repo.full_name
+        gh = github.get_instance()
+        repo = gh.get_repo(repo_name)
+        pull_request = repo.get_pull(pr.number)
+        moved_comment = f"PR merged! Moved `{job_dirs}` to `{trash_bin_dir}`"
+        issue_comment = pull_request.create_issue_comment(moved_comment)
+        return issue_comment
 
 
 def main():
