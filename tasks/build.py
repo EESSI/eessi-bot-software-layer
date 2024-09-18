@@ -12,6 +12,7 @@
 # author: Lara Ramona Peeters (@laraPPr)
 # author: Pedro Santos Neves (@Neves-P)
 # author: Thomas Roeblitz (@trz42)
+# author: Sam Moors (@smoors)
 #
 # license: GPLv2
 #
@@ -32,6 +33,7 @@ from retry.api import retry_call
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
+import tools.filter as tools_filter
 
 
 # defaults (used if not specified via, eg, 'app.cfg')
@@ -45,7 +47,7 @@ _ERROR_GIT_CLONE = "curl"
 _ERROR_NONE = "none"
 
 
-Job = namedtuple('Job', ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id'))
+Job = namedtuple('Job', ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator'))
 
 # global repo_cfg
 repo_cfg = {}
@@ -65,11 +67,16 @@ def get_build_env_cfg(cfg):
     """
     fn = sys._getframe().f_code.co_name
 
+    config_data = {}
     buildenv = cfg[config.SECTION_BUILDENV]
+
+    job_name = buildenv.get(config.BUILDENV_SETTING_JOB_NAME)
+    log(f"{fn}(): job_name '{job_name}'")
+    config_data[config.BUILDENV_SETTING_JOB_NAME] = job_name
 
     jobs_base_dir = buildenv.get(config.BUILDENV_SETTING_JOBS_BASE_DIR)
     log(f"{fn}(): jobs_base_dir '{jobs_base_dir}'")
-    config_data = {config.BUILDENV_SETTING_JOBS_BASE_DIR: jobs_base_dir}
+    config_data[config.BUILDENV_SETTING_JOBS_BASE_DIR] = jobs_base_dir
 
     local_tmp = buildenv.get(config.BUILDENV_SETTING_LOCAL_TMP)
     log(f"{fn}(): local_tmp '{local_tmp}'")
@@ -337,7 +344,12 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         error_stage = _ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
-    curl_cmd = f'curl -L https://github.com/{repo_name}/pull/{pr.number}.diff > {pr.number}.diff'
+    curl_cmd = ' '.join([
+        'curl -L',
+        '-H "Accept: application/vnd.github.diff"',
+        '-H "X-GitHub-Api-Version: 2022-11-28"',
+        f'https://api.github.com/repos/{repo_name}/pulls/{pr.number} > {pr.number}.diff',
+    ])
     log(f'curl with command {curl_cmd}')
     curl_output, curl_error, curl_exit_code = run_cmd(
         curl_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
@@ -381,21 +393,21 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
 
         download_pr_comments_cfg = config.read_config()[config.SECTION_DOWNLOAD_PR_COMMENTS]
         if error_stage == _ERROR_GIT_CLONE:
-            download_comment = (f"`{download_pr_error}`"
+            download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE]}"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP]}")
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP]}")
         elif error_stage == _ERROR_GIT_CHECKOUT:
-            download_comment = (f"`{download_pr_error}`"
+            download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE]}"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP]}")
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP]}")
         elif error_stage == _ERROR_CURL:
-            download_comment = (f"`{download_pr_error}`"
+            download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE]}"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP]}")
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP]}")
         elif error_stage == _ERROR_GIT_APPLY:
-            download_comment = (f"`{download_pr_error}`"
+            download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
 
         download_comment = pr_comments.create_comment(
             repo_name=base_repo_name, pr_number=pr.number, comment=download_comment
@@ -468,6 +480,17 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     #      call to just before download_pr
     year_month, pr_id, run_dir = create_pr_dir(pr, cfg, event_info)
 
+    # determine accelerator from action_filter argument
+    accelerators = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_ACCEL)
+    if len(accelerators) == 1:
+        accelerator = accelerators[0]
+    elif len(accelerators) > 1:
+        log(f"{fn}(): found more than one ({len(accelerators)}) accelerator requirement")
+        accelerator = None
+    else:
+        log(f"{fn}(): found no accelerator requirement")
+        accelerator = None
+
     jobs = []
     for arch, slurm_opt in arch_map.items():
         arch_dir = arch.replace('/', '_')
@@ -495,6 +518,15 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                     continue
                 else:
                     log(f"{fn}(): context DOES satisfy filter(s), going on with job")
+            # we reached this point when the filter matched (otherwise we
+            # 'continue' with the next repository)
+            # for each match of the filter we create a specific job directory
+            #   however, matching CPU architectures works differently to handling
+            #   accelerators; multiple CPU architectures defined in arch_target_map
+            #   can match the (CPU) architecture component of a filter; in
+            #   contrast, the value of the accelerator filter is just passed down
+            #   to scripts in bot/ directory of the pull request (see function
+            #   prepare_job_cfg and creation of Job tuple below)
             job_dir = os.path.join(run_dir, arch_dir, repo_id)
             os.makedirs(job_dir, exist_ok=True)
             log(f"{fn}(): job_dir '{job_dir}'")
@@ -507,11 +539,14 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
             cpu_target = '/'.join(arch.split('/')[1:])
             os_type = arch.split('/')[0]
-            log(f"{fn}(): arch = '{arch}' => cpu_target = '{cpu_target}' , os_type = '{os_type}'")
-            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, cpu_target, os_type)
+
+            log(f"{fn}(): arch = '{arch}' => cpu_target = '{cpu_target}' , os_type = '{os_type}'"
+                f", accelerator = '{accelerator}'")
+
+            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, cpu_target, os_type, accelerator)
 
             # enlist jobs to proceed
-            job = Job(job_dir, arch, repo_id, slurm_opt, year_month, pr_id)
+            job = Job(job_dir, arch, repo_id, slurm_opt, year_month, pr_id, accelerator)
             jobs.append(job)
 
     log(f"{fn}(): {len(jobs)} jobs to proceed after applying white list")
@@ -521,7 +556,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     return jobs
 
 
-def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type):
+def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator):
     """
     Set up job configuration file 'job.cfg' in directory <job_dir>/cfg
 
@@ -532,6 +567,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         repo_id (string): identifier of the repository to build for
         software_subdir (string): software subdirectory to build for (e.g., 'x86_64/generic')
         os_type (string): type of the os (e.g., 'linux')
+        accelerator (string): defines accelerator to build for (e.g., 'nvidia/cc80')
 
     Returns:
         None (implicitly)
@@ -557,6 +593,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
     # [architecture]
     # software_subdir = software_subdir
     # os_type = os_type
+    # accelerator = accelerator
     job_cfg = configparser.ConfigParser()
     job_cfg[job_metadata.JOB_CFG_SITE_CONFIG_SECTION] = {}
     build_env_to_job_cfg_keys = {
@@ -601,6 +638,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
     job_cfg[job_cfg_arch_section] = {}
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_SOFTWARE_SUBDIR] = software_subdir
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_OS_TYPE] = os_type
+    job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_ACCELERATOR] = accelerator if accelerator else ''
 
     # copy contents of directory containing repository configuration to directory
     # containing job configuration/metadata
@@ -640,6 +678,10 @@ def submit_job(job, cfg):
 
     build_env_cfg = get_build_env_cfg(cfg)
 
+    # the job_name is used to filter jobs in case multiple bot
+    # instances run on the same system
+    job_name = cfg[config.SECTION_BUILDENV].get(config.BUILDENV_SETTING_JOB_NAME)
+
     # add a default time limit of 24h to the job submit command if no other time
     # limit is specified already
     all_opts_str = " ".join([build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS], job.slurm_opts])
@@ -649,13 +691,31 @@ def submit_job(job, cfg):
     else:
         time_limit = f"--time={DEFAULT_JOB_TIME_LIMIT}"
 
+    # update job.slurm_opts with det_submit_opts(job) in det_submit_opts.py if allowed and available
+    do_update_slurm_opts = False
+    allow_update_slurm_opts = cfg[config.SECTION_BUILDENV].getboolean(config.BUILDENV_SETTING_ALLOW_UPDATE_SUBMIT_OPTS)
+
+    if allow_update_slurm_opts:
+        sys.path.append(job.working_dir)
+
+        try:
+            from det_submit_opts import det_submit_opts  # pylint:disable=import-outside-toplevel
+            do_update_slurm_opts = True
+        except ImportError:
+            log(f"{fn}(): not updating job.slurm_opts: "
+                "cannot import function det_submit_opts from module det_submit_opts")
+
+    if do_update_slurm_opts:
+        job = job._replace(slurm_opts=det_submit_opts(job))
+        log(f"{fn}(): updated job.slurm_opts: {job.slurm_opts}")
+
     command_line = ' '.join([
         build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
         build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],
         time_limit,
-        job.slurm_opts,
-        build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT],
-    ])
+        job.slurm_opts] +
+        ([f"--job-name='{job_name}'"] if job_name else []) +
+        [build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT]])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,
                                                                "submit job for target '%s'" % job.arch_target,
@@ -698,11 +758,18 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
     # obtain arch from job.arch_target which has the format OS/ARCH
     arch_name = '-'.join(job.arch_target.split('/')[1:])
 
+    submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
+
+    # set string for accelerator if job.accelerator is defined/set (e.g., not None)
+    accelerator_spec_str = ''
+    if job.accelerator:
+        accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
+        accelerator_spec_str = accelerator_spec.format(accelerator=job.accelerator)
+
     # get current date and time
     dt = datetime.now(timezone.utc)
 
     # construct initial job comment
-    submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
     job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
                    f"\n|date|job status|comment|\n"
                    f"|----------|----------|------------------------|\n"
@@ -713,7 +780,8 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
                        arch_name=arch_name,
                        symlink=symlink,
                        repo_id=job.repo_id,
-                       job_id=job_id)
+                       job_id=job_id,
+                       accelerator_spec=accelerator_spec_str)
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name

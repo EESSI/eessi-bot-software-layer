@@ -10,6 +10,7 @@
 # author: Jacob Ziemke (@jacobz137)
 # author: Jonas Qvigstad (@jonas-lq)
 # author: Thomas Roeblitz (@trz42)
+# author: Sam Moors (@smoors)
 #
 # license: GPLv2
 #
@@ -36,6 +37,7 @@ BOT_CONTROL_SETTING_COMMAND_PERMISSION = 'command_permission'
 BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT = 'command_response_fmt'
 
 SECTION_BUILDENV = 'buildenv'
+BUILDENV_SETTING_ALLOW_UPDATE_SUBMIT_OPTS = 'allow_update_submit_opts'
 BUILDENV_SETTING_BUILD_JOB_SCRIPT = 'build_job_script'
 BUILDENV_SETTING_BUILD_LOGS_DIR = 'build_logs_dir'
 BUILDENV_SETTING_BUILD_PERMISSION = 'build_permission'
@@ -43,6 +45,7 @@ BUILDENV_SETTING_CONTAINER_CACHEDIR = 'container_cachedir'
 BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS = 'cvmfs_customizations'
 BUILDENV_SETTING_HTTPS_PROXY = 'https_proxy'
 BUILDENV_SETTING_HTTP_PROXY = 'http_proxy'
+BUILDENV_SETTING_JOB_NAME = 'job_name'
 BUILDENV_SETTING_JOBS_BASE_DIR = 'jobs_base_dir'
 BUILDENV_SETTING_LOAD_MODULES = 'load_modules'
 BUILDENV_SETTING_LOCAL_TMP = 'local_tmp'
@@ -102,8 +105,13 @@ SECTION_RUNNING_JOB_COMMENTS = 'running_job_comments'
 RUNNING_JOB_COMMENTS_SETTING_RUNNING_JOB = 'running_job'
 
 SECTION_SUBMITTED_JOB_COMMENTS = 'submitted_job_comments'
-SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT = 'initial_comment'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE = 'awaits_release'
+SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT = 'initial_comment'
+SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR = 'with_accelerator'
+
+SECTION_CLEAN_UP = 'clean_up'
+CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR = 'trash_bin_dir'
+CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT = 'moved_job_dirs_comment'
 
 
 def read_config(path='app.cfg'):

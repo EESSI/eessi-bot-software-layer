@@ -50,6 +50,8 @@ from tools.pr_comments import get_submitted_job_comment, update_comment
 
 # settings that are required in 'app.cfg'
 REQUIRED_CONFIG = {
+    config.SECTION_BUILDENV: [
+        config.BUILDENV_SETTING_JOB_NAME],                            # required
     config.SECTION_FINISHED_JOB_COMMENTS: [
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT,  # required
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT],   # required
@@ -85,6 +87,10 @@ class EESSIBotSoftwareLayerJobManager:
         cfg = config.read_config()
         job_manager_cfg = cfg[config.SECTION_JOB_MANAGER]
         self.logfile = job_manager_cfg.get(config.JOB_MANAGER_SETTING_LOG_PATH)
+        buildenv_cfg = cfg[config.SECTION_BUILDENV]
+        self.job_name = buildenv_cfg.get(config.BUILDENV_SETTING_JOB_NAME)
+        if self.job_name and len(self.job_name) < 3:
+            raise Exception(f"job name ({self.job_name}) is shorter than 3 characters")
 
     def get_current_jobs(self):
         """
@@ -106,6 +112,8 @@ class EESSIBotSoftwareLayerJobManager:
             raise Exception("Unable to find username")
 
         squeue_cmd = "%s --long --noheader --user=%s" % (self.poll_command, username)
+        if self.job_name:
+            squeue_cmd += " --name='%s'" % self.job_name
         squeue_output, squeue_err, squeue_exitcode = run_cmd(
             squeue_cmd,
             "get_current_jobs(): squeue command",

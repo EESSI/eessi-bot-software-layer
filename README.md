@@ -376,6 +376,13 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_name = JOB_NAME
+```
+Replace `JOB_NAME` with a string of at least 3 characters that is used as job
+name when a job is submitted. This is used to filter jobs, e.g., should be used
+to make sure that multiple bot instances can run in the same Slurm environment.
+
+```
 jobs_base_dir = PATH_TO_JOBS_BASE_DIR
 ```
 Replace `PATH_TO_JOBS_BASE_DIR` with an absolute filepath like `/home/YOUR_USER_NAME/jobs` (or another path of your choice). Per job the directory structure under `jobs_base_dir` is `YYYY.MM/pr_PR_NUMBER/event_EVENT_ID/run_RUN_NUMBER/OS+SUBDIR`. The base directory will contain symlinks using the job ids pointing to the job's working directory `YYYY.MM/...`.
@@ -418,6 +425,13 @@ no_build_permission_comment = The `bot: build ...` command has been used by user
 ```
 `no_build_permission_comment` defines a comment (template) that is used when
 the account trying to trigger build jobs has no permission to do so.
+
+```
+allow_update_submit_opts = false
+```
+`allow_update_submit_opts` determines whether or not to allow updating the submit
+options via custom module `det_submit_opts` provided by the pull request being
+processed.
 
 
 #### `[bot_control]` section
@@ -632,15 +646,22 @@ scontrol_command = /usr/bin/scontrol
 
 The `[submitted_job_comments]` section specifies templates for messages about newly submitted jobs.
 ```
-initial_comment = New job on instance `{app_name}` for architecture `{arch_name}` for repository `{repo_id}` in job dir `{symlink}`
-```
-`initial_comment` is used to create a comment to a PR when a new job has been created.
-
-```
 awaits_release = job id `{job_id}` awaits release by job manager
 ```
 `awaits_release` is used to provide a status update of a job (shown as a row in the job's status
 table).
+
+```
+initial_comment = New job on instance `{app_name}` for architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
+```
+`initial_comment` is used to create a comment to a PR when a new job has been
+created. Note, the part '{accelerator_spec}' is only filled-in by the bot if the
+argument 'accelerator' to the `bot: build` command has been used.
+```
+with_accelerator = &nbsp;and accelerator `{accelerator}`
+```
+`with_accelerator` is used to provide information about the accelerator the job
+should build for if and only if the argument `accelerator:X/Y` has been provided.
 
 #### `[new_job_comments]` section
 
@@ -720,6 +741,21 @@ git_apply_tip = _Tip: This can usually be resolved by syncing your branch and re
 `git_apply_tip` should guide the contributor/maintainer about resolving the cause
 of `git apply` failing.
 
+#### `[clean_up]` section
+
+The `[clean_up]` section includes settings related to cleaning up disk used by merged (and closed) PRs.
+```
+trash_bin_dir = PATH/TO/TRASH_BIN_DIRECTORY
+```
+Ideally this is on the same filesystem used by `jobs_base_dir` and `job_ids_dir` to efficiently move data
+into the trash bin. If it resides on a different filesystem, the data will be copied.
+
+```
+moved_job_dirs_comment = PR merged! Moved `{job_dirs}` to `{trash_bin_dir}`
+```
+Template that is used by the bot to add a comment to a PR noting down which directories have been
+moved and where.
+
 # Instructions to run the bot components
 
 The bot consists of three components:
@@ -784,3 +820,26 @@ The job manager can run on a different machine than the event handler, as long a
 
 For information on how to make pull requests and let the bot build software, see
 [the bot section of the EESSI documentation](https://www.eessi.io/docs/bot/).
+
+# Private target repos
+
+Both Git and Curl need to have access to the target repo. A convenient way to
+access a private repo via a Github token is by adding the following lines to
+your `~/.netrc` and `~/.curlrc` files:
+
+```
+# ~/.netrc
+machine github.com
+login oauth
+password <Github token>
+
+machine api.github.com
+login oauth
+password <Github token>
+```
+
+```
+# ~/.curlrc
+--netrc
+```
+

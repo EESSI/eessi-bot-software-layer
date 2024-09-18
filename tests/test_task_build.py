@@ -282,7 +282,7 @@ def test_create_pr_comment_succeeds(mocked_github, tmpdir):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number)
+    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
 
     job_id = "123"
     app_name = "pytest"
@@ -311,7 +311,7 @@ def test_create_pr_comment_succeeds_none(mocked_github, tmpdir):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number)
+    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
 
     job_id = "123"
     app_name = "pytest"
@@ -336,7 +336,7 @@ def test_create_pr_comment_raises_once_then_succeeds(mocked_github, tmpdir):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number)
+    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
 
     job_id = "123"
     app_name = "pytest"
@@ -361,7 +361,7 @@ def test_create_pr_comment_always_raises(mocked_github, tmpdir):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number)
+    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
 
     job_id = "123"
     app_name = "pytest"
@@ -387,7 +387,7 @@ def test_create_pr_comment_three_raises(mocked_github, tmpdir):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number)
+    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
 
     job_id = "123"
     app_name = "pytest"
@@ -409,7 +409,7 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
     # create some test data
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 999
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number)
+    job = Job(tmpdir, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic")
 
     job_id = "123"
 
@@ -440,14 +440,14 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
 
     # use directory that does not exist
     dir_does_not_exist = os.path.join(tmpdir, "dir_does_not_exist")
-    job2 = Job(dir_does_not_exist, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number)
+    job2 = Job(dir_does_not_exist, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic")
     job_id2 = "222"
     with pytest.raises(FileNotFoundError):
         create_metadata_file(job2, job_id2, pr_comment)
 
     # use directory without write permission
     dir_without_write_perm = os.path.join("/")
-    job3 = Job(dir_without_write_perm, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number)
+    job3 = Job(dir_without_write_perm, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic")
     job_id3 = "333"
     with pytest.raises(OSError):
         create_metadata_file(job3, job_id3, pr_comment)
@@ -457,7 +457,7 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
 
     # use undefined values for parameters
     # job_id = None
-    job4 = Job(tmpdir, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number)
+    job4 = Job(tmpdir, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic")
     job_id4 = None
     create_metadata_file(job4, job_id4, pr_comment)
 
@@ -472,7 +472,7 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
 
     # use undefined values for parameters
     # job.working_dir = None
-    job5 = Job(None, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number)
+    job5 = Job(None, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic")
     job_id5 = "555"
     with pytest.raises(TypeError):
         create_metadata_file(job5, job_id5, pr_comment)

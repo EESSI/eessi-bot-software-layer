@@ -10,6 +10,7 @@
 # author: Jonas Qvigstad (@jonas-lq)
 # author: Pedro Santos Neves (@Neves-P)
 # author: Thomas Roeblitz (@trz42)
+# author: Sam Moors (@smoors)
 #
 # license: GPLv2
 #
@@ -87,6 +88,10 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# Used to give all jobs of a bot instance the same name. Can be used to allow
+# multiple bot instances running on the same Slurm cluster.
+job_name = prod
+
 # directory under which the bot prepares directories per job
 #   structure created is as follows: YYYY.MM/pr_PR_NUMBER/event_EVENT_ID/run_RUN_NUMBER/OS+SUBDIR
 jobs_base_dir = $HOME/jobs
@@ -123,6 +128,9 @@ build_permission =
 
 # template for comment when user who set a label has no permission to trigger build jobs
 no_build_permission_comment = Label `bot:build` has been set by user `{build_labeler}`, but this person does not have permission to trigger builds
+
+# whether or not to allow updating the submit options via custom module det_submit_opts
+allow_update_submit_opts = false
 
 
 [deploycfg]
@@ -235,8 +243,9 @@ scontrol_command = /usr/bin/scontrol
 #         are removed, the output (in PR comments) will lack important
 #         information.
 [submitted_job_comments]
-initial_comment = New job on instance `{app_name}` for architecture `{arch_name}` for repository `{repo_id}` in job dir `{symlink}`
 awaits_release = job id `{job_id}` awaits release by job manager
+initial_comment = New job on instance `{app_name}` for CPU micro-architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
+with_accelerator = &nbsp;and accelerator `{accelerator}`
 
 
 [new_job_comments]
@@ -259,3 +268,7 @@ curl_failure = Unable to download the `.diff` file.
 curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
+
+[clean_up]
+trash_bin_dir = $HOME/trash_bin
+moved_job_dirs_comment = PR merged! Moved `{job_dirs}` to `{trash_bin_dir}`

@@ -12,12 +12,15 @@
 # author: Jonas Qvigstad (@jonas-lq)
 # author: Lara Ramona Peeters (@laraPPr)
 # author: Thomas Roeblitz (@trz42)
+# author: Pedro Santos Neves (@Neves-P)
+# author: Sam Moors (@smoors)
 #
 # license: GPLv2
 #
 
 # Standard library imports
 import sys
+from datetime import datetime, timezone
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.lib import create_app, get_event_info, PyGHee, read_event_from_json
@@ -28,7 +31,8 @@ import waitress
 from connections import github
 from tasks.build import check_build_permission, get_architecture_targets, get_repo_cfg, \
     request_bot_build_issue_comments, submit_build_jobs
-from tasks.deploy import deploy_built_artefacts
+from tasks.deploy import deploy_built_artefacts, determine_job_dirs
+from tasks.clean_up import move_to_trash_bin
 from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
@@ -44,6 +48,7 @@ REQUIRED_CONFIG = {
         config.BOT_CONTROL_SETTING_COMMAND_PERMISSION,             # required
         config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT],          # required
     config.SECTION_BUILDENV: [
+        # config.BUILDENV_SETTING_ALLOW_UPDATE_SUBMIT_OPTS           # optional
         config.BUILDENV_SETTING_BUILD_JOB_SCRIPT,                  # required
         config.BUILDENV_SETTING_BUILD_LOGS_DIR,                    # optional+recommended
         config.BUILDENV_SETTING_BUILD_PERMISSION,                  # optional+recommended
@@ -51,6 +56,7 @@ REQUIRED_CONFIG = {
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
         # config.BUILDENV_SETTING_HTTP_PROXY,                        # optional
+        config.BUILDENV_SETTING_JOB_NAME,                          # required
         config.BUILDENV_SETTING_JOBS_BASE_DIR,                     # required
         # config.BUILDENV_SETTING_LOAD_MODULES,                      # optional
         config.BUILDENV_SETTING_LOCAL_TMP,                         # required
@@ -58,6 +64,9 @@ REQUIRED_CONFIG = {
         config.BUILDENV_SETTING_SHARED_FS_PATH,                    # optional+recommended
         # config.BUILDENV_SETTING_SLURM_PARAMS,                      # optional
         config.BUILDENV_SETTING_SUBMIT_COMMAND],                   # required
+    config.SECTION_CLEAN_UP: [
+        config.CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR,                # required
+        config.CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT],           # required
     config.SECTION_DEPLOYCFG: [
         config.DEPLOYCFG_SETTING_ARTEFACT_PREFIX,                  # (required)
         config.DEPLOYCFG_SETTING_ARTEFACT_UPLOAD_SCRIPT,           # required
@@ -88,7 +97,8 @@ REQUIRED_CONFIG = {
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required
     config.SECTION_SUBMITTED_JOB_COMMENTS: [
         config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,     # required
-        config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE]      # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE,      # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR],   # required
     }
 
 
@@ -598,6 +608,61 @@ class EESSIBotSoftwareLayer(PyGHee):
         print(log_file_info)
         self.log(log_file_info)
         waitress.serve(app, listen='*:%s' % port)
+
+    def handle_pull_request_closed_event(self, event_info, pr):
+        """
+        Handle events of type pull_request with the action 'closed'. It
+        determines used by the PR and moves them to the trash_bin. It also adds
+        information to the logs and a comment to the PR.
+
+        Args:
+        event_info (dict): event received by event_handler
+        pr (github.PullRequest.PullRequest): instance representing the pull request
+
+        Returns:
+        github.IssueComment.IssueComment instance or None (note, github refers to
+        PyGithub, not the github from the internal connections module)
+        """
+
+        # Detect event and report if PR was merged or closed
+        request_body = event_info['raw_request_body']
+        # next value: True -> PR merged, False -> PR closed
+        mergedOrClosed = request_body['pull_request']['merged']
+        status = "merged" if mergedOrClosed else "closed"
+
+        self.log(f"PR {pr.number}: PR got {status} (json value: {mergedOrClosed})")
+
+        # 1) determine the jobs that have been run for the PR
+        self.log(f"PR {pr.number}: determining directories to be moved to trash bin")
+        job_dirs = determine_job_dirs(pr.number)
+
+        # 2) Get trash_bin_dir from configs
+        trash_bin_root_dir = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR]
+
+        repo_name = request_body['repository']['full_name']
+        dt_start = datetime.now(timezone.utc)
+        trash_bin_dir = "/".join([trash_bin_root_dir, repo_name, dt_start.strftime('%Y.%m.%d')])
+
+        # Subdirectory with date of move. Also with repository name. Handle symbolic links (later?)
+        # cron job deletes symlinks?
+
+        # 3) move the directories to the trash_bin
+        self.log(f"PR {pr.number}: moving directories to trash bin {trash_bin_dir}")
+        move_to_trash_bin(trash_bin_dir, job_dirs)
+        dt_end = datetime.now(timezone.utc)
+        dt_delta = dt_end - dt_start
+        seconds_elapsed = dt_delta.days * 24 * 3600 + dt_delta.seconds
+        self.log(f"PR {pr.number}: moved directories to trash bin {trash_bin_dir} (took {seconds_elapsed} seconds)")
+
+        # 4) report move to pull request
+        repo_name = pr.base.repo.full_name
+        gh = github.get_instance()
+        repo = gh.get_repo(repo_name)
+        pull_request = repo.get_pull(pr.number)
+        clean_up_comment = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT]
+        moved_comment = clean_up_comment.format(job_dirs=job_dirs, trash_bin_dir=trash_bin_dir)
+        issue_comment = pull_request.create_issue_comment(moved_comment)
+        return issue_comment
 
 
 def main():
