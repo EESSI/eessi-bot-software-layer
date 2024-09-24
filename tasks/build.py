@@ -83,7 +83,17 @@ def get_build_env_cfg(cfg):
     config_data[config.BUILDENV_SETTING_LOCAL_TMP] = local_tmp
 
     build_job_script = buildenv.get(config.BUILDENV_SETTING_BUILD_JOB_SCRIPT)
-    log(f"{fn}(): build_job_script '{build_job_script}'")
+    # figure out whether path to build job script is just a path in current directory (path/to/job_script),
+    # or a location in another Git repository (path/to/job_script@repo)
+    if '@' in build_job_script:
+        build_job_script_path, build_job_script_repo = build_job_script.split('@', 1)
+        log(f"{fn}(): build_job_script '{build_job_script_path}' in repo {build_job_script_repo}")
+        build_job_script = {
+            'path': build_job_script_path,
+            'repo': build_job_script_repo,
+        }
+    else:
+        log(f"{fn}(): build_job_script '{build_job_script}'")
     config_data[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT] = build_job_script
 
     submit_command = buildenv.get(config.BUILDENV_SETTING_SUBMIT_COMMAND)
@@ -302,6 +312,19 @@ def create_pr_dir(pr, cfg, event_info):
     return year_month, pr_id, run_dir
 
 
+def clone_git_repo(repo, path):
+    """
+    Clone specified Git repo to specified path
+    """
+    git_clone_cmd = ' '.join(['git clone', repo, path])
+    log(f'cloning with command {git_clone_cmd}')
+    clone_output, clone_error, clone_exit_code = run_cmd(
+        git_clone_cmd, "Clone repo", path, raise_on_error=False
+        )
+
+    return (clone_output, clone_error, clone_exit_code)
+
+
 def download_pr(repo_name, branch_name, pr, arch_job_dir):
     """
     Download pull request to job working directory
@@ -323,11 +346,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
     # - 'git checkout' base branch of pull request
     # - 'curl' diff for pull request
     # - 'git apply' diff file
-    git_clone_cmd = ' '.join(['git clone', f'https://github.com/{repo_name}', arch_job_dir])
-    log(f'cloning with command {git_clone_cmd}')
-    clone_output, clone_error, clone_exit_code = run_cmd(
-        git_clone_cmd, "Clone repo", arch_job_dir, raise_on_error=False
-        )
+    clone_output, clone_error, clone_exit_code = clone_git_repo(f'https://github.com/{repo_name}', arch_job_dir)
     if clone_exit_code != 0:
         error_stage = _ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
@@ -709,13 +728,50 @@ def submit_job(job, cfg):
         job = job._replace(slurm_opts=det_submit_opts(job))
         log(f"{fn}(): updated job.slurm_opts: {job.slurm_opts}")
 
+    build_job_script = build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT]
+    if isinstance(build_job_script, str):
+        build_job_script_path = build_job_script
+        log(f"{fn}(): path to build job script: {build_job_script_path}")
+    elif isinstance(build_job_script, dict):
+        build_job_script_repo = build_job_script.get('repo')
+        if build_job_script_repo:
+            log(f"{fn}(): repository in which build job script is located: {build_job_script_repo}")
+        else:
+            error(f"Failed to determine repository in which build job script is located from: {build_job_script}")
+
+        build_job_script_path = build_job_script.get('path')
+        if build_job_script_path:
+            log(f"{fn}(): path to build job script in repository: {build_job_script_path}")
+        else:
+            error(f"Failed to determine path of build job script in repository from: {build_job_script}")
+
+        # clone repo to temporary directory, and correctly set path to build job script
+        repo_subdir = build_job_script_repo.split('/')[-1]
+        if repo_subdir.endswith('.git'):
+            repo_subdir = repo_subdir[:-4]
+        target_dir = os.path.join(job.working_dir, repo_subdir)
+        os.makedirs(target_dir, exist_ok=True)
+
+        clone_output, clone_error, clone_exit_code = clone_git_repo(build_job_script_repo, target_dir)
+        if clone_exit_code == 0:
+            log(f"{fn}(): repository {build_job_script_repo} cloned to {target_dir}")
+        else:
+            error(f"Failed to clone repository {build_job_script_repo}: {clone_error}")
+
+        build_job_script_path = os.path.join(target_dir, build_job_script_path)
+    else:
+        error(f"Incorrect build job script specification, unknown type: {build_job_script}")
+
+    if not os.path.exists(build_job_script_path):
+        error(f"Build job script not found at {build_job_script_path}")
+
     command_line = ' '.join([
         build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
         build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],
         time_limit,
         job.slurm_opts] +
         ([f"--job-name='{job_name}'"] if job_name else []) +
-        [build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT]])
+        [build_job_script_path])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,
                                                                "submit job for target '%s'" % job.arch_target,
