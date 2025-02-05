@@ -307,7 +307,7 @@ class EESSIBotSoftwareLayerJobManager:
         )
 
         # parse output of 'scontrol_cmd'
-        job_info = parse_scontrol_show_job_output(str(scontrol_output))
+        job_info = self.parse_scontrol_show_job_output(str(scontrol_output))
 
         # check if job_info contains 'WorkDir', if not we cannot process the job
         # further
