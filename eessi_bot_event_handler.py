@@ -56,6 +56,7 @@ REQUIRED_CONFIG = {
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
         # config.BUILDENV_SETTING_HTTP_PROXY,                        # optional
+        config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL,             # required
         config.BUILDENV_SETTING_JOB_NAME,                          # required
         config.BUILDENV_SETTING_JOBS_BASE_DIR,                     # required
         # config.BUILDENV_SETTING_LOAD_MODULES,                      # optional
@@ -92,6 +93,10 @@ REQUIRED_CONFIG = {
         config.GITHUB_SETTING_APP_NAME,                            # required
         config.GITHUB_SETTING_INSTALLATION_ID,                     # required
         config.GITHUB_SETTING_PRIVATE_KEY],                        # required
+    # the poll interval setting is required for the alternative job handover
+    # protocol (delayed_begin)
+    config.SECTION_JOB_MANAGER: [
+        config.JOB_MANAGER_SETTING_POLL_INTERVAL],                 # required
     config.SECTION_REPO_TARGETS: [
         config.REPO_TARGETS_SETTING_REPO_TARGET_MAP,               # required
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required

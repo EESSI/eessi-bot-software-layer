@@ -46,6 +46,7 @@ BUILDENV_SETTING_CONTAINER_CACHEDIR = 'container_cachedir'
 BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS = 'cvmfs_customizations'
 BUILDENV_SETTING_HTTPS_PROXY = 'https_proxy'
 BUILDENV_SETTING_HTTP_PROXY = 'http_proxy'
+BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL = 'job_handover_protocol'
 BUILDENV_SETTING_JOB_NAME = 'job_name'
 BUILDENV_SETTING_JOBS_BASE_DIR = 'jobs_base_dir'
 BUILDENV_SETTING_LOAD_MODULES = 'load_modules'
@@ -113,6 +114,14 @@ SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR = 'with_accelerator'
 SECTION_CLEAN_UP = 'clean_up'
 CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR = 'trash_bin_dir'
 CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT = 'moved_job_dirs_comment'
+
+# definition of values
+JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN = 'job_handover_protocol:delayed_begin'
+JOB_HANDOVER_PROTOCOL_HOLD_RELEASE = 'job_handover_protocol:hold_release'
+JOB_HANDOVER_PROTOCOLS_SET = {
+    JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN,
+    JOB_HANDOVER_PROTOCOL_HOLD_RELEASE
+}
 
 
 def read_config(path='app.cfg'):

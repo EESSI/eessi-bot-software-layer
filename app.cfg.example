@@ -88,6 +88,17 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# The job_handover_protocol setting defines which method is used to handover a
+# job from the event handler to the job manager. Values are
+#  - hold_release (job is submitted with '--hold', job manager removes the hold
+#    with 'scontrol release')
+#  - delayed_begin (job is submitted with '--begin=now+(5 * poll_interval)' and
+#    any '--hold' is removed from the submission parameters); this is useful if the
+#    bot account cannot run 'scontrol release' to remove the hold of the job;
+#    also, the status update in the PR comment of the job is extended by noting
+#    the 'EligibleTime'
+job_handover_protocol = hold_release
+
 # Used to give all jobs of a bot instance the same name. Can be used to allow
 # multiple bot instances running on the same Slurm cluster.
 job_name = prod
@@ -253,7 +264,7 @@ with_accelerator = &nbsp;and accelerator `{accelerator}`
 
 
 [new_job_comments]
-awaits_launch = job awaits launch by Slurm scheduler 
+awaits_launch = job awaits launch by Slurm scheduler{extra_info} 
 
 [running_job_comments]
 running_job = job `{job_id}` is running

@@ -102,9 +102,28 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): submit_command '{submit_command}'")
     config_data[config.BUILDENV_SETTING_SUBMIT_COMMAND] = submit_command
 
+    job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
     slurm_params = buildenv.get(config.BUILDENV_SETTING_SLURM_PARAMS)
-    # always submit jobs with hold set, so job manager can release them
-    slurm_params += ' --hold'
+    if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
+        # always submit jobs with hold set, so job manager can release them
+        slurm_params += ' --hold'
+    elif job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
+        # alternative method to submit without '--hold' and
+        # '--begin=now+5*poll_interval' instead
+        # 1. remove '--hold' if any
+        # 2. add '--begin=now+5*poll_interval'
+        slurm_params = slurm_params.replace('--hold', '')
+        job_manger_cfg = cfg[config.SECTION_JOB_MANAGER]
+        poll_interval = int(job_manger_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
+        slurm_params += f' --begin=now+{5 * poll_interval}'
+    else:
+        slurm_params += ' --hold'
+        log(
+            f"{fn}(): unknown job handover protocol in app.cfg"
+            f" ('{config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL} = {job_handover_protocol}');"
+            f" added '--hold' as default"
+        )
+
     log(f"{fn}(): slurm_params '{slurm_params}'")
     config_data[config.BUILDENV_SETTING_SLURM_PARAMS] = slurm_params
 

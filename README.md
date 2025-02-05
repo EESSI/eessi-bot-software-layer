@@ -376,6 +376,20 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_handover_protocol = hold_release
+```
+The `job_handover_protocol` setting defines which method is used to handover a
+job from the event handler to the job manager. Values are
+ - `hold_release` (job is submitted with `--hold`, job manager removes the hold
+   with `scontrol release`)
+ - `delayed_begin` (job is submitted with `--begin=now+(5 * poll_interval)` and
+    any `--hold` is removed from the submission parameters); see setting
+    `poll_interval` further below; this is useful if the
+    bot account cannot run `scontrol release` to remove the hold of the job;
+    also, the status update in the PR comment of the job is extended by noting
+    the `EligibleTime`
+
+```
 job_name = JOB_NAME
 ```
 Replace `JOB_NAME` with a string of at least 3 characters that is used as job

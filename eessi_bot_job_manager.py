@@ -51,6 +51,7 @@ from tools.pr_comments import get_submitted_job_comment, update_comment
 # settings that are required in 'app.cfg'
 REQUIRED_CONFIG = {
     config.SECTION_BUILDENV: [
+        config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL,                # required
         config.BUILDENV_SETTING_JOB_NAME],                            # required
     config.SECTION_FINISHED_JOB_COMMENTS: [
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT,  # required
@@ -91,6 +92,9 @@ class EESSIBotSoftwareLayerJobManager:
         self.job_name = buildenv_cfg.get(config.BUILDENV_SETTING_JOB_NAME)
         if self.job_name and len(self.job_name) < 3:
             raise Exception(f"job name ({self.job_name}) is shorter than 3 characters")
+        self.job_handover_protocol = buildenv_cfg.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+        if self.job_handover_protocol not in config.JOB_HANDOVER_PROTOCOLS_SET:
+            raise Exception(f"job handover protocol ({self.job_handover_protocol}) is unknown")
 
     def get_current_jobs(self):
         """
@@ -256,6 +260,25 @@ class EESSIBotSoftwareLayerJobManager:
 
         return finished_jobs
 
+    def parse_scontrol_show_job_output(self, output):
+        """
+        The output of 'scontrol --oneliner show job' is a list of key=value pairs
+        separated by whitespaces.
+
+        Args:
+            output (string): the output of the scontrol command
+
+        Returns:
+            (dict): Returns a dictionary of the key-value pairs
+        """
+        job_info = {}
+        stripped_output = output.strip()
+        for pair in stripped_output.split():
+            key, value = pair.split('=', 1)
+            job_info[key] = value
+
+        return job_info
+
     def process_new_job(self, new_job):
         """
         Process a new job by verifying that it is a bot job and if so
@@ -283,19 +306,20 @@ class EESSIBotSoftwareLayerJobManager:
             log_file=self.logfile,
         )
 
-        # parse output of 'scontrol_cmd' to determine the job's working
-        # directory
-        match = re.search(r".* WorkDir=(\S+) .*",
-                          str(scontrol_output))
-        if match:
+        # parse output of 'scontrol_cmd'
+        job_info = parse_scontrol_show_job_output(str(scontrol_output))
+
+        # check if job_info contains 'WorkDir', if not we cannot process the job
+        # further
+        if 'WorkDir' in job_info:
             log(
                 "process_new_job(): work dir of job %s: '%s'"
-                % (job_id, match.group(1)),
+                % (job_id, job_info['WorkDir']),
                 self.logfile,
             )
 
             job_metadata_path = "%s/_bot_job%s.metadata" % (
-                match.group(1),
+                job_info['WorkDir'],
                 job_id,
             )
 
@@ -313,21 +337,34 @@ class EESSIBotSoftwareLayerJobManager:
             symlink_source = os.path.join(self.submitted_jobs_dir, job_id)
             log(
                 "process_new_job(): create a symlink: %s -> %s"
-                % (symlink_source, match.group(1)),
+                % (symlink_source, job_info['WorkDir']),
                 self.logfile,
             )
-            os.symlink(match.group(1), symlink_source)
+            os.symlink(job_info['WorkDir'], symlink_source)
 
-            release_cmd = "%s release %s" % (
-                self.scontrol_command,
-                job_id,
-            )
+            # handle different job handover protocols
+            #   *_HOLD_RELEASE: job was submitted with '--hold' and shall be
+            #                   released with 'scontrol release JOB_ID'
+            #   *_DELAYED_BEGIN: job was submitted with '--begin=now+SOMEDELAY',
+            #                   no extra action is needed
+            job_status = ''
+            extra_info = ''
+            if self.job_handover_protocol == config.JOB_HANDOVER_HOLD_RELEASE:
+                release_cmd = "%s release %s" % (
+                    self.scontrol_command,
+                    job_id,
+                )
 
-            release_output, release_err, release_exitcode = run_cmd(
-                release_cmd,
-                "process_new_job(): scontrol command",
-                log_file=self.logfile,
-            )
+                release_output, release_err, release_exitcode = run_cmd(
+                    release_cmd,
+                    "process_new_job(): scontrol command",
+                    log_file=self.logfile,
+                )
+                job_status = 'released'
+                extra_info = ''
+            elif self.job_handover_protocol == config.JOB_HANDOVER_DELAYED_BEGIN:
+                job_status = 'received'
+                extra_info = " (eligible to start from {job_info['EligibleTime'})"
 
             # update PR defined by repo and pr_number stored in the job's
             # metadata file
@@ -356,8 +393,9 @@ class EESSIBotSoftwareLayerJobManager:
             if "comment_id" in new_job:
                 new_job_comments_cfg = config.read_config()[config.SECTION_NEW_JOB_COMMENTS]
                 dt = datetime.now(timezone.utc)
-                update = "\n|%s|released|" % dt.strftime("%b %d %X %Z %Y")
-                update += f"{new_job_comments_cfg[config.NEW_JOB_COMMENTS_SETTING_AWAITS_LAUNCH]}|"
+                update = "\n|%s|%s|" % (dt.strftime("%b %d %X %Z %Y"), job_status)
+                description_col_fmt = new_job_comments_cfg[config.NEW_JOB_COMMENTS_SETTING_AWAITS_LAUNCH]
+                update += f"{description_col_fmt.format(extra_info=extra_info)}|"
                 update_comment(new_job["comment_id"], pr, update)
             else:
                 log(
