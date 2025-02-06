@@ -388,8 +388,11 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     elif clone_via == 'ssh':
         repo_url = f'git@github.com:{repo_name}.git'
     else:
+        clone_output = ''
+        clone_error = f"Unknown mechanism to clone Git repo: {clone_via}"
+        clone_exit_code = 1
         error_stage = _ERROR_GIT_CLONE
-        return '', f"Unknown mechanism to clone Git repo: {clone_via}", 1, error_stage
+        return clone_output, clone_error, clone_exit_code, error_stage
 
     clone_output, clone_error, clone_exit_code = clone_git_repo(repo_url, arch_job_dir)
     if clone_exit_code != 0:
@@ -417,7 +420,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         )
     if git_diff_exit_code != 0:
         error_stage = _ERROR_GIT_DIFF
-        return git_diff_output, git_diff_error, git_diff_exit_code
+        return git_diff_output, git_diff_error, git_diff_exit_code, error_stage
 
     git_apply_cmd = f'git apply {pr.number}.diff'
     log(f'git apply with command {git_apply_cmd}')
