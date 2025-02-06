@@ -44,6 +44,7 @@ _ERROR_CURL = "curl"
 _ERROR_GIT_APPLY = "git apply"
 _ERROR_GIT_CHECKOUT = "git checkout"
 _ERROR_GIT_CLONE = "curl"
+_ERROR_GIT_DIFF = "git diff"
 _ERROR_NONE = "none"
 
 # other constants
@@ -355,7 +356,7 @@ def clone_git_repo(repo, path):
     return (clone_output, clone_error, clone_exit_code)
 
 
-def download_pr(repo_name, branch_name, pr, arch_job_dir):
+def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     """
     Download pull request to job working directory
 
@@ -364,6 +365,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         branch_name (string): name of the base branch of the pull request
         pr (github.PullRequest.PullRequest): instance representing the pull request
         arch_job_dir (string): working directory of the job to be submitted
+        clone_via (string): mechanism to clone Git repository, should be 'https' (default) or 'ssh'
 
     Returns:
         None (implicitly), in case an error is caught in the git clone, git checkout, curl,
@@ -376,7 +378,15 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
     # - 'git checkout' base branch of pull request
     # - 'curl' diff for pull request
     # - 'git apply' diff file
-    clone_output, clone_error, clone_exit_code = clone_git_repo(f'https://github.com/{repo_name}', arch_job_dir)
+    if clone_via in (None, 'https'):
+        repo_url = f'https://github.com/{repo_name}'
+    elif clone_via == 'ssh':
+        repo_url = f'git@github.com:{repo_name}.git'
+    else:
+        error_stage = _ERROR_GIT_CLONE
+        return '', f"Unknown mechanism to clone Git repo: {clone_via}", 1, error_stage
+
+    clone_output, clone_error, clone_exit_code = clone_git_repo(repo_url, arch_job_dir)
     if clone_exit_code != 0:
         error_stage = _ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
@@ -406,6 +416,17 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
     if curl_exit_code != 0:
         error_stage = _ERROR_CURL
         return curl_output, curl_error, curl_exit_code, error_stage
+
+    git_diff_cmd = ' '.join([
+        f"git fetch origin pull/{pr.number}/head:{pr.number}",
+        f"git diff HEAD pr{pr.number} > {pr.number}.diff",
+    ])
+    git_diff_output, git_diff_error, git_diff_exit_code = run_cmd(
+        git_diff_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
+        )
+    if git_diff_exit_code != 0:
+        error_stage = _ERROR_GIT_DIFF
+        return git_diff_output, git_diff_error, git_diff_exit_code
 
     git_apply_cmd = f'git apply {pr.number}.diff'
     log(f'git apply with command {git_apply_cmd}')
@@ -615,8 +636,9 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             log(f"{fn}(): job_dir '{job_dir}'")
 
             # TODO optimisation? download once, copy and cleanup initial copy?
+            clone_git_repo_via = build_env_cfg.get(BUILDENV_SETTING_CLONE_GIT_REPO_VIA)
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
-                base_repo_name, base_branch_name, pr, job_dir
+                base_repo_name, base_branch_name, pr, job_dir, clone_via=clone_git_repo_via,
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg

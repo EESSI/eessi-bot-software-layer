@@ -443,6 +443,15 @@ variables) that are allowed to be specified in a PR command with the
 be exported into the build environment before running the bot/build.sh script.
 
 
+```
+clone_git_repo_via = 'https'
+```
+
+The `clone_git_repo_via` setting specifies via which mechanism the Git repository
+should be cloned. This can be either:
+* '`https`' (default): clone repository via HTTPS with `git clone https://github.com/<owner>/<repo>`
+* '`ssh`': clone repository via SSH with `git clone git@github.com:<owner>/<repo>.git`
+
 #### `[bot_control]` section
 
 The `[bot_control]` section contains settings for configuring the feature to
