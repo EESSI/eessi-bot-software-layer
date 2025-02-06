@@ -636,7 +636,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             log(f"{fn}(): job_dir '{job_dir}'")
 
             # TODO optimisation? download once, copy and cleanup initial copy?
-            clone_git_repo_via = build_env_cfg.get(BUILDENV_SETTING_CLONE_GIT_REPO_VIA)
+            clone_git_repo_via = build_env_cfg.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA)
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
                 base_repo_name, base_branch_name, pr, job_dir, clone_via=clone_git_repo_via,
                 )
