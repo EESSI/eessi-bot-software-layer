@@ -148,6 +148,10 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): load_modules '{load_modules}'")
     config_data[config.BUILDENV_SETTING_LOAD_MODULES] = load_modules
 
+    clone_git_repo_via = buildenv.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA, None)
+    log(f"{fn}(): clone_git_repo_via '{clone_git_repo_via}'")
+    config_data[config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA] = clone_git_repo_via
+
     return config_data
 
 
@@ -378,6 +382,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     # - 'git checkout' base branch of pull request
     # - 'curl' diff for pull request
     # - 'git apply' diff file
+    log(f"Cloning Git repo via: {clone_via}")
     if clone_via in (None, 'https'):
         repo_url = f'https://github.com/{repo_name}'
     elif clone_via == 'ssh':
@@ -637,7 +642,6 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
 
             # TODO optimisation? download once, copy and cleanup initial copy?
             clone_git_repo_via = build_env_cfg.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA)
-            log(f"Cloning Git repo via: {clone_git_repo_via}")
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
                 base_repo_name, base_branch_name, pr, job_dir, clone_via=clone_git_repo_via,
                 )
