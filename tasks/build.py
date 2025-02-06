@@ -411,7 +411,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         error_stage = _ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
-    git_diff_cmd = ' '.join([
+    git_diff_cmd = ' && '.join([
         f"git fetch origin pull/{pr.number}/head:{pr.number}",
         f"git diff HEAD pr{pr.number} > {pr.number}.diff",
     ])
