@@ -472,6 +472,8 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
+        else:
+            download_comment = f"```{download_pr_error}```"
 
         download_comment = pr_comments.create_comment(
             repo_name=base_repo_name, pr_number=pr.number, comment=download_comment
