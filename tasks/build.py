@@ -412,7 +412,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
     git_diff_cmd = ' && '.join([
-        f"git fetch origin pull/{pr.number}/head:{pr.number}",
+        f"git fetch origin pull/{pr.number}/head:pr{pr.number}",
         f"git diff HEAD pr{pr.number} > {pr.number}.diff",
     ])
     git_diff_output, git_diff_error, git_diff_exit_code = run_cmd(
