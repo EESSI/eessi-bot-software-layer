@@ -43,7 +43,7 @@ DEFAULT_JOB_TIME_LIMIT = "24:00:00"
 _ERROR_CURL = "curl"
 _ERROR_GIT_APPLY = "git apply"
 _ERROR_GIT_CHECKOUT = "git checkout"
-_ERROR_GIT_CLONE = "curl"
+_ERROR_GIT_CLONE = "git clone"
 _ERROR_GIT_DIFF = "git diff"
 _ERROR_NONE = "none"
 
@@ -407,20 +407,6 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     if checkout_exit_code != 0:
         error_stage = _ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
-
-    curl_cmd = ' '.join([
-        'curl -L',
-        '-H "Accept: application/vnd.github.diff"',
-        '-H "X-GitHub-Api-Version: 2022-11-28"',
-        f'https://api.github.com/repos/{repo_name}/pulls/{pr.number} > {pr.number}.diff',
-    ])
-    log(f'curl with command {curl_cmd}')
-    curl_output, curl_error, curl_exit_code = run_cmd(
-        curl_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
-        )
-    if curl_exit_code != 0:
-        error_stage = _ERROR_CURL
-        return curl_output, curl_error, curl_exit_code, error_stage
 
     git_diff_cmd = ' '.join([
         f"git fetch origin pull/{pr.number}/head:{pr.number}",
