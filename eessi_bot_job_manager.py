@@ -349,7 +349,7 @@ class EESSIBotSoftwareLayerJobManager:
             #                   no extra action is needed
             job_status = ''
             extra_info = ''
-            if self.job_handover_protocol == config.JOB_HANDOVER_HOLD_RELEASE:
+            if self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
                 release_cmd = "%s release %s" % (
                     self.scontrol_command,
                     job_id,
@@ -362,7 +362,7 @@ class EESSIBotSoftwareLayerJobManager:
                 )
                 job_status = 'released'
                 extra_info = ''
-            elif self.job_handover_protocol == config.JOB_HANDOVER_DELAYED_BEGIN:
+            elif self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
                 job_status = 'received'
                 extra_info = " (eligible to start from {job_info['EligibleTime'})"
 
