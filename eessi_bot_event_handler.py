@@ -56,6 +56,7 @@ REQUIRED_CONFIG = {
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
         # config.BUILDENV_SETTING_HTTP_PROXY,                        # optional
+        # config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR,            # optional (default: 2)
         config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL,             # required
         config.BUILDENV_SETTING_JOB_NAME,                          # required
         config.BUILDENV_SETTING_JOBS_BASE_DIR,                     # required

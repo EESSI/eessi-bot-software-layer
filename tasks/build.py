@@ -109,13 +109,15 @@ def get_build_env_cfg(cfg):
         slurm_params += ' --hold'
     elif job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         # alternative method to submit without '--hold' and
-        # '--begin=now+5*poll_interval' instead
+        # '--begin=now+factor*poll_interval' instead
         # 1. remove '--hold' if any
-        # 2. add '--begin=now+5*poll_interval'
+        # 2. add '--begin=now+factor*poll_interval'
+        # factor defined by setting 'job_delay_begin_factor' (default: 2)
         slurm_params = slurm_params.replace('--hold', '')
         job_manger_cfg = cfg[config.SECTION_JOB_MANAGER]
         poll_interval = int(job_manger_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
-        slurm_params += f' --begin=now+{5 * poll_interval}'
+        job_delay_begin_factor = buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2)
+        slurm_params += f' --begin=now+{job_delay_begin_factor * poll_interval}'
     else:
         slurm_params += ' --hold'
         log(

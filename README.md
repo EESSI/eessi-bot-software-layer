@@ -376,6 +376,16 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_delay_begin_factor = 2
+```
+The `job_delay_begin_factor` setting defines how many times the `poll_interval` a
+job's begin (EligibleTime) from now should be delayed if the handover protocol
+is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+the `job_delay_begin_factor` is set to five (5) the delay time is calculated as
+5 * `poll_interval`. The event manager would use 2 as default value when
+submitting jobs.
+
+```
 job_handover_protocol = hold_release
 ```
 The `job_handover_protocol` setting defines which method is used to handover a

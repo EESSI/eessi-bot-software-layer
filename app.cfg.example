@@ -88,6 +88,14 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# The job_delay_begin_factor setting defines how many times the poll_interval a
+# job's begin (EligibleTime) from now should be delayed if the handover protocol
+# is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+# the job_delay_begin_factor is set to five (5) the delay time is calculated as
+# 5 * poll_interval. The event manager would use 2 as the default factor when
+# submitting jobs.
+job_delay_begin_factor = 2
+
 # The job_handover_protocol setting defines which method is used to handover a
 # job from the event handler to the job manager. Values are
 #  - hold_release (job is submitted with '--hold', job manager removes the hold
