@@ -678,11 +678,29 @@ scontrol_command = /usr/bin/scontrol
 #### `[submitted_job_comments]` section
 
 The `[submitted_job_comments]` section specifies templates for messages about newly submitted jobs.
+
+DEPRECATED setting (use `awaits_release_delayed_begin_msg` and/or `awaits_release_hold_release_msg`)
 ```
 awaits_release = job id `{job_id}` awaits release by job manager
 ```
 `awaits_release` is used to provide a status update of a job (shown as a row in the job's status
 table).
+
+```
+awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
+```
+`awaits_release_delayed_begin_msg` is used when the `job_handover_protocol` is
+set to `delayed_begin`. Note, both `{job_id}` and `{delay_seconds}` need to be
+present in the value or the event handler will throw an exception when formatting
+the update of the PR comment corresponding to the job.
+
+```
+awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
+```
+`awaits_release_hold_release_msg` is used when the `job_handover_protocol` is
+set to `hold_release`. Note, `{job_id}` needs to be present in the value or the
+event handler will throw an exception when formatting the update of the PR
+comment corresponding to the job.
 
 ```
 initial_comment = New job on instance `{app_name}` for architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`

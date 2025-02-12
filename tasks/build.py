@@ -914,18 +914,44 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
     dt = datetime.now(timezone.utc)
 
     # construct initial job comment
-    job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                   f"\n|date|job status|comment|\n"
-                   f"|----------|----------|------------------------|\n"
-                   f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                   f"submitted|"
-                   f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE]}|").format(
-                       app_name=app_name,
-                       arch_name=arch_name,
-                       symlink=symlink,
-                       repo_id=job.repo_id,
-                       job_id=job_id,
-                       accelerator_spec=accelerator_spec_str)
+    buildenv = config.read_config()[config.SECTION_BUILDENV]
+    job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+    if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
+        release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
+        release_comment_template = submitted_job_comments_cfg[release_msg_string]
+        # calculate delay from poll_interval and delay_factor
+        job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
+        poll_interval = job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL)
+        delay_factor = buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2)
+        eligible_in_seconds = poll_interval * delay_factor
+        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+                       f"\n|date|job status|comment|\n"
+                       f"|----------|----------|------------------------|\n"
+                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                       f"submitted|"
+                       f"{release_comment_template}|").format(
+                           app_name=app_name,
+                           arch_name=arch_name,
+                           symlink=symlink,
+                           repo_id=job.repo_id,
+                           job_id=job_id,
+                           delayed_seconds=eligible_in_seconds,
+                           accelerator_spec=accelerator_spec_str)
+    else:
+        release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
+        release_comment_template = submitted_job_comments_cfg[release_msg_string]
+        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+                       f"\n|date|job status|comment|\n"
+                       f"|----------|----------|------------------------|\n"
+                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                       f"submitted|"
+                       f"{release_comment_template}|").format(
+                           app_name=app_name,
+                           arch_name=arch_name,
+                           symlink=symlink,
+                           repo_id=job.repo_id,
+                           job_id=job_id,
+                           accelerator_spec=accelerator_spec_str)
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
