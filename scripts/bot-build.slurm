@@ -64,7 +64,7 @@ while IFS= read -r line; do
     if $inside_site_config && [[ $line =~ ^site_config_script\ *=\ *([^[:space:]]+) ]]; then
         site_config_script_value="${BASH_REMATCH[1]}"
     fi
-    if -n "$local_tmp_value" && -n "$site_config_script_value"; then
+    if [[ -n "$local_tmp_value" ]] && [[ -n "$site_config_script_value" ]]; then
         break
     fi
 done < "$JOB_CFG"
