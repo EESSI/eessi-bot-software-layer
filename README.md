@@ -403,6 +403,17 @@ on a compute/worker node. You may have to change this if temporary storage under
 environment variable `$EESSI_TMPDIR`. The value is expanded only inside a running
 job. Thus, typical job environment variables (like `$USER` or `$SLURM_JOB_ID`) may be used to isolate jobs running
 simultaneously on the same compute node.
+
+```
+site_config_script = /path/to/script/if/any
+```
+`site_config_script` specifies the path to a script that - if it exists - is
+sourced in the build job before any `bot/*` script is run. This allows to
+customize the build environment due to specifics of the build site/cluster.
+Note, such customizations could also be performed by putting them into a
+module file and use the setting `load_modules` (see above). However, the
+setting `site_config_script` provides a low threshold for achieving this, too.
+
 ```
 slurm_params = "--hold"
 ```

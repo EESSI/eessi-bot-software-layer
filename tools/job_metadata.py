@@ -50,6 +50,7 @@ JOB_CFG_SITE_CONFIG_HTTPS_PROXY = "https_proxy"
 JOB_CFG_SITE_CONFIG_LOAD_MODULES = "load_modules"
 JOB_CFG_SITE_CONFIG_LOCAL_TMP = "local_tmp"
 JOB_CFG_SITE_CONFIG_SHARED_FS_PATH = "shared_fs_path"
+JOB_CFG_SITE_CONFIG_SITE_CONFIG_SCRIPT = "site_config_script"
 
 # JWD/_bot_jobJOBID.metadata
 JOB_PR_SECTION = "PR"

@@ -84,6 +84,10 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): local_tmp '{local_tmp}'")
     config_data[config.BUILDENV_SETTING_LOCAL_TMP] = local_tmp
 
+    site_config_script = buildenv.get(config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT)
+    log(f"{fn}(): site_config_script '{site_config_script}'")
+    config_data[config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT] = site_config_script
+
     build_job_script = buildenv.get(config.BUILDENV_SETTING_BUILD_JOB_SCRIPT)
     # figure out whether path to build job script is just a path in current directory (path/to/job_script),
     # or a location in another Git repository (path/to/job_script@repo)
@@ -666,6 +670,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
     #   repository's definition, some combine two values):
     # [site_config]
     # local_tmp = config.BUILDENV_SETTING_LOCAL_TMP
+    # site_config_script = config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT
     # shared_fs_path = config.BUILDENV_SETTING_SHARED_FS_PATH
     # build_logs_dir = config.BUILDENV_SETTING_BUILD_LOGS_DIR
     #
@@ -690,6 +695,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         config.BUILDENV_SETTING_LOAD_MODULES: job_metadata.JOB_CFG_SITE_CONFIG_LOAD_MODULES,
         config.BUILDENV_SETTING_LOCAL_TMP: job_metadata.JOB_CFG_SITE_CONFIG_LOCAL_TMP,
         config.BUILDENV_SETTING_SHARED_FS_PATH: job_metadata.JOB_CFG_SITE_CONFIG_SHARED_FS_PATH,
+        config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT: job_metadata.JOB_CFG_SITE_CONFIG_SITE_CONFIG_SCRIPT,
     }
     for build_env_key, job_cfg_key in build_env_to_job_cfg_keys.items():
         if build_env_cfg[build_env_key]:

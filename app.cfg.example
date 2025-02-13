@@ -110,6 +110,15 @@ load_modules =
 #     variables that are only set inside a Slurm job
 local_tmp = /tmp/$USER/EESSI
 
+# PATH to a script that - if it exists - is sourced in the build job
+#     before any 'bot/*' script is run. This allows to customize the
+#     build environment due to specifics of the build site/cluster.
+#     Note, such customizations could also be performed by putting them
+#     into a module file and using the setting 'load_modules' (see above).
+#     However, the setting 'site_config_script' provides a low threshold
+#     for achieving this, too.
+site_config_script = /path/to/script/if/any
+
 # parameters to be added to all job submissions
 # NOTE do not quote parameter string. Quotes are retained when reading in config and
 #      then the whole 'string' is recognised as a single parameter.
