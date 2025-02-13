@@ -88,6 +88,25 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# The job_delay_begin_factor setting defines how many times the poll_interval a
+# job's begin (EligibleTime) from now should be delayed if the handover protocol
+# is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+# the job_delay_begin_factor is set to five (5) the delay time is calculated as
+# 5 * poll_interval. The event manager would use 2 as the default factor when
+# submitting jobs.
+job_delay_begin_factor = 2
+
+# The job_handover_protocol setting defines which method is used to handover a
+# job from the event handler to the job manager. Values are
+#  - hold_release (job is submitted with '--hold', job manager removes the hold
+#    with 'scontrol release')
+#  - delayed_begin (job is submitted with '--begin=now+(5 * poll_interval)' and
+#    any '--hold' is removed from the submission parameters); this is useful if the
+#    bot account cannot run 'scontrol release' to remove the hold of the job;
+#    also, the status update in the PR comment of the job is extended by noting
+#    the 'EligibleTime'
+job_handover_protocol = hold_release
+
 # Used to give all jobs of a bot instance the same name. Can be used to allow
 # multiple bot instances running on the same Slurm cluster.
 job_name = prod
@@ -257,12 +276,14 @@ scontrol_command = /usr/bin/scontrol
 #         information.
 [submitted_job_comments]
 awaits_release = job id `{job_id}` awaits release by job manager
+awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
+awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
 initial_comment = New job on instance `{app_name}` for CPU micro-architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 
 
 [new_job_comments]
-awaits_launch = job awaits launch by Slurm scheduler 
+awaits_launch = job awaits launch by Slurm scheduler{extra_info} 
 
 [running_job_comments]
 running_job = job `{job_id}` is running

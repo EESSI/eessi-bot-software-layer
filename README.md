@@ -376,6 +376,30 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_delay_begin_factor = 2
+```
+The `job_delay_begin_factor` setting defines how many times the `poll_interval` a
+job's begin (EligibleTime) from now should be delayed if the handover protocol
+is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+the `job_delay_begin_factor` is set to five (5) the delay time is calculated as
+5 * `poll_interval`. The event manager would use 2 as default value when
+submitting jobs.
+
+```
+job_handover_protocol = hold_release
+```
+The `job_handover_protocol` setting defines which method is used to handover a
+job from the event handler to the job manager. Values are
+ - `hold_release` (job is submitted with `--hold`, job manager removes the hold
+   with `scontrol release`)
+ - `delayed_begin` (job is submitted with `--begin=now+(5 * poll_interval)` and
+    any `--hold` is removed from the submission parameters); see setting
+    `poll_interval` further below; this is useful if the
+    bot account cannot run `scontrol release` to remove the hold of the job;
+    also, the status update in the PR comment of the job is extended by noting
+    the `EligibleTime`
+
+```
 job_name = JOB_NAME
 ```
 Replace `JOB_NAME` with a string of at least 3 characters that is used as job
@@ -665,11 +689,29 @@ scontrol_command = /usr/bin/scontrol
 #### `[submitted_job_comments]` section
 
 The `[submitted_job_comments]` section specifies templates for messages about newly submitted jobs.
+
+DEPRECATED setting (use `awaits_release_delayed_begin_msg` and/or `awaits_release_hold_release_msg`)
 ```
 awaits_release = job id `{job_id}` awaits release by job manager
 ```
 `awaits_release` is used to provide a status update of a job (shown as a row in the job's status
 table).
+
+```
+awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
+```
+`awaits_release_delayed_begin_msg` is used when the `job_handover_protocol` is
+set to `delayed_begin`. Note, both `{job_id}` and `{delay_seconds}` need to be
+present in the value or the event handler will throw an exception when formatting
+the update of the PR comment corresponding to the job.
+
+```
+awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
+```
+`awaits_release_hold_release_msg` is used when the `job_handover_protocol` is
+set to `hold_release`. Note, `{job_id}` needs to be present in the value or the
+event handler will throw an exception when formatting the update of the PR
+comment corresponding to the job.
 
 ```
 initial_comment = New job on instance `{app_name}` for architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
