@@ -116,7 +116,7 @@ def get_build_env_cfg(cfg):
         slurm_params = slurm_params.replace('--hold', '')
         job_manger_cfg = cfg[config.SECTION_JOB_MANAGER]
         poll_interval = int(job_manger_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
-        job_delay_begin_factor = buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2)
+        job_delay_begin_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         slurm_params += f' --begin=now+{job_delay_begin_factor * poll_interval}'
     else:
         slurm_params += ' --hold'
@@ -921,8 +921,8 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
         # calculate delay from poll_interval and delay_factor
         job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
-        poll_interval = job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL)
-        delay_factor = buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2)
+        poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
+        delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = poll_interval * delay_factor
         job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
                        f"\n|date|job status|comment|\n"
@@ -935,7 +935,7 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
                            symlink=symlink,
                            repo_id=job.repo_id,
                            job_id=job_id,
-                           delayed_seconds=eligible_in_seconds,
+                           delay_seconds=eligible_in_seconds,
                            accelerator_spec=accelerator_spec_str)
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
