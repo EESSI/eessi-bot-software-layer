@@ -44,7 +44,7 @@ _ERROR_CURL = "curl"
 _ERROR_GIT_APPLY = "git apply"
 _ERROR_GIT_CHECKOUT = "git checkout"
 _ERROR_GIT_CLONE = "git clone"
-_ERROR_GIT_DIFF = "git diff"
+_ERROR_PR_DIFF = "pr_diff"
 _ERROR_NONE = "none"
 
 # other constants
@@ -385,8 +385,18 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     log(f"Cloning Git repo via: {clone_via}")
     if clone_via in (None, 'https'):
         repo_url = f'https://github.com/{repo_name}'
+        pr_diff_cmd = ' '.join([
+            'curl -L',
+            '-H "Accept: application/vnd.github.diff"',
+            '-H "X-GitHub-Api-Version: 2022-11-28"',
+            f'https://api.github.com/repos/{repo_name}/pulls/{pr.number} > {pr.number}.diff',
+        ])
     elif clone_via == 'ssh':
         repo_url = f'git@github.com:{repo_name}.git'
+        pr_diff_cmd = ' && '.join([
+            f"git fetch origin pull/{pr.number}/head:pr{pr.number}",
+            f"git diff HEAD pr{pr.number} > {pr.number}.diff",
+        ])
     else:
         clone_output = ''
         clone_error = f"Unknown mechanism to clone Git repo: {clone_via}"
@@ -411,21 +421,18 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         error_stage = _ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
-    git_diff_cmd = ' && '.join([
-        f"git fetch origin pull/{pr.number}/head:pr{pr.number}",
-        f"git diff HEAD pr{pr.number} > {pr.number}.diff",
-    ])
-    git_diff_output, git_diff_error, git_diff_exit_code = run_cmd(
-        git_diff_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
+    log(f'obtaining PR diff with command {pr_diff_cmd}')
+    pr_diff_output, pr_diff_error, pr_diff_exit_code = run_cmd(
+        pr_diff_cmd, "obtain PR diff", arch_job_dir, raise_on_error=False
         )
-    if git_diff_exit_code != 0:
-        error_stage = _ERROR_GIT_DIFF
-        return git_diff_output, git_diff_error, git_diff_exit_code, error_stage
+    if pr_diff_exit_code != 0:
+        error_stage = _ERROR_PR_DIFF
+        return pr_diff_output, pr_diff_error, pr_diff_exit_code, error_stage
 
     git_apply_cmd = f'git apply {pr.number}.diff'
     log(f'git apply with command {git_apply_cmd}')
     git_apply_output, git_apply_error, git_apply_exit_code = run_cmd(
-        git_apply_cmd, "Apply patch", arch_job_dir, raise_on_error=False
+        git_apply_cmd, "apply patch", arch_job_dir, raise_on_error=False
         )
     if git_apply_exit_code != 0:
         error_stage = _ERROR_GIT_APPLY
@@ -472,6 +479,10 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
+        elif error_stage == _ERROR_PR_DIFF:
+            download_comment = (f"```{download_pr_error}```\n"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE]}"
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP]}")
         else:
             download_comment = f"```{download_pr_error}```"
 

@@ -291,6 +291,8 @@ curl_failure = Unable to download the `.diff` file.
 curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
+pr_diff_failure = Unable to obtain PR diff.
+pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
 
 [clean_up]
 trash_bin_dir = $HOME/trash_bin
