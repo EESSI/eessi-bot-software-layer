@@ -52,7 +52,7 @@ REQUIRED_CONFIG = {
         config.BUILDENV_SETTING_BUILD_JOB_SCRIPT,                  # required
         config.BUILDENV_SETTING_BUILD_LOGS_DIR,                    # optional+recommended
         config.BUILDENV_SETTING_BUILD_PERMISSION,                  # optional+recommended
-        config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA,                # optional
+        # config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA,                # optional
         config.BUILDENV_SETTING_CONTAINER_CACHEDIR,                # optional+recommended
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
