@@ -509,6 +509,27 @@ artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 `artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
 
 ```
+signing = { REPO_ID:
+            { "script": PATH_TO_SIGN_SCRIPT,
+              "key": PATH_TO_KEY_FILE,
+              "container_runtime": PATH_TO_CONTAINER_RUNTIME }, ... }
+```
+`signing` provides a setting for signing artefacts. The value uses a JSON-like format
+with `REPO_ID` being the repository ID. Repository IDs are defined in a file
+`repos.cfg` (see setting `repos_cfG_dir`), `script` provides the location of the
+script that is used to sign a file. If the location is a relative path, the script
+must reside in the checked out pull request of the target repository (e.g.,
+EESSI/software-layer). `key` points to the file of the key being used
+for signing. The bot calls the script with the two arguments:
+ 1. private key (as provided by the attribute 'key')
+ 2. path to the file to be signed (the upload script will determine that)
+NOTE, signing requires a recent installation of OpenSSH (8.2 or newer). If the
+frontend where the event handler runs does not have that version installed, you
+can specify a container runtime via the `container_runtime` attribute below.
+For example, this could be Singularity or Apptainer. Others are not supported
+as they would require different arguments and environment settings.
+
+```
 endpoint_url = URL_TO_S3_SERVER
 ```
 `endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The

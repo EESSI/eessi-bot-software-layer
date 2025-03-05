@@ -29,6 +29,10 @@ from pyghee.utils import log
 JOB_CFG_DIRECTORY_NAME = "cfg"
 JOB_CFG_FILENAME = "job.cfg"
 
+# job previous_tmp directory and sub directories
+JOB_CFG_PREVIOUS_TMP = "previous_tmp"
+JOB_CFG_UPLOAD_STEP = "upload_step"
+
 # JWD/cfg/$JOB_CFG_FILENAME
 JOB_CFG_ARCHITECTURE_SECTION = "architecture"
 JOB_CFG_ARCHITECTURE_OS_TYPE = "os_type"

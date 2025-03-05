@@ -23,12 +23,13 @@ from pyghee.utils import log
 
 # TODO do we really need two functions (run_cmd and run_subprocess) for
 # running a command?
-def run_cmd(cmd, log_msg='', working_dir=None, log_file=None, raise_on_error=True):
+def run_cmd(cmd, env=None, log_msg='', working_dir=None, log_file=None, raise_on_error=True):
     """
     Runs a command in the shell and raises an error if one occurs.
 
     Args:
         cmd (string): command to run
+        env (dict): environment settings for running the command
         log_msg (string): message describing the purpose of the command
         working_dir (string): location of the job's working directory
         log_file (string): path to log file
@@ -45,7 +46,7 @@ def run_cmd(cmd, log_msg='', working_dir=None, log_file=None, raise_on_error=Tru
             raise_on_error is True
     """
     # TODO use common method for logging function name in log messages
-    stdout, stderr, exit_code = run_subprocess(cmd, log_msg, working_dir, log_file)
+    stdout, stderr, exit_code = run_subprocess(cmd, env, log_msg, working_dir, log_file)
 
     if exit_code != 0:
         error_msg = (
@@ -66,12 +67,13 @@ def run_cmd(cmd, log_msg='', working_dir=None, log_file=None, raise_on_error=Tru
     return stdout, stderr, exit_code
 
 
-def run_subprocess(cmd, log_msg, working_dir, log_file):
+def run_subprocess(cmd, env=None, log_msg='', working_dir=None, log_file=None):
     """
     Runs a command in the shell. No error is raised if the command fails.
 
     Args:
         cmd (string): command to run
+        env (dict): environment settings for running the command
         log_msg (string): purpose of the command
         working_dir (string): location of the job's working directory
         log_file (string): path to log file
@@ -91,7 +93,11 @@ def run_subprocess(cmd, log_msg, working_dir, log_file):
     else:
         log(f"run_subprocess(): Running '{cmd}' in directory '{working_dir}'", log_file=log_file)
 
+    my_env = os.environ.copy()
+    my_env.update(env)
+
     result = subprocess.run(cmd,
+                            env=my_env,
                             cwd=working_dir,
                             shell=True,
                             encoding="UTF-8",
