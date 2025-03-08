@@ -261,16 +261,17 @@ for file in "$*"; do
         fi
         aws_file=$(basename ${file})
         # 1st sign artefact, and upload signature
-        if [[ "${sign} = "1" ]]; then
+        if [[ "${sign}" = "1" ]]; then
           # sign artefact
-          ${sign_script} ${sign_key_path} ${file}
+          ${sign_script} sign ${sign_key_path} ${file}
           # TODO check if signing worked (just check exit code == 0)
+          sig_file=${file}.sig
           aws_sig_file=${aws_file}.sig
 
           # uploading signature
           echo "  store artefact signature at ${aws_path}/${aws_sig_file}"
           upload_to_staging_bucket \
-                  "${aws_sig_file}" \
+                  "${sig_file}" \
                   "${bucket_name}" \
                   "${aws_path}/${aws_sig_file}" \
                   "${endpoint_url}"
@@ -298,6 +299,7 @@ for file in "$*"; do
                                              "${github_repository}" \
                                              "${pull_request_number}" \
                                              "${pr_comment_id}")
+        aws_metadata_file=${aws_file}.meta.txt
         # TODO check that creating the metadata file succeeded
         echo "metadata:"
         cat ${metadata_file}
@@ -310,15 +312,16 @@ for file in "$*"; do
           aws_path=$(envsubst <<< "${metadata_prefix}")
         fi
         # 2nd sign metadata file, and upload signature
-        if [[ "${sign} = "1" ]]; then
+        if [[ "${sign}" = "1" ]]; then
           # sign metadata file
-          ${sign_script} ${sign_key_path} ${metadata_file}
+          ${sign_script} sign ${sign_key_path} ${metadata_file}
           # TODO check if signing worked (just check exit code == 0)
+          sig_metadata_file=${metadata_file}.sig
           aws_sig_metadata_file=${aws_metadata_file}.sig
 
           echo "  store metadata signature at ${aws_path}/${aws_sig_metadata_file}"
           upload_to_staging_bucket \
-                  "${aws_sig_metadata_file}" \
+                  "${sig_metadata_file}" \
                   "${bucket_name}" \
                   "${aws_path}/${aws_sig_metadata_file}" \
                   "${endpoint_url}"
