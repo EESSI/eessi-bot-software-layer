@@ -477,6 +477,13 @@ variables) that are allowed to be specified in a PR command with the
 `exportvariable` filters must be used (one per variable). These variables will
 be exported into the build environment before running the bot/build.sh script.
 
+The bot build script makes use of the variable `SKIP_TESTS` to determine if
+ReFrame tests shall be skipped or not. Default is not to skip them. To allow the
+use of the variable the setting could look like
+```
+allowed_exportvars = ["SKIP_TESTS=yes", "SKIP_TESTS=no"]
+```
+
 
 #### `[bot_control]` section
 

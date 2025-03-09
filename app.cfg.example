@@ -161,7 +161,11 @@ no_build_permission_comment = Label `bot:build` has been set by user `{build_lab
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
-# exported into the build environment via `exportvariable` filters
+# exported into the build environment via 'exportvariable' filters
+# The bot build script makes use of the variable 'SKIP_TESTS' to determine if
+# ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
+# 'yes' and the exportvariable filter is added to a bot build command
+# ('export:SKIP_TESTS=yes'), ReFrame tests are skipped.
 allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
 
 
