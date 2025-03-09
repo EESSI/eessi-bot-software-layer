@@ -23,6 +23,9 @@
 #  - the directory may contain any additional files references in job.cfg,
 #    for example, repos.cfg and configuration file bundles for repositories
 
+# set default for SKIP_TESTS (don't skip ReFrame tests)
+SKIP_TESTS=no
+
 echo "Starting bot-build.slurm"
 EXPORT_VARS_SCRIPT=cfg/export_vars.sh
 if [ -f ${EXPORT_VARS_SCRIPT} ]; then
