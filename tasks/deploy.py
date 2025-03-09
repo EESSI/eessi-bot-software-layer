@@ -422,7 +422,10 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
         for bind in bind_mounts:
             container_cmd.extend(['--bind', bind])
         container_cmd.extend([container])
-        my_env = { 'SINGULARITY_CACHEDIR': cachedir, 'SINGULARITY_TMPDIR': upload_tmp_dir }
+        my_env = {
+            'SINGULARITY_CACHEDIR': cachedir,
+            'SINGULARITY_TMPDIR': upload_tmp_dir
+        }
 
     cmd_and_args = ' '.join(container_cmd + cmd_args)
     log(f"command to launch upload script: {cmd_and_args}")
