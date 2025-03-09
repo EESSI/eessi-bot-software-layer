@@ -119,6 +119,7 @@ if [[ "${SKIP_TESTS}" != "yes" ]]; then
     else
         echo "could not find ${TEST_SCRIPT} script in '${PWD}'" >&2
     fi
+fi
 
 CHECK_TEST_SCRIPT=bot/check-test.sh
 if [ -f ${CHECK_TEST_SCRIPT} ]; then
