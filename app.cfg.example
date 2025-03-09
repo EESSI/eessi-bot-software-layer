@@ -186,25 +186,30 @@ endpoint_url = URL_TO_S3_SERVER
 bucket_name = eessi-staging
 
 # settings for signing artefacts with JSON-like format
-#   REPO_ID: { "script": PATH_TO_SIGN_SCRIPT, "key": PATH_TO_KEY_FILE }
+#   REPO_ID: { "script": PATH_TO_SIGN_SCRIPT, "key": PATH_TO_KEY_FILE, "container_runtime": PATH_TO_CONTAINER_RUNTIME }
 #  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
 #  checked out pull request of the target repository (e.g.,
 #  EESSI/software-layer).
 #  The bot calls the script with the two arguments:
 #   1. private key (as provided by the attribute 'key')
 #   2. path to the file to be signed (the upload script will determine that)
-# NOTE, signing requires a recent installation of OpenSSH (8.2 or newer). If the
-# frontend where the event handler runs does not have that version installed, you
-# can specify a container runtime via the 'container_runtime' attribute below.
-# For example, this could be Singularity or Apptainer. Others are not supported
-# as they would require different arguments and environment settings.
-signing = {
-    "eessi.io-2023.06-software: {
-        "script": PATH_TO_SIGN_SCRIPT,
-        "key": PATH_TO_EESSI_BOT/config/user-site-system.key,
-        "container_runtime": PATH_TO_CONTAINER_RUNTIME,
-    },
-}
+# NOTE (on "container_runtime"), signing requires a recent installation of OpenSSH
+#   (8.2 or newer). If the frontend where the event handler runs does not have that
+#   version installed, you can specify a container runtime via the 'container_runtime'
+#   attribute below. Currently, only Singularity or Apptainer are supported.
+# NOTE (on the key), make sure the file permissions are restricted to `0600` (only
+#   readable+writable by the file owner, or the signing will likely fail.
+# Note (on json format), make sure no trailing commas are used after any elements
+#   or parsing/loading the json will likely fail. Also, the whole value should start
+#   at a new line and be indented as shown below.
+signing =
+    {
+        "eessi.io-2023.06-software: {
+            "script": PATH_TO_SIGN_SCRIPT,
+            "key": PATH_TO_EESSI_BOT/config/user-site-system.key,
+            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        }
+    }
 # upload policy: defines what policy is used for uploading built artefacts
 #                to an S3 bucket
 # 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
