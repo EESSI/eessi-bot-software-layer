@@ -14,6 +14,7 @@ Improvements:
 * add setting for a script to customize build environment (#302)
 * add support for signing tarball and metadata file and uploading signatures to
   S3 bucket (#303)
+* ssh signing script (#304)
 * updates of the docs (#293, #298)
 
 Changes to 'app.cfg' settings (see README.md and app.cfg.example for details):
