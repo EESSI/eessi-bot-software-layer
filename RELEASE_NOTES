@@ -10,18 +10,15 @@ Bug fixes:
 * bot only reports moving to trash_bin when relevant (#292)
 
 Improvements:
-* add support for specifying that build job script is located in another
-  repository (#283)
+* add support for specifying that build job script is located in another repository (#283)
 * implement exportvariable filter (#288, #291)
   * see related configuration setting `allowed_exportvars`
-* adds alternative method to submit job (using `--begin=now+SOME_DELAY`) (#297)
-  * also see the new related configuration settings `job_handover_protocol` and
-    `job_delay_begin_factor`
+* add alternative method to submit job (using `--begin=now+SOME_DELAY`) (#297)
+  * also see the new related configuration settings `job_handover_protocol` and `job_delay_begin_factor`
 * set the local_tmp that is configured for a site as tmpdir in bot build job script (#299)
 * add setting for a script to customize build environment (#302)
-* add support for signing tarball and metadata file and uploading signatures to
-  S3 bucket (#303)
-* add ssh signing script `sign_verify_file_ssh.sh` (#304)
+* add support for signing tarball and metadata file and uploading signatures to S3 bucket (#303)
+* add SSH signing script `sign_verify_file_ssh.sh` (#304)
 * updates of the docs (#293, #298)
 
 Changes to 'app.cfg' settings (see README.md and app.cfg.example for details):
