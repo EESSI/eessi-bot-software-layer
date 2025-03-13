@@ -6,12 +6,14 @@ v0.7.0 (13 March 2025)
 
 This is a minor release of the EESSI build-and-deploy bot.
 
+Bug fixes:
+* bot only reports moving to trash_bin when relevant (#292)
+
 Improvements:
 * add support for specifying that build job script is located in another
   repository (#283)
 * implement exportvariable filter (#288, #291)
   * see related configuration setting `allowed_exportvars`
-* bot only reports moving to trash_bin when relevant (#292)
 * adds alternative method to submit job (using `--begin=now+SOME_DELAY`) (#297)
   * also see the new related configuration settings `job_handover_protocol` and
     `job_delay_begin_factor`
