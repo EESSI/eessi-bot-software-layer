@@ -376,6 +376,30 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_delay_begin_factor = 2
+```
+The `job_delay_begin_factor` setting defines how many times the `poll_interval` a
+job's begin (EligibleTime) from now should be delayed if the handover protocol
+is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+the `job_delay_begin_factor` is set to five (5) the delay time is calculated as
+5 * `poll_interval`. The event manager would use 2 as default value when
+submitting jobs.
+
+```
+job_handover_protocol = hold_release
+```
+The `job_handover_protocol` setting defines which method is used to handover a
+job from the event handler to the job manager. Values are
+ - `hold_release` (job is submitted with `--hold`, job manager removes the hold
+   with `scontrol release`)
+ - `delayed_begin` (job is submitted with `--begin=now+(5 * poll_interval)` and
+    any `--hold` is removed from the submission parameters); see setting
+    `poll_interval` further below; this is useful if the
+    bot account cannot run `scontrol release` to remove the hold of the job;
+    also, the status update in the PR comment of the job is extended by noting
+    the `EligibleTime`
+
+```
 job_name = JOB_NAME
 ```
 Replace `JOB_NAME` with a string of at least 3 characters that is used as job
@@ -403,6 +427,17 @@ on a compute/worker node. You may have to change this if temporary storage under
 environment variable `$EESSI_TMPDIR`. The value is expanded only inside a running
 job. Thus, typical job environment variables (like `$USER` or `$SLURM_JOB_ID`) may be used to isolate jobs running
 simultaneously on the same compute node.
+
+```
+site_config_script = /path/to/script/if/any
+```
+`site_config_script` specifies the path to a script that - if it exists - is
+sourced in the build job before any `bot/*` script is run. This allows to
+customize the build environment due to specifics of the build site/cluster.
+Note, such customizations could also be performed by putting them into a
+module file and use the setting `load_modules` (see above). However, the
+setting `site_config_script` provides a low threshold for achieving this, too.
+
 ```
 slurm_params = "--hold"
 ```
@@ -432,6 +467,22 @@ allow_update_submit_opts = false
 `allow_update_submit_opts` determines whether or not to allow updating the submit
 options via custom module `det_submit_opts` provided by the pull request being
 processed.
+
+```
+allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
+```
+`allowed_exportvars` defines a list of name-value pairs (environment
+variables) that are allowed to be specified in a PR command with the
+`exportvariable` filter. To specify multiple environment variables, multiple
+`exportvariable` filters must be used (one per variable). These variables will
+be exported into the build environment before running the bot/build.sh script.
+
+The bot build script makes use of the variable `SKIP_TESTS` to determine if
+ReFrame tests shall be skipped or not. Default is not to skip them. To allow the
+use of the variable the setting could look like
+```
+allowed_exportvars = ["SKIP_TESTS=yes", "SKIP_TESTS=no"]
+```
 
 
 #### `[bot_control]` section
@@ -463,6 +514,35 @@ The `[deploycfg]` section defines settings for uploading built artefacts (tarbal
 artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 ```
 `artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
+
+```
+signing =
+    {
+        REPO_ID: {
+            "script": PATH_TO_SIGN_SCRIPT,
+            "key": PATH_TO_KEY_FILE,
+            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        }, ...
+    }
+```
+`signing` provides a setting for signing artefacts. The value uses a JSON-like format
+with `REPO_ID` being the repository ID. Repository IDs are defined in a file
+`repos.cfg` (see setting `repos_cfg_dir`), `script` provides the location of the
+script that is used to sign a file. If the location is a relative path, the script
+must reside in the checked out pull request of the target repository (e.g.,
+EESSI/software-layer). `key` points to the file of the key being used
+for signing. The bot calls the script with the two arguments:
+ 1. private key (as provided by the attribute 'key')
+ 2. path to the file to be signed (the upload script will determine that)
+NOTE (on `container_runtime`), signing requires a recent installation of OpenSSH
+(8.2 or newer). If the frontend where the event handler runs does not have that
+version installed, you can specify a container runtime via the `container_runtime`
+attribute below. Currently, only Singularity or Apptainer are supported.
+Note (on the key), make sure the file permissions are restricted to `0600` (only
+readable+writable by the file owner, or the signing will likely fail.
+Note (on json format), make sure no trailing commas are used after any elements
+or parsing/loading the json will likely fail. Also, the whole value should start
+at a new line and be indented as shown above.
 
 ```
 endpoint_url = URL_TO_S3_SERVER
@@ -645,11 +725,29 @@ scontrol_command = /usr/bin/scontrol
 #### `[submitted_job_comments]` section
 
 The `[submitted_job_comments]` section specifies templates for messages about newly submitted jobs.
+
+DEPRECATED setting (use `awaits_release_delayed_begin_msg` and/or `awaits_release_hold_release_msg`)
 ```
 awaits_release = job id `{job_id}` awaits release by job manager
 ```
 `awaits_release` is used to provide a status update of a job (shown as a row in the job's status
 table).
+
+```
+awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
+```
+`awaits_release_delayed_begin_msg` is used when the `job_handover_protocol` is
+set to `delayed_begin`. Note, both `{job_id}` and `{delay_seconds}` need to be
+present in the value or the event handler will throw an exception when formatting
+the update of the PR comment corresponding to the job.
+
+```
+awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
+```
+`awaits_release_hold_release_msg` is used when the `job_handover_protocol` is
+set to `hold_release`. Note, `{job_id}` needs to be present in the value or the
+event handler will throw an exception when formatting the update of the PR
+comment corresponding to the job.
 
 ```
 initial_comment = New job on instance `{app_name}` for architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
@@ -756,7 +854,237 @@ moved_job_dirs_comment = PR merged! Moved `{job_dirs}` to `{trash_bin_dir}`
 Template that is used by the bot to add a comment to a PR noting down which directories have been
 moved and where.
 
-# Instructions to run the bot components
+# Step 6: Creating a ReFrame configuration file for the test step (only needed when building for the [EESSI software layer](https://github.com/EESSI/software-layer))
+Part of the test step of the EESSI software layer is running the EESSI test suite. This requires putting a ReFrame configuration file in place that describes the partitions in the `arch_target_map` of the bot config.
+
+You can find general documentation on how to write a ReFrame config file in the [EESSI documentation](https://www.eessi.io/docs/test-suite/ReFrame-configuration-file/). However, some specifics apply when setting things up for the test step:
+
+- The configuration file has to be in `{shared_fs_path}/reframe_config.py` (recommended) or you have to set `RFM_CONFIG_FILES` to point to the configuration file and you have to make sure that is a location that is available (mounted) in the build container.
+- The system name _has_ to be `BotBuildTests`
+- Partition names should be ${EESSI_SOFTWARE_SUBDIR//\//_} for non-accelerator partitions and ${EESSI_SOFTWARE_SUBDIR//\//_}_${EESSI_ACCELERATOR_TARGET//\//_} for accelerator partitions. In words: the partition name should be the software subdir, replacing slashes with underscores, and for accelerators appending the accelerator target (again replacing slashes with underscores). E.g. x86_64_intel_skylake_avx512_nvidia_cc80 would be a valid partition name for a partition with Intel skylake's + Nvidia A100s.\
+- The `scheduler` should be `local`, as the bot already schedules the job (ReFrame should just locally spawn the tests in the allocation created by the bot).
+- The `access` field should not be used by ReFrame if the local scheduler is defined, you can simply omit this keyword.
+
+To configure the number of GPUs and CPUs, we have two options: 
+1. We describe the physical node in the ReFrame configuration file and set the `REFRAME_SCALE_TAG` environment variable to match the size of the allocation that you specify in your bot config. E.g. if your bot config allocates 1/4th of a node, one would set `REFRAME_SCALE_TAG=1_4_node` in the environment of the job submitted by the bot.
+2. We describe a virtual node configuration that matches the size of the allcation created by the bot (and we use the default `REFRAME_SCALE_TAG=1_node`, you don't have to set this explicitely).
+
+The first approach is the easiest, and thus recommended, since you can use CPU autodetection by ReFrame. The second approach allows for more flexibility.
+
+## Approach 1 (recommended): describing the physical node and setting the `REFRAME_SCALE_TAG` to match the bot config's allocation size
+In this approach, we describe the physical node configuration. That means: the amount of physical CPUs and GPUs present in the node.
+
+For the CPU part, we can rely on ReFrame's CPU autodetection: if `remote_detect` is set to `True` in the general section of the config, and no CPU topology information is provided in the ReFrame configuration file, ReFrame will automatically detect the [CPU topology](https://reframe-hpc.readthedocs.io/en/stable/config_reference.html#config.systems.partitions.processor).
+
+For the GPU part, we need to configure the vendor and the amount of GPUs. E.g. for a partition with 4 Nvidia GPUs per node:
+```
+'partition': {
+...
+    'extras': {
+        GPU_VENDOR: GPU_VENDORS[NVIDIA],
+    },
+    'devices': [
+        {
+            'type': DEVICE_TYPES[GPU],
+            'num_devices': 4,
+        }
+    ]
+}
+```
+
+Now, we need to make sure ReFrame only starts tests that have scales that fit within the allocation created by the bot. E.g. on a GPU node, it would be quite common to only allocate a single GPU for building GPU software. In the above example, that means only a quarter node. We can make sure the EESSI test suite only runs tests that fit within a 25% of the physical node described above by making sure the `REFRAM_SCALE_TAG` environment variable is set to `1_4_node`. You can find a list of all valid values for the `REFRAME_SCALE_TAG` by checking the `SCALES` constant in the [EESSI test suite](https://github.com/EESSI/test-suite/blob/main/eessi/testsuite/constants.py).
+
+Note that if you had e.g. a node with 6 GPUs per node, and you were building on 1 GPU, you probably want to go for Approach 2, since `1_6_node` is not a known scale in the EESSI test suite. Although you could set `REFRAME_SCALE_TAG=1_8_node`, this would lead to undefined behavior for the amount of GPUs allocated (may be 1, may be 0). For CPU-based nodes, this could however be a reasonable approach.
+
+Note that if for _some_ partitions you use e.g. quarter nodes, and for some full nodes, you'll have to set the `REFRAME_SCALE_TAG` conditionally based on the node architecture. You could e.g. do this in a `.bashrc` that has some conditional logic to determine the node type and set the corresponding scale. Alternatively, you could use Approach 2.
+
+### Complete example config
+In this example, we assume a node with 4 A100 GPUs (compute capability `cc80`) and 72 CPU cores (Intel Skylake) and 512 GB of memory (of which 491520 MiB is useable by SLURM jobs; on this system the rest is reserved for the OS):
+```
+from eessi.testsuite.common_config import common_logging_config
+from eessi.testsuite.constants import *  # noqa: F403
+
+
+site_configuration = {
+    'systems': [
+        {
+            'name': 'BotBuildTests',  # The system HAS to have this name, do NOT change it
+            'descr': 'Software-layer bot',
+            'hostnames': ['.*'],
+            'modules_system': 'lmod',
+            'partitions': [
+                {
+                    'name': 'x86_64_intel_skylake_avx512_nvidia_cc80',
+                    'scheduler': 'local',
+                    'launcher': 'mpirun',
+                    'environs': ['default'],
+                    'features': [
+                        FEATURES[GPU]  # We want this to run GPU-based tests from the EESSI test suite
+                    ] + list(SCALES.keys()),
+                    'resources': [
+                        {
+                            'name': 'memory',
+                            'options': ['--mem={size}'],
+                        }
+                    ],
+                    'extras': {
+                        # Make sure to round down, otherwise a job might ask for more mem than is available
+                        # per node
+                        'mem_per_node': 491520,  # in MiB (512 GB minus some reserved for the OS)
+                        GPU_VENDOR: GPU_VENDORS[NVIDIA],
+                    },
+                    'devices': [
+                        {
+                            'type': DEVICE_TYPES[GPU],
+                            'num_devices': 4,
+                        }
+                    ],
+                    'max_jobs': 1
+                },
+            ]
+        }
+    ],
+    'environments': [
+        {
+            'name': 'default',
+            'cc': 'cc',
+            'cxx': '',
+            'ftn': ''
+            }
+        ],
+    'general': [
+        {
+            'purge_environment': True,
+            'resolve_module_conflicts': False,  # avoid loading the module before submitting the job
+            'remote_detect': True,  # Make sure to automatically detect the CPU topology
+        }
+    ],
+    'logging': common_logging_config(),
+}
+```
+
+## Approach 2: describing a virtual node
+In this approach, we describe a virtual node configuration for which the size matches exactly what is allocated by the bot (through the `slurm_params` and `arch_target_map`). In this example, we'll assume that this node has 4 GPUs and 72 cores, distributed over 2 sockets each consisting of 1 NUMA domain. We also assume our bot is configured with `slurm_params = --hold --nodes=1 --export=None --time=0:30:0` and `arch_target_map = {"linux/x86_64/intel/skylake_avx512" : "--partition=gpu --cpus-per-task=18 --gpus-per-node 1"}`, i.e. it effectively allocates a quarter node. We describe a virtual partition for ReFrame as if this quarter node is a full node, i.e. we pretend it is a partition with 18 cores and 1 GPU per node, with 1 socket. 
+
+We would first have to hardcode the CPU configuration.
+```
+'partition': {
+...
+    'processor': {
+          "num_cpus": 18,
+          "num_cpus_per_core": 1,
+          "num_cpus_per_socket": 18,
+          "num_sockets": 1,
+          "topology": {
+              "numa_nodes": [
+                # As stated, the 18 cores are on a single NUMA domain. Thus, the bitmask should be a sequence of 18 1's, which is 3ffff in hexadecimal representation
+                "0x3ffff",  # a bit mask of 111111111111111111, i.e. cores 0-17 are on this NUMA domain
+              ],
+          },
+    }
+}
+```
+
+Note that if instead, this node would have had 8 NUMA domains (4 per socket), the 18 cores would correspond to 2 NUMA domains and we would have had to define:
+```
+"numa_nodes": [
+    "0x001ff",  # a bit mask of 000000000111111111, i.e. cores 0-8 are on this NUMA domain
+    "0x3fe00",  # a bit mask of 111111111000000000, i.e. cores 9-17 are on this NUMA domain
+]
+```
+
+Note that the `topology` dictionary in a ReFrame configuration file can contain more information, such as the bitmasks for the CPU sockets and cores, as well as information on the caches (see [here](https://reframe-hpc.readthedocs.io/en/stable/config_reference.html#config.systems.partitions.processor.topology)). Currently, that information is not needed by the EESSI test suite, but that may change if tests are added that utilize such information to execute efficiently.
+
+For the GPU configuration, we simply put:
+```
+'partition': {
+...
+    'extras': {
+        GPU_VENDOR: GPU_VENDORS[NVIDIA],
+    },
+    'devices': [
+        {
+            'type': DEVICE_TYPES[GPU],
+            'num_devices': 1,
+        }
+    ]
+}
+```
+To match the fact that we allocate 1 GPU in the `arch_target_map`.
+
+### Complete example config
+In this example, we assume a node with 4 A100 GPUs (compute capability `cc80`) and 72 CPU cores (Intel Skylake) and 512 GB of memory (of which 491520 MiB is useable by SLURM jobs; on this system the rest is reserved for the OS). We also assume the bot configuration is such for this partition that 1/4th of these nodes gets allocated for a build job:
+```
+site_configuration = {
+    'systems': [
+        {
+            'name': 'BotBuildTests',  # The system HAS to have this name, do NOT change it
+            'descr': 'Software-layer bot',
+            'hostnames': ['.*'],
+            'modules_system': 'lmod',
+            'partitions': [
+                {
+                    'name': 'x86_64_intel_skylake_avx512_nvidia_cc80',
+                    'scheduler': 'local',
+                    'launcher': 'mpirun',
+                    'environs': ['default'],
+                    'features': [
+                        FEATURES[GPU]  # We want this to run GPU-based tests from the EESSI test suite
+                    ] + list(SCALES.keys()),
+                    'resources': [
+                        {
+                            'name': 'memory',
+                            'options': ['--mem={size}'],
+                        }
+                    ],
+                    'extras': {
+                        # Make sure to round down, otherwise a job might ask for more mem than is available
+                        # per node
+                        'mem_per_node': 122880,  # in MiB (1/4th of 491520 MiB)
+                        GPU_VENDOR: GPU_VENDORS[NVIDIA],
+                    },
+                    'devices': [
+                        {
+                            'type': DEVICE_TYPES[GPU],
+                            'num_devices': 1,
+                        }
+                    ],
+                    'processor': {
+                          "num_cpus": 18,
+                          "num_cpus_per_core": 1,
+                          "num_cpus_per_socket": 18,
+                          "num_sockets": 1,
+                          "topology": {
+                              "numa_nodes": [
+                                # As stated, the 18 cores are on a single NUMA domain. Thus, the bitmask should be a sequence of 18 1's, which is 3ffff in hexadecimal representation
+                                "0x3ffff",
+                              ],
+                          },
+                    },
+                    'max_jobs': 1
+                },
+            ]
+        }
+    ],
+    'environments': [
+        {
+            'name': 'default',
+            'cc': 'cc',
+            'cxx': '',
+            'ftn': ''
+            }
+        ],
+    'general': [
+        {
+            'purge_environment': True,
+            'resolve_module_conflicts': False,  # avoid loading the module before submitting the job
+        }
+    ],
+    'logging': common_logging_config(),
+}
+```
+
+# Step 7: Instructions to run the bot components
 
 The bot consists of three components:
 * the Smee client;
@@ -765,7 +1093,7 @@ The bot consists of three components:
 
 Running the Smee client was explained in [Step 1](#step1).
 
-## <a name="step6.1"></a>Step 6.1: Running the event handler
+## <a name="step7.1"></a>Step 7.1: Running the event handler
 As the event handler may run for a long time, it is advised to run it in a `screen` or `tmux` session.
 
 The event handler is provided by the [`eessi_bot_event_handler.py`](https://github.com/EESSI/eessi-bot-software-layer/blob/main/eessi_bot_event_handler.py) Python script.
@@ -788,7 +1116,7 @@ The event handler writes log information to the files `pyghee.log` and
 
 Note, if you run the bot on a frontend of a cluster with multiple frontends make sure that both the Smee client and the event handler run on the same system!
 
-## <a name="step6.2"></a>Step 6.2: Running the job manager
+## <a name="step7.2"></a>Step 7.2: Running the job manager
 As the job manager may run for a long time, it is advised to run it in a `screen` or `tmux` session.
 
 The job manager is provided by the [`eessi_bot_job_manager_layer.py`](https://github.com/EESSI/eessi-bot-software-layer/blob/main/eessi_bot_job_manager.py) Python script. You can run the job manager from the directory `eessi-bot-software-layer` simply by:

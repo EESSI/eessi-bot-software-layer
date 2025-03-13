@@ -20,16 +20,18 @@ from pyghee.utils import log
 # (none yet)
 
 
-# NOTE because one can use any prefix of one of the four components below to
+# NOTE because one can use any prefix of one of the components below to
 # define a filter, we need to make sure that no two filters share the same
 # prefix OR we have to change the handling of filters.
 FILTER_COMPONENT_ACCEL = 'accelerator'
 FILTER_COMPONENT_ARCH = 'architecture'
+FILTER_COMPONENT_EXPORT = 'exportvariable'
 FILTER_COMPONENT_INST = 'instance'
 FILTER_COMPONENT_JOB = 'job'
 FILTER_COMPONENT_REPO = 'repository'
 FILTER_COMPONENTS = [FILTER_COMPONENT_ACCEL,
                      FILTER_COMPONENT_ARCH,
+                     FILTER_COMPONENT_EXPORT,
                      FILTER_COMPONENT_INST,
                      FILTER_COMPONENT_JOB,
                      FILTER_COMPONENT_REPO

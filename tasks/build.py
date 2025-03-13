@@ -46,6 +46,8 @@ _ERROR_GIT_CHECKOUT = "git checkout"
 _ERROR_GIT_CLONE = "curl"
 _ERROR_NONE = "none"
 
+# other constants
+EXPORT_VARS_FILE = 'export_vars.sh'
 
 Job = namedtuple('Job', ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator'))
 
@@ -82,17 +84,52 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): local_tmp '{local_tmp}'")
     config_data[config.BUILDENV_SETTING_LOCAL_TMP] = local_tmp
 
+    site_config_script = buildenv.get(config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT)
+    log(f"{fn}(): site_config_script '{site_config_script}'")
+    config_data[config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT] = site_config_script
+
     build_job_script = buildenv.get(config.BUILDENV_SETTING_BUILD_JOB_SCRIPT)
-    log(f"{fn}(): build_job_script '{build_job_script}'")
+    # figure out whether path to build job script is just a path in current directory (path/to/job_script),
+    # or a location in another Git repository (path/to/job_script@repo)
+    if '@' in build_job_script:
+        build_job_script_path, build_job_script_repo = build_job_script.split('@', 1)
+        log(f"{fn}(): build_job_script '{build_job_script_path}' in repo {build_job_script_repo}")
+        build_job_script = {
+            'path': build_job_script_path,
+            'repo': build_job_script_repo,
+        }
+    else:
+        log(f"{fn}(): build_job_script '{build_job_script}'")
     config_data[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT] = build_job_script
 
     submit_command = buildenv.get(config.BUILDENV_SETTING_SUBMIT_COMMAND)
     log(f"{fn}(): submit_command '{submit_command}'")
     config_data[config.BUILDENV_SETTING_SUBMIT_COMMAND] = submit_command
 
+    job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
     slurm_params = buildenv.get(config.BUILDENV_SETTING_SLURM_PARAMS)
-    # always submit jobs with hold set, so job manager can release them
-    slurm_params += ' --hold'
+    if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
+        # always submit jobs with hold set, so job manager can release them
+        slurm_params += ' --hold'
+    elif job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
+        # alternative method to submit without '--hold' and
+        # '--begin=now+factor*poll_interval' instead
+        # 1. remove '--hold' if any
+        # 2. add '--begin=now+factor*poll_interval'
+        # factor defined by setting 'job_delay_begin_factor' (default: 2)
+        slurm_params = slurm_params.replace('--hold', '')
+        job_manger_cfg = cfg[config.SECTION_JOB_MANAGER]
+        poll_interval = int(job_manger_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
+        job_delay_begin_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
+        slurm_params += f' --begin=now+{int(job_delay_begin_factor * poll_interval)}'
+    else:
+        slurm_params += ' --hold'
+        log(
+            f"{fn}(): unknown job handover protocol in app.cfg"
+            f" ('{config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL} = {job_handover_protocol}');"
+            f" added '--hold' as default"
+        )
+
     log(f"{fn}(): slurm_params '{slurm_params}'")
     config_data[config.BUILDENV_SETTING_SLURM_PARAMS] = slurm_params
 
@@ -111,7 +148,7 @@ def get_build_env_cfg(cfg):
     cvmfs_customizations = {}
     try:
         cvmfs_customizations_str = buildenv.get(config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS)
-        log("{fn}(): cvmfs_customizations '{cvmfs_customizations_str}'")
+        log(f"{fn}(): cvmfs_customizations '{cvmfs_customizations_str}'")
 
         if cvmfs_customizations_str is not None:
             cvmfs_customizations = json.loads(cvmfs_customizations_str)
@@ -158,6 +195,34 @@ def get_architecture_targets(cfg):
     arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
     log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
     return arch_target_map
+
+
+def get_allowed_exportvars(cfg):
+    """
+    Obtain list of allowed export variables
+
+    Args:
+        cfg (ConfigParser): ConfigParser instance holding full configuration
+            (typically read from 'app.cfg')
+
+    Returns:
+        (list): list of allowed export variable-value pairs of the format VARIABLE=VALUE
+    """
+    fn = sys._getframe().f_code.co_name
+
+    buildenv = cfg[config.SECTION_BUILDENV]
+    allowed_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
+    allowed = []
+
+    if allowed_str:
+        try:
+            allowed = json.loads(allowed_str)
+        except json.JSONDecodeError as err:
+            print(err)
+            error(f"{fn}(): Value for allowed_exportvars ({allowed_str}) could not be decoded.")
+
+    log(f"{fn}(): allowed_exportvars '{json.dumps(allowed)}'")
+    return allowed
 
 
 def get_repo_cfg(cfg):
@@ -302,6 +367,19 @@ def create_pr_dir(pr, cfg, event_info):
     return year_month, pr_id, run_dir
 
 
+def clone_git_repo(repo, path):
+    """
+    Clone specified Git repo to specified path
+    """
+    git_clone_cmd = ' '.join(['git clone', repo, path])
+    log(f'cloning with command {git_clone_cmd}')
+    clone_output, clone_error, clone_exit_code = run_cmd(
+        git_clone_cmd, "Clone repo", path, raise_on_error=False
+        )
+
+    return (clone_output, clone_error, clone_exit_code)
+
+
 def download_pr(repo_name, branch_name, pr, arch_job_dir):
     """
     Download pull request to job working directory
@@ -323,11 +401,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
     # - 'git checkout' base branch of pull request
     # - 'curl' diff for pull request
     # - 'git apply' diff file
-    git_clone_cmd = ' '.join(['git clone', f'https://github.com/{repo_name}', arch_job_dir])
-    log(f'cloning with command {git_clone_cmd}')
-    clone_output, clone_error, clone_exit_code = run_cmd(
-        git_clone_cmd, "Clone repo", arch_job_dir, raise_on_error=False
-        )
+    clone_output, clone_error, clone_exit_code = clone_git_repo(f'https://github.com/{repo_name}', arch_job_dir)
     if clone_exit_code != 0:
         error_stage = _ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
@@ -444,6 +518,29 @@ def apply_cvmfs_customizations(cvmfs_customizations, arch_job_dir):
             #      for now, only existing mappings may be customized
 
 
+def prepare_export_vars_file(job_dir, exportvars):
+    """
+    Set up EXPORT_VARS_FILE in directory <job_dir>/cfg. This file will be
+    sourced before running the bot/build.sh script.
+
+    Args:
+        job_dir (string): working directory of the job
+        exportvars (list): strings of the form VAR=VALUE to be exported
+
+    Returns:
+        None (implicitly)
+    """
+    fn = sys._getframe().f_code.co_name
+
+    content = '\n'.join(f'export {x}' for x in exportvars)
+    export_vars_path = os.path.join(job_dir, 'cfg', EXPORT_VARS_FILE)
+
+    with open(export_vars_path, 'w') as file:
+        file.write(content)
+
+    log(f"{fn}(): created exported variables file {export_vars_path}")
+
+
 def prepare_jobs(pr, cfg, event_info, action_filter):
     """
     Prepare all jobs whose context matches the given filter. Preparation includes
@@ -465,6 +562,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     build_env_cfg = get_build_env_cfg(cfg)
     arch_map = get_architecture_targets(cfg)
     repocfg = get_repo_cfg(cfg)
+    allowed_exportvars = get_allowed_exportvars(cfg)
 
     base_repo_name = pr.base.repo.full_name
     log(f"{fn}(): pr.base.repo.full_name '{base_repo_name}'")
@@ -490,6 +588,16 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     else:
         log(f"{fn}(): found no accelerator requirement")
         accelerator = None
+
+    # determine exportvars from action_filter argument
+    exportvars = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
+
+    # all exportvar filters must be allowed in order to run any jobs
+    if exportvars:
+        not_allowed = [x for x in exportvars if x not in allowed_exportvars]
+        if not_allowed:
+            log(f"{fn}(): exportvariable(s) {not_allowed} not allowed")
+            return []
 
     jobs = []
     for arch, slurm_opt in arch_map.items():
@@ -545,6 +653,9 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, cpu_target, os_type, accelerator)
 
+            if exportvars:
+                prepare_export_vars_file(job_dir, exportvars)
+
             # enlist jobs to proceed
             job = Job(job_dir, arch, repo_id, slurm_opt, year_month, pr_id, accelerator)
             jobs.append(job)
@@ -580,6 +691,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
     #   repository's definition, some combine two values):
     # [site_config]
     # local_tmp = config.BUILDENV_SETTING_LOCAL_TMP
+    # site_config_script = config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT
     # shared_fs_path = config.BUILDENV_SETTING_SHARED_FS_PATH
     # build_logs_dir = config.BUILDENV_SETTING_BUILD_LOGS_DIR
     #
@@ -604,6 +716,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         config.BUILDENV_SETTING_LOAD_MODULES: job_metadata.JOB_CFG_SITE_CONFIG_LOAD_MODULES,
         config.BUILDENV_SETTING_LOCAL_TMP: job_metadata.JOB_CFG_SITE_CONFIG_LOCAL_TMP,
         config.BUILDENV_SETTING_SHARED_FS_PATH: job_metadata.JOB_CFG_SITE_CONFIG_SHARED_FS_PATH,
+        config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT: job_metadata.JOB_CFG_SITE_CONFIG_SITE_CONFIG_SCRIPT,
     }
     for build_env_key, job_cfg_key in build_env_to_job_cfg_keys.items():
         if build_env_cfg[build_env_key]:
@@ -709,13 +822,50 @@ def submit_job(job, cfg):
         job = job._replace(slurm_opts=det_submit_opts(job))
         log(f"{fn}(): updated job.slurm_opts: {job.slurm_opts}")
 
+    build_job_script = build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT]
+    if isinstance(build_job_script, str):
+        build_job_script_path = build_job_script
+        log(f"{fn}(): path to build job script: {build_job_script_path}")
+    elif isinstance(build_job_script, dict):
+        build_job_script_repo = build_job_script.get('repo')
+        if build_job_script_repo:
+            log(f"{fn}(): repository in which build job script is located: {build_job_script_repo}")
+        else:
+            error(f"Failed to determine repository in which build job script is located from: {build_job_script}")
+
+        build_job_script_path = build_job_script.get('path')
+        if build_job_script_path:
+            log(f"{fn}(): path to build job script in repository: {build_job_script_path}")
+        else:
+            error(f"Failed to determine path of build job script in repository from: {build_job_script}")
+
+        # clone repo to temporary directory, and correctly set path to build job script
+        repo_subdir = build_job_script_repo.split('/')[-1]
+        if repo_subdir.endswith('.git'):
+            repo_subdir = repo_subdir[:-4]
+        target_dir = os.path.join(job.working_dir, repo_subdir)
+        os.makedirs(target_dir, exist_ok=True)
+
+        clone_output, clone_error, clone_exit_code = clone_git_repo(build_job_script_repo, target_dir)
+        if clone_exit_code == 0:
+            log(f"{fn}(): repository {build_job_script_repo} cloned to {target_dir}")
+        else:
+            error(f"Failed to clone repository {build_job_script_repo}: {clone_error}")
+
+        build_job_script_path = os.path.join(target_dir, build_job_script_path)
+    else:
+        error(f"Incorrect build job script specification, unknown type: {build_job_script}")
+
+    if not os.path.exists(build_job_script_path):
+        error(f"Build job script not found at {build_job_script_path}")
+
     command_line = ' '.join([
         build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
         build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],
         time_limit,
         job.slurm_opts] +
         ([f"--job-name='{job_name}'"] if job_name else []) +
-        [build_env_cfg[config.BUILDENV_SETTING_BUILD_JOB_SCRIPT]])
+        [build_job_script_path])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,
                                                                "submit job for target '%s'" % job.arch_target,
@@ -770,18 +920,44 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
     dt = datetime.now(timezone.utc)
 
     # construct initial job comment
-    job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                   f"\n|date|job status|comment|\n"
-                   f"|----------|----------|------------------------|\n"
-                   f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                   f"submitted|"
-                   f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE]}|").format(
-                       app_name=app_name,
-                       arch_name=arch_name,
-                       symlink=symlink,
-                       repo_id=job.repo_id,
-                       job_id=job_id,
-                       accelerator_spec=accelerator_spec_str)
+    buildenv = config.read_config()[config.SECTION_BUILDENV]
+    job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+    if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
+        release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
+        release_comment_template = submitted_job_comments_cfg[release_msg_string]
+        # calculate delay from poll_interval and delay_factor
+        job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
+        poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
+        delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
+        eligible_in_seconds = int(poll_interval * delay_factor)
+        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+                       f"\n|date|job status|comment|\n"
+                       f"|----------|----------|------------------------|\n"
+                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                       f"submitted|"
+                       f"{release_comment_template}|").format(
+                           app_name=app_name,
+                           arch_name=arch_name,
+                           symlink=symlink,
+                           repo_id=job.repo_id,
+                           job_id=job_id,
+                           delay_seconds=eligible_in_seconds,
+                           accelerator_spec=accelerator_spec_str)
+    else:
+        release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
+        release_comment_template = submitted_job_comments_cfg[release_msg_string]
+        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+                       f"\n|date|job status|comment|\n"
+                       f"|----------|----------|------------------------|\n"
+                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                       f"submitted|"
+                       f"{release_comment_template}|").format(
+                           app_name=app_name,
+                           arch_name=arch_name,
+                           symlink=symlink,
+                           repo_id=job.repo_id,
+                           job_id=job_id,
+                           accelerator_spec=accelerator_spec_str)
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name

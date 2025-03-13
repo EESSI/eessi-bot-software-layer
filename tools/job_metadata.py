@@ -29,6 +29,10 @@ from pyghee.utils import log
 JOB_CFG_DIRECTORY_NAME = "cfg"
 JOB_CFG_FILENAME = "job.cfg"
 
+# job previous_tmp directory and sub directories
+JOB_CFG_PREVIOUS_TMP = "previous_tmp"
+JOB_CFG_UPLOAD_STEP = "upload_step"
+
 # JWD/cfg/$JOB_CFG_FILENAME
 JOB_CFG_ARCHITECTURE_SECTION = "architecture"
 JOB_CFG_ARCHITECTURE_OS_TYPE = "os_type"
@@ -50,6 +54,7 @@ JOB_CFG_SITE_CONFIG_HTTPS_PROXY = "https_proxy"
 JOB_CFG_SITE_CONFIG_LOAD_MODULES = "load_modules"
 JOB_CFG_SITE_CONFIG_LOCAL_TMP = "local_tmp"
 JOB_CFG_SITE_CONFIG_SHARED_FS_PATH = "shared_fs_path"
+JOB_CFG_SITE_CONFIG_SITE_CONFIG_SCRIPT = "site_config_script"
 
 # JWD/_bot_jobJOBID.metadata
 JOB_PR_SECTION = "PR"

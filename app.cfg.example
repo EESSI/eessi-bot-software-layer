@@ -88,6 +88,25 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# The job_delay_begin_factor setting defines how many times the poll_interval a
+# job's begin (EligibleTime) from now should be delayed if the handover protocol
+# is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+# the job_delay_begin_factor is set to five (5) the delay time is calculated as
+# 5 * poll_interval. The event manager would use 2 as the default factor when
+# submitting jobs.
+job_delay_begin_factor = 2
+
+# The job_handover_protocol setting defines which method is used to handover a
+# job from the event handler to the job manager. Values are
+#  - hold_release (job is submitted with '--hold', job manager removes the hold
+#    with 'scontrol release')
+#  - delayed_begin (job is submitted with '--begin=now+(5 * poll_interval)' and
+#    any '--hold' is removed from the submission parameters); this is useful if the
+#    bot account cannot run 'scontrol release' to remove the hold of the job;
+#    also, the status update in the PR comment of the job is extended by noting
+#    the 'EligibleTime'
+job_handover_protocol = hold_release
+
 # Used to give all jobs of a bot instance the same name. Can be used to allow
 # multiple bot instances running on the same Slurm cluster.
 job_name = prod
@@ -109,6 +128,15 @@ load_modules =
 #     build_job_script; this can be used for referencing environment
 #     variables that are only set inside a Slurm job
 local_tmp = /tmp/$USER/EESSI
+
+# PATH to a script that - if it exists - is sourced in the build job
+#     before any 'bot/*' script is run. This allows to customize the
+#     build environment due to specifics of the build site/cluster.
+#     Note, such customizations could also be performed by putting them
+#     into a module file and using the setting 'load_modules' (see above).
+#     However, the setting 'site_config_script' provides a low threshold
+#     for achieving this, too.
+site_config_script = /path/to/script/if/any
 
 # parameters to be added to all job submissions
 # NOTE do not quote parameter string. Quotes are retained when reading in config and
@@ -132,6 +160,19 @@ no_build_permission_comment = Label `bot:build` has been set by user `{build_lab
 # whether or not to allow updating the submit options via custom module det_submit_opts
 allow_update_submit_opts = false
 
+# defines which name-value pairs (environment variables) are allowed to be
+# exported into the build environment via 'exportvariable' filters
+# The bot build script makes use of the variable 'SKIP_TESTS' to determine if
+# ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
+# 'yes' and the exportvariable filter is added to a bot build command
+# ('export:SKIP_TESTS=yes'), ReFrame tests are skipped.
+# NOTE, the setting is optional and commented by default. If you want to enable
+# this feature ('exportvariable' filters), uncomment the line below and define
+# meaningful key-value pair(s). For example, to enable the use of
+# 'exportvariable:SKIP_TESTS=yes' as a filter, the key-value pair would be
+# "SKIP_TESTS=yes".
+# allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
+
 
 [deploycfg]
 # script for uploading built software packages
@@ -153,6 +194,31 @@ endpoint_url = URL_TO_S3_SERVER
 # like: bucket_name = {"eessi-pilot-2023.06": "eessi-staging-pilot-2023.06", "eessi.io-2023.06": "software.eessi.io-2023.06"}
 bucket_name = eessi-staging
 
+# settings for signing artefacts with JSON-like format
+#   REPO_ID: { "script": PATH_TO_SIGN_SCRIPT, "key": PATH_TO_KEY_FILE, "container_runtime": PATH_TO_CONTAINER_RUNTIME }
+#  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
+#  checked out pull request of the target repository (e.g.,
+#  EESSI/software-layer).
+#  The bot calls the script with the two arguments:
+#   1. private key (as provided by the attribute 'key')
+#   2. path to the file to be signed (the upload script will determine that)
+# NOTE (on "container_runtime"), signing requires a recent installation of OpenSSH
+#   (8.2 or newer). If the frontend where the event handler runs does not have that
+#   version installed, you can specify a container runtime via the 'container_runtime'
+#   attribute below. Currently, only Singularity or Apptainer are supported.
+# NOTE (on the key), make sure the file permissions are restricted to `0600` (only
+#   readable+writable by the file owner, or the signing will likely fail.
+# Note (on json format), make sure no trailing commas are used after any elements
+#   or parsing/loading the json will likely fail. Also, the whole value should start
+#   at a new line and be indented as shown below.
+signing =
+    {
+        "eessi.io-2023.06-software: {
+            "script": PATH_TO_SIGN_SCRIPT,
+            "key": PATH_TO_EESSI_BOT/config/user-site-system.key,
+            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        }
+    }
 # upload policy: defines what policy is used for uploading built artefacts
 #                to an S3 bucket
 # 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
@@ -244,12 +310,14 @@ scontrol_command = /usr/bin/scontrol
 #         information.
 [submitted_job_comments]
 awaits_release = job id `{job_id}` awaits release by job manager
+awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
+awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
 initial_comment = New job on instance `{app_name}` for CPU micro-architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 
 
 [new_job_comments]
-awaits_launch = job awaits launch by Slurm scheduler 
+awaits_launch = job awaits launch by Slurm scheduler{extra_info} 
 
 [running_job_comments]
 running_job = job `{job_id}` is running
