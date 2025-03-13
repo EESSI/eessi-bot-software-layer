@@ -166,7 +166,12 @@ allow_update_submit_opts = false
 # ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
 # 'yes' and the exportvariable filter is added to a bot build command
 # ('export:SKIP_TESTS=yes'), ReFrame tests are skipped.
-allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
+# NOTE, the setting is optional and commented by default. If you want to enable
+# this feature ('exportvariable' filters), uncomment the line below and define
+# meaningful key-value pair(s). For example, to enable the use of
+# 'exportvariable:SKIP_TESTS=yes' as a filter, the key-value pair would be
+# "SKIP_TESTS=yes".
+# allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
 
 
 [deploycfg]

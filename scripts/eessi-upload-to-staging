@@ -85,7 +85,7 @@ function display_help
   echo "                                    for expansion"                         >&2
   echo "  -k | --sign-key SCRIPT_KEY     -  specify location of the key to be"     >&2
   echo "                                    used to sign artefacts and metadata"   >&2
-  echo "                                    files [default: don't sign]"           >&2
+  echo "                                    files [optional; default: don't sign]" >&2
   echo "  -m | --metadata-prefix PREFIX  -  a directory to which the metadata"     >&2
   echo "                                    file shall be uploaded; BASH variable" >&2
   echo "                                    expansion will be applied; arg '-l'"   >&2
@@ -102,7 +102,7 @@ function display_help
   echo "                                    KEY file_to_sign. The KEY is the one"  >&2
   echo "                                    provided via option --sign-key. The"   >&2
   echo "                                    latter is determined by this script."  >&2
-  echo "                                    [default: don't sign]"                 >&2
+  echo "                                    [optional; default: don't sign]"       >&2
 }
 
 if [[ $# -lt 1 ]]; then
