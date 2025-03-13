@@ -83,6 +83,9 @@ function display_help
   echo "                                    ingestion procedure"                   >&2
   echo "  -l | --list-variables          -  list variables that are available"     >&2
   echo "                                    for expansion"                         >&2
+  echo "  -k | --sign-key SCRIPT_KEY     -  specify location of the key to be"     >&2
+  echo "                                    used to sign artefacts and metadata"   >&2
+  echo "                                    files [optional; default: don't sign]" >&2
   echo "  -m | --metadata-prefix PREFIX  -  a directory to which the metadata"     >&2
   echo "                                    file shall be uploaded; BASH variable" >&2
   echo "                                    expansion will be applied; arg '-l'"   >&2
@@ -93,6 +96,13 @@ function display_help
   echo "                                    link the upload to a PR"               >&2
   echo "  -r | --repository FULL_NAME    -  a repository name ACCOUNT/REPONAME;"   >&2
   echo "                                    used to link the upload to a PR"       >&2
+  echo "  -s | --sign-script SCRIPT_PATH -  path to script that is used to sign"   >&2
+  echo "                                    artefacts and metadata files. The"     >&2
+  echo "                                    script is called with two arguments:"  >&2
+  echo "                                    KEY file_to_sign. The KEY is the one"  >&2
+  echo "                                    provided via option --sign-key. The"   >&2
+  echo "                                    latter is determined by this script."  >&2
+  echo "                                    [optional; default: don't sign]"       >&2
 }
 
 if [[ $# -lt 1 ]]; then
@@ -120,6 +130,8 @@ endpoint_url=
 pr_comment_id="none"
 pull_request_number="none"
 github_repository="EESSI/software-layer"
+sign_key=
+sign_script=
 
 # provided via options in the bot's config file app.cfg and/or command line argument
 metadata_prefix=
@@ -155,6 +167,14 @@ while [[ $# -gt 0 ]]; do
       pr_comment_id="$2"
       shift 2
       ;;
+    -k|--sign-key)
+      sign_key=$2
+      if [[ ! -r "${sign_key}" ]]; then
+        echo "Error: SSH key '${sign_key}' to be used for signing doesn't exist or cannot be read" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
     -m|--metadata-prefix)
       metadata_prefix="$2"
       shift 2
@@ -171,6 +191,14 @@ while [[ $# -gt 0 ]]; do
       github_repository="$2"
       shift 2
       ;;
+    -s|--sign-script)
+      sign_script=$2
+      if [[ ! -x "${sign_script}" ]]; then
+        echo "Error: Script '${sign_script}' to be used for signing doesn't exist or is not executable" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
     -*|--*)
       echo "Error: Unknown option: $1" >&2
       exit 1
@@ -184,6 +212,21 @@ done
 
 # restore potentially parsed filename(s) into $*
 set -- "${POSITIONAL_ARGS[@]}"
+
+# ensure that either none or both of $sign_key and $sign_script are defined
+if [[ -n "${sign_key}" ]] && [[ -n "${sign_script}" ]]; then
+  sign=1
+elif [[ -n "${sign_key}" ]]; then
+  sign=0
+  echo "Error: Signing requires a key (${sign_key}) AND a script (${sign_script}); likely the bot config is incomplete" >&2
+  exit 1
+elif [[ -n "${sign_script}" ]]; then
+  sign=0
+  echo "Error: Signing requires a key (${sign_key}) AND a script (${sign_script}); likely the bot config is incomplete" >&2
+  exit 1
+else
+  sign=0
+fi
 
 # infer bucket_base:
 #   if endpoint_url is not set (assume AWS S3 is used),
@@ -217,6 +260,33 @@ for file in "$*"; do
           aws_path=$(envsubst <<< "${artefact_prefix}")
         fi
         aws_file=$(basename ${file})
+        # 1st sign artefact, and upload signature
+        if [[ "${sign}" = "1" ]]; then
+          # sign artefact
+          ${sign_script} sign ${sign_key} ${file}
+          # TODO check if signing worked (just check exit code == 0)
+          sig_file=${file}.sig
+          aws_sig_file=${aws_file}.sig
+
+          # uploading signature
+          echo "  store artefact signature at ${aws_path}/${aws_sig_file}"
+          upload_to_staging_bucket \
+                  "${sig_file}" \
+                  "${bucket_name}" \
+                  "${aws_path}/${aws_sig_file}" \
+                  "${endpoint_url}"
+        else
+          echo "no signing method defined; not signing artefact"
+        fi
+
+        echo Uploading to "${url}"
+        echo "  store artefact at ${aws_path}/${aws_file}"
+        upload_to_staging_bucket \
+                "${file}" \
+                "${bucket_name}" \
+                "${aws_path}/${aws_file}" \
+                "${endpoint_url}"
+
         echo "Creating metadata file"
         url="${bucket_base}/${aws_path}/${aws_file}"
         echo "create_metadata_file file=${file} \
@@ -229,16 +299,10 @@ for file in "$*"; do
                                              "${github_repository}" \
                                              "${pull_request_number}" \
                                              "${pr_comment_id}")
+        aws_metadata_file=${aws_file}.meta.txt
+        # TODO check that creating the metadata file succeeded
         echo "metadata:"
         cat ${metadata_file}
-
-        echo Uploading to "${url}"
-        echo "  store artefact at ${aws_path}/${aws_file}"
-        upload_to_staging_bucket \
-                "${file}" \
-                "${bucket_name}" \
-                "${aws_path}/${aws_file}" \
-                "${endpoint_url}"
 
         if [ -z ${metadata_prefix} ]; then
           aws_path=${legacy_aws_path}
@@ -246,6 +310,23 @@ for file in "$*"; do
           export pull_request_number
           export github_repository
           aws_path=$(envsubst <<< "${metadata_prefix}")
+        fi
+        # 2nd sign metadata file, and upload signature
+        if [[ "${sign}" = "1" ]]; then
+          # sign metadata file
+          ${sign_script} sign ${sign_key} ${metadata_file}
+          # TODO check if signing worked (just check exit code == 0)
+          sig_metadata_file=${metadata_file}.sig
+          aws_sig_metadata_file=${aws_metadata_file}.sig
+
+          echo "  store metadata signature at ${aws_path}/${aws_sig_metadata_file}"
+          upload_to_staging_bucket \
+                  "${sig_metadata_file}" \
+                  "${bucket_name}" \
+                  "${aws_path}/${aws_sig_metadata_file}" \
+                  "${endpoint_url}"
+        else
+          echo "no signing method defined; not signing metadata file"
         fi
         echo "  store metadata file at ${aws_path}/${aws_file}.meta.txt"
         upload_to_staging_bucket \

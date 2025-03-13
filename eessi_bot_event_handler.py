@@ -77,6 +77,7 @@ REQUIRED_CONFIG = {
         # config.DEPLOYCFG_SETTING_ENDPOINT_URL,                     # optional
         config.DEPLOYCFG_SETTING_METADATA_PREFIX,                  # (required)
         config.DEPLOYCFG_SETTING_NO_DEPLOY_PERMISSION_COMMENT,     # required
+        # config.DEPLOYCFG_SETTING_SIGNING,                          # optional
         config.DEPLOYCFG_SETTING_UPLOAD_POLICY],                   # required
     config.SECTION_DOWNLOAD_PR_COMMENTS: [
         config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE,          # required

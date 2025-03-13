@@ -477,6 +477,13 @@ variables) that are allowed to be specified in a PR command with the
 `exportvariable` filters must be used (one per variable). These variables will
 be exported into the build environment before running the bot/build.sh script.
 
+The bot build script makes use of the variable `SKIP_TESTS` to determine if
+ReFrame tests shall be skipped or not. Default is not to skip them. To allow the
+use of the variable the setting could look like
+```
+allowed_exportvars = ["SKIP_TESTS=yes", "SKIP_TESTS=no"]
+```
+
 
 #### `[bot_control]` section
 
@@ -507,6 +514,35 @@ The `[deploycfg]` section defines settings for uploading built artefacts (tarbal
 artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 ```
 `artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
+
+```
+signing =
+    {
+        REPO_ID: {
+            "script": PATH_TO_SIGN_SCRIPT,
+            "key": PATH_TO_KEY_FILE,
+            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        }, ...
+    }
+```
+`signing` provides a setting for signing artefacts. The value uses a JSON-like format
+with `REPO_ID` being the repository ID. Repository IDs are defined in a file
+`repos.cfg` (see setting `repos_cfg_dir`), `script` provides the location of the
+script that is used to sign a file. If the location is a relative path, the script
+must reside in the checked out pull request of the target repository (e.g.,
+EESSI/software-layer). `key` points to the file of the key being used
+for signing. The bot calls the script with the two arguments:
+ 1. private key (as provided by the attribute 'key')
+ 2. path to the file to be signed (the upload script will determine that)
+NOTE (on `container_runtime`), signing requires a recent installation of OpenSSH
+(8.2 or newer). If the frontend where the event handler runs does not have that
+version installed, you can specify a container runtime via the `container_runtime`
+attribute below. Currently, only Singularity or Apptainer are supported.
+Note (on the key), make sure the file permissions are restricted to `0600` (only
+readable+writable by the file owner, or the signing will likely fail.
+Note (on json format), make sure no trailing commas are used after any elements
+or parsing/loading the json will likely fail. Also, the whole value should start
+at a new line and be indented as shown above.
 
 ```
 endpoint_url = URL_TO_S3_SERVER

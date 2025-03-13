@@ -161,8 +161,17 @@ no_build_permission_comment = Label `bot:build` has been set by user `{build_lab
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
-# exported into the build environment via `exportvariable` filters
-allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
+# exported into the build environment via 'exportvariable' filters
+# The bot build script makes use of the variable 'SKIP_TESTS' to determine if
+# ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
+# 'yes' and the exportvariable filter is added to a bot build command
+# ('export:SKIP_TESTS=yes'), ReFrame tests are skipped.
+# NOTE, the setting is optional and commented by default. If you want to enable
+# this feature ('exportvariable' filters), uncomment the line below and define
+# meaningful key-value pair(s). For example, to enable the use of
+# 'exportvariable:SKIP_TESTS=yes' as a filter, the key-value pair would be
+# "SKIP_TESTS=yes".
+# allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
 
 
 [deploycfg]
@@ -185,6 +194,31 @@ endpoint_url = URL_TO_S3_SERVER
 # like: bucket_name = {"eessi-pilot-2023.06": "eessi-staging-pilot-2023.06", "eessi.io-2023.06": "software.eessi.io-2023.06"}
 bucket_name = eessi-staging
 
+# settings for signing artefacts with JSON-like format
+#   REPO_ID: { "script": PATH_TO_SIGN_SCRIPT, "key": PATH_TO_KEY_FILE, "container_runtime": PATH_TO_CONTAINER_RUNTIME }
+#  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
+#  checked out pull request of the target repository (e.g.,
+#  EESSI/software-layer).
+#  The bot calls the script with the two arguments:
+#   1. private key (as provided by the attribute 'key')
+#   2. path to the file to be signed (the upload script will determine that)
+# NOTE (on "container_runtime"), signing requires a recent installation of OpenSSH
+#   (8.2 or newer). If the frontend where the event handler runs does not have that
+#   version installed, you can specify a container runtime via the 'container_runtime'
+#   attribute below. Currently, only Singularity or Apptainer are supported.
+# NOTE (on the key), make sure the file permissions are restricted to `0600` (only
+#   readable+writable by the file owner, or the signing will likely fail.
+# Note (on json format), make sure no trailing commas are used after any elements
+#   or parsing/loading the json will likely fail. Also, the whole value should start
+#   at a new line and be indented as shown below.
+signing =
+    {
+        "eessi.io-2023.06-software: {
+            "script": PATH_TO_SIGN_SCRIPT,
+            "key": PATH_TO_EESSI_BOT/config/user-site-system.key,
+            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        }
+    }
 # upload policy: defines what policy is used for uploading built artefacts
 #                to an S3 bucket
 # 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)

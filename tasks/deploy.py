@@ -265,6 +265,12 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     bucket_spec = deploycfg.get(config.DEPLOYCFG_SETTING_BUCKET_NAME)
     metadata_prefix = deploycfg.get(config.DEPLOYCFG_SETTING_METADATA_PREFIX)
     artefact_prefix = deploycfg.get(config.DEPLOYCFG_SETTING_ARTEFACT_PREFIX)
+    signing_str = deploycfg.get(config.DEPLOYCFG_SETTING_SIGNING) or ''
+    try:
+        signing = json.loads(signing_str)
+    except json.decoder.JSONDecodeError:
+        signing = {}
+        log(f"{funcname}(): error initialising signing from ({signing_str})")
 
     # if bucket_spec value looks like a dict, try parsing it as such
     if bucket_spec.lstrip().startswith('{'):
@@ -335,10 +341,28 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
 
     # run 'eessi-upload-to-staging {abs_path}'
     # (1) construct command line
+    # (2) setup container environment (for signing artefacts ...) if needed
+    # (3) run command
+
+    # (1) construct command line
     #   script assumes a few defaults:
     #     bucket_name = 'eessi-staging'
     #     if endpoint_url not set use EESSI S3 bucket
-    # (2) run command
+    do_signing = signing and target_repo_id in signing
+    sign_args = []
+    if do_signing:
+        sign_key_str = signing[target_repo_id][config.DEPLOYCFG_SETTING_SIGNING_KEY]
+        sign_key_path = os.path.abspath(sign_key_str)
+        sign_args.extend(['--sign-key', sign_key_path])
+        sign_script_str = signing[target_repo_id][config.DEPLOYCFG_SETTING_SIGNING_SCRIPT]
+        # if script begins not with '/', assume its location is relative to the job directory
+        # (that's because the script is provided by the target repository)
+        if sign_script_str.startswith('/'):
+            sign_script_path = os.path.abspath(sign_script_str)
+        else:
+            sign_script_path = os.path.abspath(os.path.join(job_dir, sign_script_str))
+        sign_args.extend(['--sign-script', sign_script_path])
+
     cmd_args = [artefact_upload_script, ]
     if len(artefact_prefix_arg) > 0:
         cmd_args.extend(['--artefact-prefix', artefact_prefix_arg])
@@ -351,11 +375,61 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     cmd_args.extend(['--pr-comment-id', str(pr_comment_id)])
     cmd_args.extend(['--pull-request-number', str(pr_number)])
     cmd_args.extend(['--repository', repo_name])
+    cmd_args.extend(sign_args)
     cmd_args.append(abs_path)
-    upload_cmd = ' '.join(cmd_args)
 
-    # run_cmd does all the logging we might need
-    out, err, ec = run_cmd(upload_cmd, 'Upload artefact to S3 bucket', raise_on_error=False)
+    # (2) setup container environment (for signing artefacts ...) if needed
+    #   determine container to run (from job.cfg)
+    #   determine container cache dir (from job.cfg)
+    #   setup directory for temporary container storage (previous_tmp/upload_step)
+    #   define miscellaneous args (--home ...)
+    run_in_container = (
+        do_signing and
+        config.DEPLOYCFG_SETTING_SIGNING_CONTAINER_RUNTIME in signing[target_repo_id]
+    )
+    container_cmd = []
+    my_env = {}
+    if run_in_container:
+        container = jobcfg[job_metadata.JOB_CFG_REPOSITORY_SECTION][job_metadata.JOB_CFG_REPOSITORY_CONTAINER]
+        cachedir = jobcfg[job_metadata.JOB_CFG_SITE_CONFIG_SECTION][job_metadata.JOB_CFG_SITE_CONFIG_CONTAINER_CACHEDIR]
+        upload_tmp_dir = os.path.join(job_dir, job_metadata.JOB_CFG_PREVIOUS_TMP, job_metadata.JOB_CFG_UPLOAD_STEP)
+        os.makedirs(upload_tmp_dir, exist_ok=True)
+        container_runtime = signing[target_repo_id][config.DEPLOYCFG_SETTING_SIGNING_CONTAINER_RUNTIME]
+
+        # determine (additional) bind mounts from paths used to call upload script and its arguments
+        #  - assumes that all paths begin with '/'
+        bind_mounts = set()
+        # first add parent of job_dir and real path of the parent
+        job_parent_dir = os.path.dirname(job_dir)
+        bind_mounts.add(job_parent_dir)
+        real_job_parent_dir = os.path.realpath(job_parent_dir)
+        if job_parent_dir != real_job_parent_dir:
+            bind_mounts.add(real_job_parent_dir)
+        # now, process all args that begin with '/'
+        for arg in cmd_args:
+            if arg.startswith('/'):
+                arg_dir = os.path.dirname(arg)
+                bind_mounts.add(arg_dir)
+                # also, determine the real path for arg_dir and add it if it's different to arg_dir
+                real_dir = os.path.realpath(arg_dir)
+                if arg_dir != real_dir:
+                    bind_mounts.add(real_dir)
+
+        container_cmd = [container_runtime, ]
+        container_cmd.extend(['exec'])
+        # avoid that $HOME 'leaks' in due to system settings
+        container_cmd.extend(['--no-home'])
+        for bind in bind_mounts:
+            container_cmd.extend(['--bind', bind])
+        container_cmd.extend([container])
+        my_env = {
+            'SINGULARITY_CACHEDIR': cachedir,
+            'SINGULARITY_TMPDIR': upload_tmp_dir
+        }
+
+    cmd_and_args = ' '.join(container_cmd + cmd_args)
+    log(f"command to launch upload script: {cmd_and_args}")
+    out, err, ec = run_cmd(cmd_and_args, 'Upload artefact to S3 bucket', raise_on_error=False, env=my_env)
 
     if ec == 0:
         # add file to 'job_dir/../uploaded.txt'
