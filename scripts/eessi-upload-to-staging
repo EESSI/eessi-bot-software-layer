@@ -75,6 +75,8 @@ function display_help
   echo "                                    expansion will be applied; arg '-l'"   >&2
   echo "                                    lists variables that are defined at"   >&2
   echo "                                    the time of expansion"                 >&2
+  echo "  -b | --bot-instance NAME       -  name of the bot instance that uploads" >&2
+  echo "                                    files to S3"                           >&2
   echo "  -e | --endpoint-url URL        -  endpoint url (needed for non AWS S3)"  >&2
   echo "  -h | --help                    -  display this usage information"        >&2
   echo "  -i | --pr-comment-id           -  identifier of a PR comment; may be"    >&2
@@ -134,6 +136,7 @@ sign_key=
 sign_script=
 
 # provided via options in the bot's config file app.cfg and/or command line argument
+bot_instance=
 metadata_prefix=
 artefact_prefix=
 
@@ -145,6 +148,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     -a|--artefact-prefix)
       artefact_prefix="$2"
+      shift 2
+      ;;
+    -b|--bot-instance)
+      bot_instance="$2"
       shift 2
       ;;
     -e|--endpoint-url)
@@ -263,7 +270,7 @@ for file in "$*"; do
         # 1st sign artefact, and upload signature
         if [[ "${sign}" = "1" ]]; then
           # sign artefact
-          ${sign_script} sign ${sign_key} ${file}
+          ${sign_script} sign ${sign_key} ${file} ${bot_instance}
           # TODO check if signing worked (just check exit code == 0)
           sig_file=${file}.sig
           aws_sig_file=${aws_file}.sig
@@ -314,7 +321,7 @@ for file in "$*"; do
         # 2nd sign metadata file, and upload signature
         if [[ "${sign}" = "1" ]]; then
           # sign metadata file
-          ${sign_script} sign ${sign_key} ${metadata_file}
+          ${sign_script} sign ${sign_key} ${metadata_file} ${bot_instance}
           # TODO check if signing worked (just check exit code == 0)
           sig_metadata_file=${metadata_file}.sig
           aws_sig_metadata_file=${aws_metadata_file}.sig

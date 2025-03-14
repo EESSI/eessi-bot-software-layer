@@ -25,13 +25,14 @@
 usage() {
     cat <<EOF
 Usage:
-  $0 sign <private_key> <file>
+  $0 sign <private_key> <file> <namespace>
   $0 verify <allowed_signers_file> <file> [signature_file]
 
 Options:
   sign:
     - <private_key>: Path to SSH private key (use KEY_PASSPHRASE env for passphrase)
     - <file>: File to sign
+    - <namespace>: Additional information to limit scope of the signature
 
   verify:
     - <allowed_signers_file>: Path to the allowed signers file
@@ -39,7 +40,7 @@ Options:
     - [signature_file]: Optional, defaults to '<file>.sig'
 
 Example allowed signers format:
-  identity_1 <public-key>
+  identity_1 namespaces="namespace",valid-before="last-valid-day" <public-key>
 EOF
     exit 9
 }
@@ -48,12 +49,14 @@ EOF
 FILE_PROBLEM=1
 CONVERSION_FAILURE=2
 VALIDATION_FAILED=3
+MISSING_NAMESPACE=4
 
 # Ensure minimum arguments
 [ "$#" -lt 3 ] && usage
 
 MODE="$1"
 FILE_TO_SIGN="$3"
+NAMESPACE="$4"
 
 # Ensure the target file exists
 if [ ! -f "$FILE_TO_SIGN" ]; then
@@ -102,19 +105,24 @@ if [ "$MODE" == "sign" ]; then
     convert_private_key "$PRIVATE_KEY" "$TEMP_KEY"
 
     echo "Signing the file..."
-    ssh-keygen -Y sign -f "$TEMP_KEY" -P "${KEY_PASSPHRASE:-}" -n file "$FILE_TO_SIGN"
+    if [[ -n "${NAMESPACE}" ]]; then
+        ssh-keygen -Y sign -f "$TEMP_KEY" -P "${KEY_PASSPHRASE:-}" -n "${NAMESPACE}" "$FILE_TO_SIGN"
+        cat <<EOF
+
+For verification, your allowed signers file could contain:
+identity_1 namespaces="${NAMESPACE}",valid-before="LAST_VALID_DAY" $(cat "${TEMP_KEY}.pub")
+EOF
+    else
+       # refuse to sign without a namespace
+       echo "Error: missing namespace for signing"
+       exit $MISSING_NAMESPACE
+    fi
 
     [ ! -f "$SIG_FILE" ] && { echo "Error: Signing failed."; exit $FILE_PROBLEM; }
     echo "Signature created: $SIG_FILE"
 
-    cat <<EOF
-
-For verification, your allowed signers file could contain:
-identity_1 $(cat "${TEMP_KEY}.pub")
-EOF
-
     echo "Validating the signature..."
-    ssh-keygen -Y check-novalidate -n file -f "${TEMP_KEY}.pub" -s "$SIG_FILE" < "$FILE_TO_SIGN" || {
+    ssh-keygen -Y check-novalidate -n "${NAMESPACE}" -f "${TEMP_KEY}.pub" -s "$SIG_FILE" < "$FILE_TO_SIGN" || {
         echo "Error: Signature validation failed."
         exit $VALIDATION_FAILED
     }
@@ -132,20 +140,16 @@ elif [ "$MODE" == "verify" ]; then
     echo "Verifying the signature against allowed signers..."
 
     # Iterate through each principal in the allowed signers file
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" || "$line" == \#* ]] && continue
+    while read -r principal options key
+    do
+        [[ -z "$principal" || "$principal" == \#* ]] && continue
 
-        # Extract and process each principal
-        principals=$(echo "$line" | cut -d' ' -f1)
-        IFS=',' read -ra principal_list <<< "$principals"
-
-        for principal in "${principal_list[@]}"; do
-            echo "Checking principal: $principal"
-            if ssh-keygen -Y verify -f "$ALLOWED_SIGNERS_FILE" -n file -I "$principal" -s "$SIG_FILE" < "$FILE_TO_SIGN"; then
-                echo "Signature is valid for principal: $principal"
-                exit 0
-            fi
-        done
+        namespaces=$(echo "$options" | grep -oP "namespaces=\"\K[^\"]+")
+        echo "Checking principal: $principal and namespace: $namespaces"
+        if ssh-keygen -Y verify -f "$ALLOWED_SIGNERS_FILE" -n "$namespaces" -I "$principal" -s "$SIG_FILE" < "$FILE_TO_SIGN"; then
+            echo "Signature is valid for principal: $principal and namespace: $namespaces"
+            exit 0
+        fi
     done < "$ALLOWED_SIGNERS_FILE"
 
     echo "Error: No valid signature found."
