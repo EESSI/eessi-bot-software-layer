@@ -417,6 +417,8 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
 
         container_cmd = [container_runtime, ]
         container_cmd.extend(['exec'])
+        # avoid execution of system level initialisation scripts
+        container_cmd.extend(['--contain'])
         # avoid that $HOME 'leaks' in due to system settings
         container_cmd.extend(['--no-home'])
         for bind in bind_mounts:
