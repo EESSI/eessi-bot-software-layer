@@ -24,16 +24,30 @@ jobs:
           echo "Very important stuff" > out.txt
           export FILE_TO_SIGN="out.txt"
           # Sign the file
-          ./scripts/sign_verify_file_ssh.sh sign id_rsa.pem "$FILE_TO_SIGN"
+          ./scripts/sign_verify_file_ssh.sh sign id_rsa.pem "$FILE_TO_SIGN" ci
           # Create an allowed_signers file based on the public key
-          echo -n "allowed_identity " > allowed_signers
+          valid_before=$(date --date='today+3days' +%Y%m%d)
+          echo -n 'allowed_identity namespaces="ci",valid-before="'$valid_before'" ' > allowed_signers
           cat id_rsa.pem.pub >> allowed_signers
           # Verify the signature
           ./scripts/sign_verify_file_ssh.sh verify allowed_signers "$FILE_TO_SIGN"
           # Make a new signature that does not appear in the allowed signers file
           ssh-keygen -t rsa -b 4096 -m PEM -f id_rsa.alt.pem -N ""
           # Replace the allowed signers file
-          echo -n "disallowed_identity " > allowed_signers
+          echo -n 'disallowed_identity namespaces="ci",valid-before="'$valid_before'" ' > allowed_signers
           cat id_rsa.alt.pem.pub >> allowed_signers
           # Make sure signature checking fails in this case
           ./scripts/sign_verify_file_ssh.sh verify allowed_signers "$FILE_TO_SIGN" && exit 1 || echo "Expected failure for unknown identity"
+          # Check if wrong namespace let verification fail
+          # Replace the allowed signers file
+          echo -n 'wrong_namespace_identity namespaces="CI",valid-before="'$valid_before'" ' > allowed_signers
+          cat id_rsa.pem.pub >> allowed_signers
+          # Make sure signature checking fails in this case
+          ./scripts/sign_verify_file_ssh.sh verify allowed_signers "$FILE_TO_SIGN" && exit 2 || echo "Expected failure for wrong namespace"
+          # Check if expired key let verification fail
+          # Replace the allowed signers file
+          valid_expired=$(date --date='today-3days' +%Y%m%d)
+          echo -n 'expired_key_identity namespaces="ci",valid-before="'$valid_expired'" ' > allowed_signers
+          cat id_rsa.pem.pub >> allowed_signers
+          # Make sure signature checking fails in this case
+          ./scripts/sign_verify_file_ssh.sh verify allowed_signers "$FILE_TO_SIGN" && exit 3 || echo "Expected failure for expired key"
