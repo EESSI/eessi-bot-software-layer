@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - scripts/sign_verify_file_ssh.sh
+      - .github/workflows/tests_scripts.yml
   pull_request:
     paths:
       - scripts/sign_verify_file_ssh.sh
+      - .github/workflows/tests_scripts.yml
 permissions:
   contents: read # to fetch code (actions/checkout)
 jobs:
