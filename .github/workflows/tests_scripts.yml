@@ -64,6 +64,7 @@ jobs:
       - name: Ensure verification when looping through allowed signers file
         run: |
           # Add the approved identity to the end
+          valid_before=$(date --date='today+3days' +%Y%m%d)
           echo -n 'listed_identity namespaces="ci",valid-before="'$valid_before'" ' >> allowed_signers
           cat id_rsa.pem.pub >> allowed_signers
           ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt
