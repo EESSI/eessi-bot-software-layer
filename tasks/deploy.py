@@ -266,6 +266,8 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     metadata_prefix = deploycfg.get(config.DEPLOYCFG_SETTING_METADATA_PREFIX)
     artefact_prefix = deploycfg.get(config.DEPLOYCFG_SETTING_ARTEFACT_PREFIX)
     signing_str = deploycfg.get(config.DEPLOYCFG_SETTING_SIGNING) or ''
+    github = cfg[config.SECTION_GITHUB]
+    app_name = github.get(config.GITHUB_SETTING_APP_NAME)
     try:
         signing = json.loads(signing_str)
     except json.decoder.JSONDecodeError:
@@ -375,6 +377,7 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     cmd_args.extend(['--pr-comment-id', str(pr_comment_id)])
     cmd_args.extend(['--pull-request-number', str(pr_number)])
     cmd_args.extend(['--repository', repo_name])
+    cmd_args.extend(['--bot-instance', app_name])
     cmd_args.extend(sign_args)
     cmd_args.append(abs_path)
 
