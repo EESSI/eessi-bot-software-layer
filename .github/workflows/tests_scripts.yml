@@ -34,6 +34,7 @@ jobs:
 
       - name: Replace allowed signers with disallowed identity
         run: |
+          valid_before=$(date --date='today+3days' +%Y%m%d)
           ssh-keygen -t rsa -b 4096 -m PEM -f id_rsa.alt.pem -N ""
           echo -n 'disallowed_identity namespaces="ci",valid-before="'$valid_before'" ' > allowed_signers
           cat id_rsa.alt.pem.pub >> allowed_signers
@@ -44,6 +45,7 @@ jobs:
 
       - name: Replace allowed signers with wrong namespace
         run: |
+          valid_before=$(date --date='today+3days' +%Y%m%d)
           echo -n 'wrong_namespace_identity namespaces="CI",valid-before="'$valid_before'" ' > allowed_signers
           cat id_rsa.pem.pub >> allowed_signers
 
