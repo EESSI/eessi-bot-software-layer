@@ -270,7 +270,7 @@ for file in "$*"; do
         # 1st sign artefact, and upload signature
         if [[ "${sign}" = "1" ]]; then
           # sign artefact
-          ${sign_script} sign ${sign_key} ${file} ${bot_instance}
+          ${sign_script} --sign --private-key ${sign_key} --file ${file} --namespace ${bot_instance}
           # TODO check if signing worked (just check exit code == 0)
           sig_file=${file}.sig
           aws_sig_file=${aws_file}.sig
@@ -321,7 +321,7 @@ for file in "$*"; do
         # 2nd sign metadata file, and upload signature
         if [[ "${sign}" = "1" ]]; then
           # sign metadata file
-          ${sign_script} sign ${sign_key} ${metadata_file} ${bot_instance}
+          ${sign_script} --sign --private-key ${sign_key} --file ${metadata_file} --namespace ${bot_instance}
           # TODO check if signing worked (just check exit code == 0)
           sig_metadata_file=${metadata_file}.sig
           aws_sig_metadata_file=${aws_metadata_file}.sig
