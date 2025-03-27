@@ -11,7 +11,6 @@
 
 # Standard library imports
 from collections import namedtuple
-import re
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import log
@@ -254,9 +253,9 @@ class EESSIBotActionFilter:
         """
         filter_str_list = []
         for _filter in self.action_filters:
-            cm = _filter.component
-            re = _filter.value
-            filter_str_list.append(f"{cm}:{re}")
+            component = _filter.component
+            value = _filter.value
+            filter_str_list.append(f"{component}:{value}")
         return " ".join(filter_str_list)
 
     def check_filters(self, context):
@@ -287,7 +286,7 @@ class EESSIBotActionFilter:
         # we iterate over the three components 'architecture', 'instance' and
         #   'repository' and verify if their value in the given context matches
         #   the corresponding value in the filter
-        context_components = [ FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST, FILTER_COMPONENT_REPO ]
+        context_components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST, FILTER_COMPONENT_REPO]
         for component in context_components:
             filter_values = self.get_filter_by_component(component)
             if len(filter_values) == 0:
