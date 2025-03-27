@@ -274,9 +274,6 @@ class EESSIBotActionFilter:
                 corresponding component in a filter
             False otherwise
         """
-        # default result is False
-        check = False
-
         # examples:
         #   filter: 'arch:intel instance:AWS' --> evaluates to True if
         #     context['architecture'] is 'intel' and if context['instance'] is 'AWS'
