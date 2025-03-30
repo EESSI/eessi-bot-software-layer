@@ -258,10 +258,11 @@ class EESSIBotActionFilter:
             filter_str_list.append(f"{component}:{value}")
         return " ".join(filter_str_list)
 
-    def check_filters(self, context):
+    def check_build_filters(self, context):
         """
-        Checks if a filter matches a given context which is defined by three
-        components (architecture, instance, repository)
+        Checks if the filter in self matches a given context which is defined
+        by the three components FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST and
+        FILTER_COMPONENT_REPO for building.
         A single component of a filter matches the corresponding component in a
         context if the values for these components are exactly the same.
 
@@ -270,7 +271,28 @@ class EESSIBotActionFilter:
                 representing the context in which the method is called
 
         Returns:
-            True if all defined components in a given context match their
+            True if all required components in a given context match their
+                corresponding component in a filter
+            False otherwise
+        """
+        build_components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST, FILTER_COMPONENT_REPO]
+        return self.check_filters(context, build_components)
+
+    def check_filters(self, context, components):
+        """
+        Checks if the filter in self matches a given context which is defined
+        by components.
+        A single component of a filter matches the corresponding component in a
+        context if the values for these components are exactly the same.
+
+        Args:
+            context (dict) : dictionary that contents (component,value)-pairs
+                representing the context in which the method is called
+            components (list) : contains constants FILTER_COMPONENT_* that must
+                be checked
+
+        Returns:
+            True if all required components in a given context match their
                 corresponding component in a filter
             False otherwise
         """
@@ -280,11 +302,9 @@ class EESSIBotActionFilter:
         #   filter: 'repository:eessi-2023.06' --> evaluates to True if
         #     context['repository'] is 'eessi-2023.06'
 
-        # we iterate over the three components 'architecture', 'instance' and
-        #   'repository' and verify if their value in the given context matches
-        #   the corresponding value in the filter
-        context_components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST, FILTER_COMPONENT_REPO]
-        for component in context_components:
+        # we iterate over the components and verify if their value in the given
+        #   context matches the corresponding value in the filter
+        for component in components:
             filter_values = self.get_filter_by_component(component)
             if len(filter_values) == 0:
                 # no filter for component provided --> at least one filter per
