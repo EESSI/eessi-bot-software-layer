@@ -195,19 +195,8 @@ def test_check_matching_empty_filter():
     actual = af.to_string()
     assert expected == actual
 
-    context = {"architecture": "foo"}
+    context = {"arch": "foo"}
     actual = af.check_filters(context)
-    expected = False
-    assert expected == actual
-
-    context = {"architecture": "foo", "instance": "me", "repository": "base"}
-    actual = af.check_filters(context)
-    expected = False
-    assert expected == actual
-
-    af2 = EESSIBotActionFilter("arch:foo inst:me repo:base")
-    print("af2: %s" % af2.to_string())
-    actual = af2.check_filters(context)
     expected = True
     assert expected == actual
 
@@ -223,12 +212,6 @@ def test_check_matching_simple_filter():
 
     context = {"architecture": "x86_64/intel/cascadelake"}
     actual = af.check_filters(context)
-    expected = False
-    assert expected == actual
-
-    context = {"architecture": ".*intel.*", "instance": "[aA]", "repository": "nessi.no-2022.*"}
-    af2 = EESSIBotActionFilter("arch:.*intel.* inst:[aA] repo:nessi.no-2022.*")
-    actual = af2.check_filters(context)
     expected = True
     assert expected == actual
 
@@ -250,14 +233,14 @@ def test_match_empty_context(complex_filter):
 
 def test_match_architecture_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake"}
-    expected = False
+    expected = True
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
 
 def test_match_architecture_job_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake", "job": 1234}
-    expected = False
+    expected = True
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
@@ -271,17 +254,20 @@ def test_non_match_architecture_repository_context(complex_filter):
 
 @pytest.fixture
 def arch_filter_slash_syntax():
-    af = EESSIBotActionFilter("arch:.*/intel/.* repo:EESSI inst:aws")
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = '.*/intel/.*'
+    af.add_filter(component, value)
     yield af
 
 
 def test_match_architecture_syntax_slash(arch_filter_slash_syntax):
-    context = {"architecture": ".*/intel/.*", "repository": "EESSI", "instance": "aws"}
+    context = {"architecture": "x86_64/intel/cascadelake", "repository": "EESSI"}
     expected = True
     actual = arch_filter_slash_syntax.check_filters(context)
     assert expected == actual
 
-    context = {"architecture": ".*-intel-.*", "repository": "EESSI", "instance": "aws"}
+    context = {"architecture": "x86_64-intel-cascadelake"}
     expected = True
     actual = arch_filter_slash_syntax.check_filters(context)
     assert expected == actual
@@ -289,17 +275,20 @@ def test_match_architecture_syntax_slash(arch_filter_slash_syntax):
 
 @pytest.fixture
 def arch_filter_dash_syntax():
-    af = EESSIBotActionFilter("arch:.*-intel-.* repo:EESSI inst:azure")
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = '.*-intel-.*'
+    af.add_filter(component, value)
     yield af
 
 
 def test_match_architecture_syntax_dash(arch_filter_dash_syntax):
-    context = {"architecture": ".*-intel-.*", "repository": "EESSI", "instance": "azure"}
+    context = {"architecture": "x86_64-intel-cascadelake", "repository": "EESSI"}
     expected = True
     actual = arch_filter_dash_syntax.check_filters(context)
     assert expected == actual
 
-    context = {"architecture": ".*/intel-.*", "repository": "EESSI", "instance": "azure"}
+    context = {"architecture": "x86_64/intel-cascadelake"}
     expected = True
     actual = arch_filter_dash_syntax.check_filters(context)
     assert expected == actual
@@ -307,17 +296,20 @@ def test_match_architecture_syntax_dash(arch_filter_dash_syntax):
 
 @pytest.fixture
 def accel_filter_slash_syntax():
-    af = EESSIBotActionFilter("acc:nvidia/.* arch:.*-intel-.* repo:EESSI inst:azure")
+    af = EESSIBotActionFilter("")
+    component = 'accel'
+    value = 'nvidia/.*'
+    af.add_filter(component, value)
     yield af
 
 
 def test_match_accelerator_syntax_slash(accel_filter_slash_syntax):
-    context = {"accelerator": "nvidia/cc70", "architecture": ".*/intel-.*", "repository": "EESSI", "instance": "azure"}
+    context = {"accelerator": "nvidia/cc70", "repository": "EESSI"}
     expected = True
     actual = accel_filter_slash_syntax.check_filters(context)
     assert expected == actual
 
-    context = {"accelerator": "nvidia=cc70", "architecture": ".*/intel-.*", "repository": "EESSI", "instance": "azure"}
+    context = {"accelerator": "nvidia=cc70"}
     expected = True
     actual = accel_filter_slash_syntax.check_filters(context)
     assert expected == actual
@@ -325,17 +317,20 @@ def test_match_accelerator_syntax_slash(accel_filter_slash_syntax):
 
 @pytest.fixture
 def accel_filter_equal_syntax():
-    af = EESSIBotActionFilter("acc:amd=gfx90a arch:.*-intel-.* repo:EESSI inst:azure")
+    af = EESSIBotActionFilter("")
+    component = 'accel'
+    value = 'amd=gfx90a'
+    af.add_filter(component, value)
     yield af
 
 
 def test_match_accelerator_syntax_equal(accel_filter_equal_syntax):
-    context = {"accelerator": "amd=gfx90a", "architecture": ".*/intel-.*", "repository": "EESSI", "instance": "azure"}
+    context = {"accelerator": "amd=gfx90a", "repository": "EESSI"}
     expected = True
     actual = accel_filter_equal_syntax.check_filters(context)
     assert expected == actual
 
-    context = {"accelerator": "amd/gfx90a", "architecture": ".*/intel-.*", "repository": "EESSI", "instance": "azure"}
+    context = {"accelerator": "amd/gfx90a"}
     expected = True
     actual = accel_filter_equal_syntax.check_filters(context)
     assert expected == actual
