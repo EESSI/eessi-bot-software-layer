@@ -7,4 +7,4 @@
 #
 # license: GPLv2
 #
-PYTHONPATH=$PWD:$PYTHONPATH pytest --verbose --capture=no "$@"
+PYTHONPATH=$PWD:$PYTHONPATH pytest --capture=no "$@"
