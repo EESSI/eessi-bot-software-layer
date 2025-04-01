@@ -36,11 +36,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install pytest
+          python -m pip install pytest-cov
           python -m pip install --upgrade flake8
 
       - name: Run test suite
         run: |
           ./test.sh
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # v3.1.0
+        with:
+          name: coverage-report
+          path: coverage.html
 
       - name: Run flake8 to verify PEP8-compliance of Python code
         run: |
