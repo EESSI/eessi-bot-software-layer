@@ -20,8 +20,13 @@ from tools.filter import (COMPONENT_TOO_SHORT,
                           COMPONENT_UNKNOWN,
                           EESSIBotActionFilter,
                           EESSIBotActionFilterError,
+                          FILTER_COMPONENT_ACCEL,
+                          FILTER_COMPONENT_ARCH,
+                          FILTER_COMPONENT_INST,
+                          FILTER_COMPONENT_REPO,
                           FILTER_EMPTY_VALUE,
-                          FILTER_FORMAT_ERROR)
+                          FILTER_FORMAT_ERROR,
+                          UNKNOWN_COMPONENT_CONST)
 
 
 def test_empty_action_filter():
@@ -189,19 +194,54 @@ def test_remove_filter_errors(complex_filter):
     assert str(err2.value) == expected_msg2
 
 
-def test_check_matching_empty_filter():
+def test_empty_filter_to_string():
     af = EESSIBotActionFilter("")
     expected = ''
     actual = af.to_string()
     assert expected == actual
 
-    context = {"arch": "foo"}
-    actual = af.check_filters(context)
+
+def test_empty_filter_empty_context_no_component():
+    af = EESSIBotActionFilter("")
+    context = {}
+    components = []
+    actual = af.check_filters(context, components)
     expected = True
     assert expected == actual
 
 
-def test_check_matching_simple_filter():
+def test_empty_filter_arch_context_no_component():
+    af = EESSIBotActionFilter("")
+    context = {"arch": "foo"}
+    components = []
+    actual = af.check_filters(context, components)
+    expected = True
+    assert expected == actual
+
+
+def test_empty_filter_arch_context_arch_component():
+    af = EESSIBotActionFilter("")
+    context = {"arch": "foo"}
+    components = [FILTER_COMPONENT_ARCH]
+    actual = af.check_filters(context, components)
+    expected = False
+    # if component to check is given, they need to be present in filter and
+    # context
+    assert expected == actual
+
+
+def test_empty_filter_empty_context_arch_component():
+    af = EESSIBotActionFilter("")
+    context = {}
+    components = [FILTER_COMPONENT_ARCH]
+    actual = af.check_filters(context, components)
+    expected = False
+    # if component to check is given, they need to be present in filter and
+    # context
+    assert expected == actual
+
+
+def test_arch_filter_to_string():
     af = EESSIBotActionFilter("")
     component = 'arch'
     value = '.*intel.*'
@@ -210,13 +250,94 @@ def test_check_matching_simple_filter():
     actual = af.to_string()
     assert expected == actual
 
+
+def test_arch_filter_no_context_other_component():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
     context = {"architecture": "x86_64/intel/cascadelake"}
-    actual = af.check_filters(context)
+    components = ['OTHER']
+    with pytest.raises(Exception) as err:
+        af.check_filters(context, components)
+    assert err.type == EESSIBotActionFilterError
+    expected_msg = UNKNOWN_COMPONENT_CONST.format(component=components[0])
+    assert str(err.value) == expected_msg
+
+
+def test_arch_filter_arch_context_arch_component():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
+    context = {"architecture": "x86_64/intel/cascadelake"}
+    components = [FILTER_COMPONENT_ARCH]
+    actual = af.check_filters(context, components)
     expected = True
     assert expected == actual
 
 
-def test_create_complex_filter(complex_filter):
+def test_arch_filter_arch_context_no_component():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
+    context = {"architecture": "x86_64/intel/cascadelake"}
+    components = []
+    actual = af.check_filters(context, components)
+    expected = True
+    assert expected == actual
+
+
+def test_arch_filter_no_context_no_component():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
+    context = {}
+    components = []
+    actual = af.check_filters(context, components)
+    expected = True
+    assert expected == actual
+
+
+def test_arch_filter_no_context_arch_component():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
+    context = {}
+    components = [FILTER_COMPONENT_ARCH]
+    actual = af.check_filters(context, components)
+    expected = False
+    assert expected == actual
+
+
+def test_arch_filter_arch_context_inst_component():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
+    context = {"architecture": "x86_64/intel/cascadelake"}
+    components = [FILTER_COMPONENT_INST]
+    actual = af.check_filters(context, components)
+    expected = False
+    assert expected == actual
+
+
+def test_arch_filter_arch_context_two_components():
+    af = EESSIBotActionFilter("")
+    component = 'arch'
+    value = 'x86_64/intel/cascadelake'
+    af.add_filter(component, value)
+    context = {"architecture": "x86_64/intel/cascadelake"}
+    components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST]
+    actual = af.check_filters(context, components)
+    expected = False
+    assert expected == actual
+
+
+def test_complex_filter_to_string(complex_filter):
     expected = "architecture:.*intel.*"
     expected += " repository:nessi.no-2022.*"
     expected += " instance:[aA]"
@@ -224,31 +345,53 @@ def test_create_complex_filter(complex_filter):
     assert expected == actual
 
 
-def test_match_empty_context(complex_filter):
+def test_complex_filter_no_context_other_component(complex_filter):
+    context = {"architecture": ".*intel.*"}
+    components = ['OTHER']
+    with pytest.raises(Exception) as err:
+        complex_filter.check_filters(context, components)
+    assert err.type == EESSIBotActionFilterError
+    expected_msg = UNKNOWN_COMPONENT_CONST.format(component=components[0])
+    assert str(err.value) == expected_msg
+
+
+def test_complex_filter_no_context_no_component(complex_filter):
     context = {}
-    expected = False
-    actual = complex_filter.check_filters(context)
-    assert expected == actual
-
-
-def test_match_architecture_context(complex_filter):
-    context = {"architecture": "x86_64/intel/cascadelake"}
+    components = []
     expected = True
-    actual = complex_filter.check_filters(context)
+    actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
 
-def test_match_architecture_job_context(complex_filter):
-    context = {"architecture": "x86_64/intel/cascadelake", "job": 1234}
+#def test_complex_filter_no_context_no_component(complex_filter):
+#    context = {}
+#    components = []
+#    expected = True
+#    actual = complex_filter.check_filters(context, components)
+#    assert expected == actual
+
+
+def test_complex_filter_arch_context_arch_component(complex_filter):
+    context = {"architecture": ".*intel.*"}
+    components = [FILTER_COMPONENT_ARCH]
     expected = True
-    actual = complex_filter.check_filters(context)
+    actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
 
-def test_non_match_architecture_repository_context(complex_filter):
-    context = {"architecture": "x86_64/intel/cascadelake", "repository": "EESSI"}
+def test_complex_filter_job_context_arch_component(complex_filter):
+    context = {"architecture": ".*intel.*", "job": 1234}
+    components = [FILTER_COMPONENT_ARCH]
+    expected = True
+    actual = complex_filter.check_filters(context, components)
+    assert expected == actual
+
+
+def test_complex_filter_repo_context_arch_and_repo_components(complex_filter):
+    context = {"architecture": ".*intel.*", "repository": "EESSI"}
+    components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_REPO]
     expected = False
-    actual = complex_filter.check_filters(context)
+    actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
 
@@ -256,20 +399,21 @@ def test_non_match_architecture_repository_context(complex_filter):
 def arch_filter_slash_syntax():
     af = EESSIBotActionFilter("")
     component = 'arch'
-    value = '.*/intel/.*'
+    value = 'x86_64/intel/cascadelake'
     af.add_filter(component, value)
     yield af
 
 
 def test_match_architecture_syntax_slash(arch_filter_slash_syntax):
-    context = {"architecture": "x86_64/intel/cascadelake", "repository": "EESSI"}
+    components = [FILTER_COMPONENT_ARCH]
+    context = {"architecture": "x86_64/intel/cascadelake"}
     expected = True
-    actual = arch_filter_slash_syntax.check_filters(context)
+    actual = arch_filter_slash_syntax.check_filters(context, components)
     assert expected == actual
 
     context = {"architecture": "x86_64-intel-cascadelake"}
     expected = True
-    actual = arch_filter_slash_syntax.check_filters(context)
+    actual = arch_filter_slash_syntax.check_filters(context, components)
     assert expected == actual
 
 
@@ -277,20 +421,21 @@ def test_match_architecture_syntax_slash(arch_filter_slash_syntax):
 def arch_filter_dash_syntax():
     af = EESSIBotActionFilter("")
     component = 'arch'
-    value = '.*-intel-.*'
+    value = 'x86_64-intel-cascadelake'
     af.add_filter(component, value)
     yield af
 
 
 def test_match_architecture_syntax_dash(arch_filter_dash_syntax):
-    context = {"architecture": "x86_64-intel-cascadelake", "repository": "EESSI"}
+    components = [FILTER_COMPONENT_ARCH]
+    context = {"architecture": "x86_64-intel-cascadelake"}
     expected = True
-    actual = arch_filter_dash_syntax.check_filters(context)
+    actual = arch_filter_dash_syntax.check_filters(context, components)
     assert expected == actual
 
     context = {"architecture": "x86_64/intel-cascadelake"}
     expected = True
-    actual = arch_filter_dash_syntax.check_filters(context)
+    actual = arch_filter_dash_syntax.check_filters(context, components)
     assert expected == actual
 
 
@@ -298,20 +443,21 @@ def test_match_architecture_syntax_dash(arch_filter_dash_syntax):
 def accel_filter_slash_syntax():
     af = EESSIBotActionFilter("")
     component = 'accel'
-    value = 'nvidia/.*'
+    value = 'nvidia/cc70'
     af.add_filter(component, value)
     yield af
 
 
 def test_match_accelerator_syntax_slash(accel_filter_slash_syntax):
-    context = {"accelerator": "nvidia/cc70", "repository": "EESSI"}
+    components = [FILTER_COMPONENT_ACCEL]
+    context = {"accelerator": "nvidia/cc70"}
     expected = True
-    actual = accel_filter_slash_syntax.check_filters(context)
+    actual = accel_filter_slash_syntax.check_filters(context, components)
     assert expected == actual
 
     context = {"accelerator": "nvidia=cc70"}
     expected = True
-    actual = accel_filter_slash_syntax.check_filters(context)
+    actual = accel_filter_slash_syntax.check_filters(context, components)
     assert expected == actual
 
 
@@ -325,12 +471,13 @@ def accel_filter_equal_syntax():
 
 
 def test_match_accelerator_syntax_equal(accel_filter_equal_syntax):
-    context = {"accelerator": "amd=gfx90a", "repository": "EESSI"}
+    components = [FILTER_COMPONENT_ACCEL]
+    context = {"accelerator": "amd=gfx90a"}
     expected = True
-    actual = accel_filter_equal_syntax.check_filters(context)
+    actual = accel_filter_equal_syntax.check_filters(context, components)
     assert expected == actual
 
     context = {"accelerator": "amd/gfx90a"}
     expected = True
-    actual = accel_filter_equal_syntax.check_filters(context)
+    actual = accel_filter_equal_syntax.check_filters(context, components)
     assert expected == actual
