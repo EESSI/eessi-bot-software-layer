@@ -7,4 +7,4 @@
 #
 # license: GPLv2
 #
-PYTHONPATH=$PWD:$PYTHONPATH pytest --verbose --capture=no --cov=$PWD --cov-report=html
+PYTHONPATH=$PWD:$PYTHONPATH pytest --verbose --capture=no --cov=$PWD
