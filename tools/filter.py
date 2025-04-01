@@ -288,6 +288,9 @@ class EESSIBotActionFilter:
         Args:
             context (dict) : dictionary that contents (component,value)-pairs
                 representing the context in which the method is called
+                The context is typically defined by a combination of the build
+                target (CPU microarchitecture, CernVM-FS repository, optionally
+                accelerator architecture) and the build system.
             components (list) : contains constants FILTER_COMPONENT_* that must
                 be checked
 
@@ -302,6 +305,9 @@ class EESSIBotActionFilter:
         #   filter: 'repository:eessi-2023.06' --> evaluates to True if
         #     context['repository'] is 'eessi-2023.06'
 
+        # TODO should we require a 'double'-match, that is, all components given
+        #      have to match AND all filters given have to match?
+        #
         # we iterate over the components and verify if their value in the given
         #   context matches the corresponding value in the filter
         for component in components:
@@ -316,6 +322,8 @@ class EESSIBotActionFilter:
                 context_value = context[component]
                 if component == FILTER_COMPONENT_ARCH:
                     context_value = context_value.replace('-', '/')
+                if component == FILTER_COMPONENT_ACCEL:
+                    context_value = context_value.replace('=', '/')
                 for filter_value in filter_values:
                     if filter_value != context_value:
                         return False
