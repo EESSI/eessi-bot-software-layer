@@ -101,7 +101,7 @@ def get_instance():
     Returns:
         Instance of Github
     """
-    global _gh, _token
+    global _gh
 
     # Check if PyGithub version is < 1.56
     if hasattr(github, 'GithubRetry'):
@@ -129,5 +129,4 @@ def token():
     Returns:
         Token
     """
-    global _token
     return _token
