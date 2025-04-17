@@ -600,13 +600,35 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             return []
 
     jobs = []
-    for arch, slurm_opt in arch_map.items():
-        arch_dir = arch.replace('/', '_')
+    # This loop assumes the following structure for arch_target_map:
+    # arch_target_map = {
+    #     'virtual_partition_name': {
+    #         'os': 'linux',
+    #         'cpu_subdir': 'x86_64/amd/zen4',
+    #         'accel': ['nvidia/cc90'],  # Make this a list, so that we can easily cross compile for a large list with one defined virtual partition
+    #         'slurm_params': '-p genoa <etc>',
+    #         'repo_targets': ["eessi.io-2023.06-compat","eessi.io-2023.06-software"],
+    #      },
+    #     'virtual_partition_name2': {
+    # ... etc
+    for virtual_partition_name, partition_info in arch_map.items():
+        # Unpack for convenience
+        arch_dir = partition_info['cpu_subdir']
+        if partition_info['accel']:
+            # Use the accelerator as defined by the action_filter. We check if this is valid for the current
+            # virtual partition later
+            arch_dir += accelerator
+        arch_dir.replace('/', '_')
+        # check if repo_targets is defined for this virtual partition
+        if not 'repo_targets' in partition_info:
+            log(f"{fn}(): skipping arch {virtual_partition_name}, "
+                 "because no repo_targets were defined for this (virtual) partition")
+            continue
         # check if repo_target_map contains an entry for {arch}
         if arch not in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP]:
             log(f"{fn}(): skipping arch {arch} because repo target map does not define repositories to build for")
             continue
-        for repo_id in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP][arch]:
+        for repo_id in partition_info['repo_targets']:
             # ensure repocfg contains information about the repository repo_id if repo_id != EESSI
             # Note, EESSI is a bad/misleading name, it should be more like AS_IN_CONTAINER
             if (repo_id != "EESSI" and repo_id != "EESSI-pilot") and repo_id not in repocfg:
@@ -619,13 +641,30 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             #   false --> log & continue to next iteration of for loop
             if action_filter:
                 log(f"{fn}(): checking filter {action_filter.to_string()}")
-                context = {"architecture": arch, "repository": repo_id, "instance": app_name}
-                log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                if not action_filter.check_filters(context):
-                    log(f"{fn}(): context does NOT satisfy filter(s), skipping")
-                    continue
+                context = {
+                    "architecture": partition_info['cpu_subdir'],
+                    "repository": repo_id,
+                    "instance": app_name
+                }
+                # Optionally add accelerator to the context
+                check = False
+                if partition_info['accel']:
+                    # Create a context for each accelerator, check if _any_ of them is valid
+                    # (one is enough to continue)
+                    for accel in partition_info['accel']:
+                        context['accelerator'] = accel
+                        log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
+                        check = check | action_filter.check_filters(context)
+                    if not check:
+                        log(f"{fn}(): none of the contexts satisfy filter(s), skipping")
+                        continue
                 else:
-                    log(f"{fn}(): context DOES satisfy filter(s), going on with job")
+                    log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
+                    if not action_filter.check_filters(context):
+                        log(f"{fn}(): context does NOT satisfy filter(s), skipping")
+                        continue
+                    else:
+                        log(f"{fn}(): context DOES satisfy filter(s), going on with job")
             # we reached this point when the filter matched (otherwise we
             # 'continue' with the next repository)
             # for each match of the filter we create a specific job directory
@@ -645,19 +684,18 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
-            cpu_target = '/'.join(arch.split('/')[1:])
-            os_type = arch.split('/')[0]
+            log(f"{fn}(): arch = '{arch}' => cpu_target = '{partition_info['cpu_subdir']}' , "
+                f"os_type = '{partition_info['os']}', accelerator = '{accelerator}'")
 
-            log(f"{fn}(): arch = '{arch}' => cpu_target = '{cpu_target}' , os_type = '{os_type}'"
-                f", accelerator = '{accelerator}'")
-
-            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, cpu_target, os_type, accelerator)
+            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, partition_info['cpu_subdir'],
+                            partition_info['os'], accelerator)
 
             if exportvars:
                 prepare_export_vars_file(job_dir, exportvars)
 
             # enlist jobs to proceed
-            job = Job(job_dir, arch, repo_id, slurm_opt, year_month, pr_id, accelerator)
+            job = Job(job_dir, partition_info['cpu_subdir'], repo_id, partition_info['slurm_params'], year_month,
+                      pr_id, accelerator)
             jobs.append(job)
 
     log(f"{fn}(): {len(jobs)} jobs to proceed after applying white list")
