@@ -624,10 +624,6 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             log(f"{fn}(): skipping arch {virtual_partition_name}, "
                  "because no repo_targets were defined for this (virtual) partition")
             continue
-        # check if repo_target_map contains an entry for {arch}
-        if arch not in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP]:
-            log(f"{fn}(): skipping arch {arch} because repo target map does not define repositories to build for")
-            continue
         for repo_id in partition_info['repo_targets']:
             # ensure repocfg contains information about the repository repo_id if repo_id != EESSI
             # Note, EESSI is a bad/misleading name, it should be more like AS_IN_CONTAINER
