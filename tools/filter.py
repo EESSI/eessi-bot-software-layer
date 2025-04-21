@@ -322,6 +322,10 @@ class EESSIBotActionFilter:
                 #   of the component in the context
                 context_value = context[component]
                 if component == FILTER_COMPONENT_ARCH:
+                    if context_value.startswith('linux'):
+                        # strip leading OS name from architecture string
+                        context_value = '/'.join(context_value.split('/')[1:])
+                    # replace '-' with '/' in architecture string
                     context_value = context_value.replace('-', '/')
                 if component == FILTER_COMPONENT_ACCEL:
                     context_value = context_value.replace('=', '/')
