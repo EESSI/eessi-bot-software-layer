@@ -38,7 +38,7 @@ jobs:
           python -m pip install pytest
           python -m pip install --upgrade flake8
 
-      - name: Run test suite (without coverage)
+      - name: Run test suite
         run: |
           ./test.sh --verbose
 
