@@ -45,7 +45,7 @@ jobs:
       - name: Run coverage and create report
         run: |
           python -m pip install coverage
-          PYTHON_SOURCES=$(find . -name "*.py" -not -path "tests/*")
+          PYTHON_SOURCES=$(find . -name "*.py" -not -path "tests/*" -not -path ".github/*" | tr '\n' ',' | sed 's/,$//')
           coverage run --include="${PYTHON_SOURCES}" -m pytest
           coverage report -m
           coverage html
