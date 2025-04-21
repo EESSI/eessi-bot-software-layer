@@ -52,14 +52,14 @@ jobs:
           coverage report -m
           coverage html
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v 4.6.2
-        with:
-          name: coverage-report-python-${{ matrix.python }}
-          path: |
-            htmlcov
-            .coverage
-          retention-days: 7
+#      - name: Upload coverage report
+#        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v 4.6.2
+#        with:
+#          name: coverage-report-python-${{ matrix.python }}
+#          path: |
+#            htmlcov
+#            .coverage
+#          retention-days: 7
 
       - name: Run flake8 to verify PEP8-compliance of Python code
         run: |
