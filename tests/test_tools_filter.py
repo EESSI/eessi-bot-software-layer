@@ -525,7 +525,7 @@ def test_unexpected_exception_handling():
             log_call_args = mock_log.call_args[0][0]
             assert "Unexpected err=" in log_call_args
             assert "Test unexpected error" in log_call_args
-            assert "type(err)=<class 'ValueError'>" in log_call_args 
+            assert "type(err)=<class 'ValueError'>" in log_call_args
 
 
 def test_filter_creation_invalid_format():
