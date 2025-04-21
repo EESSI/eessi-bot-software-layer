@@ -315,6 +315,7 @@ class EESSIBotActionFilter:
             if len(filter_values) == 0:
                 # no filter for component provided --> at least one filter per
                 #   component MUST be given
+                log(f"no filter for component '{component}' provided; check_filters returns False")
                 return False
             if component in context:
                 # check if all values for the filter are identical to the value
@@ -326,8 +327,13 @@ class EESSIBotActionFilter:
                     context_value = context_value.replace('=', '/')
                 for filter_value in filter_values:
                     if filter_value != context_value:
+                        log_msg = "filter value '%s' does not match context value '%s' for component '%s';"
+                        log_msg += " check_filters returns False"
+                        log(log_msg % (filter_value, context_value, component))
                         return False
             else:
-                # missing component in context, could lead to unexpected behavior
+                # missing required component in context, could lead to unexpected behavior
+                log_msg = "missing required component '%s' in context; check_filters returns False"
+                log(log_msg % component)
                 return False
         return True
