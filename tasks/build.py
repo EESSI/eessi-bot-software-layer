@@ -395,7 +395,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         repo_url = f'git@github.com:{repo_name}.git'
         pr_diff_cmd = ' && '.join([
             f"git fetch origin pull/{pr.number}/head:pr{pr.number}",
-            f"git diff HEAD pr{pr.number} > {pr.number}.diff",
+            f"git diff $(git merge-base pr{pr.number} HEAD) pr{pr.number} > {pr.number}.diff",
         ])
     else:
         clone_output = ''
