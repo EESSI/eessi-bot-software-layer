@@ -57,6 +57,8 @@ REQUIRED_CONFIG = {
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
         # config.BUILDENV_SETTING_HTTP_PROXY,                        # optional
+        # config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR,            # optional (default: 2)
+        config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL,             # required
         config.BUILDENV_SETTING_JOB_NAME,                          # required
         config.BUILDENV_SETTING_JOBS_BASE_DIR,                     # required
         # config.BUILDENV_SETTING_LOAD_MODULES,                      # optional
@@ -76,6 +78,7 @@ REQUIRED_CONFIG = {
         # config.DEPLOYCFG_SETTING_ENDPOINT_URL,                     # optional
         config.DEPLOYCFG_SETTING_METADATA_PREFIX,                  # (required)
         config.DEPLOYCFG_SETTING_NO_DEPLOY_PERMISSION_COMMENT,     # required
+        # config.DEPLOYCFG_SETTING_SIGNING,                          # optional
         config.DEPLOYCFG_SETTING_UPLOAD_POLICY],                   # required
     config.SECTION_DOWNLOAD_PR_COMMENTS: [
         config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE,          # required
@@ -93,12 +96,18 @@ REQUIRED_CONFIG = {
         config.GITHUB_SETTING_APP_NAME,                            # required
         config.GITHUB_SETTING_INSTALLATION_ID,                     # required
         config.GITHUB_SETTING_PRIVATE_KEY],                        # required
+    # the poll interval setting is required for the alternative job handover
+    # protocol (delayed_begin)
+    config.SECTION_JOB_MANAGER: [
+        config.JOB_MANAGER_SETTING_POLL_INTERVAL],                 # required
     config.SECTION_REPO_TARGETS: [
         config.REPO_TARGETS_SETTING_REPO_TARGET_MAP,               # required
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required
     config.SECTION_SUBMITTED_JOB_COMMENTS: [
         config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,     # required
-        config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE,      # required
+        # config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE,      # optional
+        config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG,  # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG,   # required
         config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR],   # required
     }
 

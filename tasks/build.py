@@ -85,6 +85,10 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): local_tmp '{local_tmp}'")
     config_data[config.BUILDENV_SETTING_LOCAL_TMP] = local_tmp
 
+    site_config_script = buildenv.get(config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT)
+    log(f"{fn}(): site_config_script '{site_config_script}'")
+    config_data[config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT] = site_config_script
+
     build_job_script = buildenv.get(config.BUILDENV_SETTING_BUILD_JOB_SCRIPT)
     # figure out whether path to build job script is just a path in current directory (path/to/job_script),
     # or a location in another Git repository (path/to/job_script@repo)
@@ -103,9 +107,30 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): submit_command '{submit_command}'")
     config_data[config.BUILDENV_SETTING_SUBMIT_COMMAND] = submit_command
 
+    job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
     slurm_params = buildenv.get(config.BUILDENV_SETTING_SLURM_PARAMS)
-    # always submit jobs with hold set, so job manager can release them
-    slurm_params += ' --hold'
+    if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
+        # always submit jobs with hold set, so job manager can release them
+        slurm_params += ' --hold'
+    elif job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
+        # alternative method to submit without '--hold' and
+        # '--begin=now+factor*poll_interval' instead
+        # 1. remove '--hold' if any
+        # 2. add '--begin=now+factor*poll_interval'
+        # factor defined by setting 'job_delay_begin_factor' (default: 2)
+        slurm_params = slurm_params.replace('--hold', '')
+        job_manger_cfg = cfg[config.SECTION_JOB_MANAGER]
+        poll_interval = int(job_manger_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
+        job_delay_begin_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
+        slurm_params += f' --begin=now+{int(job_delay_begin_factor * poll_interval)}'
+    else:
+        slurm_params += ' --hold'
+        log(
+            f"{fn}(): unknown job handover protocol in app.cfg"
+            f" ('{config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL} = {job_handover_protocol}');"
+            f" added '--hold' as default"
+        )
+
     log(f"{fn}(): slurm_params '{slurm_params}'")
     config_data[config.BUILDENV_SETTING_SLURM_PARAMS] = slurm_params
 
@@ -695,6 +720,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
     #   repository's definition, some combine two values):
     # [site_config]
     # local_tmp = config.BUILDENV_SETTING_LOCAL_TMP
+    # site_config_script = config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT
     # shared_fs_path = config.BUILDENV_SETTING_SHARED_FS_PATH
     # build_logs_dir = config.BUILDENV_SETTING_BUILD_LOGS_DIR
     #
@@ -719,6 +745,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         config.BUILDENV_SETTING_LOAD_MODULES: job_metadata.JOB_CFG_SITE_CONFIG_LOAD_MODULES,
         config.BUILDENV_SETTING_LOCAL_TMP: job_metadata.JOB_CFG_SITE_CONFIG_LOCAL_TMP,
         config.BUILDENV_SETTING_SHARED_FS_PATH: job_metadata.JOB_CFG_SITE_CONFIG_SHARED_FS_PATH,
+        config.BUILDENV_SETTING_SITE_CONFIG_SCRIPT: job_metadata.JOB_CFG_SITE_CONFIG_SITE_CONFIG_SCRIPT,
     }
     for build_env_key, job_cfg_key in build_env_to_job_cfg_keys.items():
         if build_env_cfg[build_env_key]:
@@ -922,18 +949,44 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
     dt = datetime.now(timezone.utc)
 
     # construct initial job comment
-    job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                   f"\n|date|job status|comment|\n"
-                   f"|----------|----------|------------------------|\n"
-                   f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                   f"submitted|"
-                   f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE]}|").format(
-                       app_name=app_name,
-                       arch_name=arch_name,
-                       symlink=symlink,
-                       repo_id=job.repo_id,
-                       job_id=job_id,
-                       accelerator_spec=accelerator_spec_str)
+    buildenv = config.read_config()[config.SECTION_BUILDENV]
+    job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+    if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
+        release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
+        release_comment_template = submitted_job_comments_cfg[release_msg_string]
+        # calculate delay from poll_interval and delay_factor
+        job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
+        poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
+        delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
+        eligible_in_seconds = int(poll_interval * delay_factor)
+        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+                       f"\n|date|job status|comment|\n"
+                       f"|----------|----------|------------------------|\n"
+                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                       f"submitted|"
+                       f"{release_comment_template}|").format(
+                           app_name=app_name,
+                           arch_name=arch_name,
+                           symlink=symlink,
+                           repo_id=job.repo_id,
+                           job_id=job_id,
+                           delay_seconds=eligible_in_seconds,
+                           accelerator_spec=accelerator_spec_str)
+    else:
+        release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
+        release_comment_template = submitted_job_comments_cfg[release_msg_string]
+        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+                       f"\n|date|job status|comment|\n"
+                       f"|----------|----------|------------------------|\n"
+                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                       f"submitted|"
+                       f"{release_comment_template}|").format(
+                           app_name=app_name,
+                           arch_name=arch_name,
+                           symlink=symlink,
+                           repo_id=job.repo_id,
+                           job_id=job_id,
+                           accelerator_spec=accelerator_spec_str)
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name

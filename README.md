@@ -376,6 +376,30 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```
+job_delay_begin_factor = 2
+```
+The `job_delay_begin_factor` setting defines how many times the `poll_interval` a
+job's begin (EligibleTime) from now should be delayed if the handover protocol
+is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
+the `job_delay_begin_factor` is set to five (5) the delay time is calculated as
+5 * `poll_interval`. The event manager would use 2 as default value when
+submitting jobs.
+
+```
+job_handover_protocol = hold_release
+```
+The `job_handover_protocol` setting defines which method is used to handover a
+job from the event handler to the job manager. Values are
+ - `hold_release` (job is submitted with `--hold`, job manager removes the hold
+   with `scontrol release`)
+ - `delayed_begin` (job is submitted with `--begin=now+(5 * poll_interval)` and
+    any `--hold` is removed from the submission parameters); see setting
+    `poll_interval` further below; this is useful if the
+    bot account cannot run `scontrol release` to remove the hold of the job;
+    also, the status update in the PR comment of the job is extended by noting
+    the `EligibleTime`
+
+```
 job_name = JOB_NAME
 ```
 Replace `JOB_NAME` with a string of at least 3 characters that is used as job
@@ -403,6 +427,17 @@ on a compute/worker node. You may have to change this if temporary storage under
 environment variable `$EESSI_TMPDIR`. The value is expanded only inside a running
 job. Thus, typical job environment variables (like `$USER` or `$SLURM_JOB_ID`) may be used to isolate jobs running
 simultaneously on the same compute node.
+
+```
+site_config_script = /path/to/script/if/any
+```
+`site_config_script` specifies the path to a script that - if it exists - is
+sourced in the build job before any `bot/*` script is run. This allows to
+customize the build environment due to specifics of the build site/cluster.
+Note, such customizations could also be performed by putting them into a
+module file and use the setting `load_modules` (see above). However, the
+setting `site_config_script` provides a low threshold for achieving this, too.
+
 ```
 slurm_params = "--hold"
 ```
@@ -441,6 +476,13 @@ variables) that are allowed to be specified in a PR command with the
 `exportvariable` filter. To specify multiple environment variables, multiple
 `exportvariable` filters must be used (one per variable). These variables will
 be exported into the build environment before running the bot/build.sh script.
+
+The bot build script makes use of the variable `SKIP_TESTS` to determine if
+ReFrame tests shall be skipped or not. Default is not to skip them. To allow the
+use of the variable the setting could look like
+```
+allowed_exportvars = ["SKIP_TESTS=yes", "SKIP_TESTS=no"]
+```
 
 
 ```
@@ -493,6 +535,35 @@ The `[deploycfg]` section defines settings for uploading built artefacts (tarbal
 artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 ```
 `artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
+
+```
+signing =
+    {
+        REPO_ID: {
+            "script": PATH_TO_SIGN_SCRIPT,
+            "key": PATH_TO_KEY_FILE,
+            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        }, ...
+    }
+```
+`signing` provides a setting for signing artefacts. The value uses a JSON-like format
+with `REPO_ID` being the repository ID. Repository IDs are defined in a file
+`repos.cfg` (see setting `repos_cfg_dir`), `script` provides the location of the
+script that is used to sign a file. If the location is a relative path, the script
+must reside in the checked out pull request of the target repository (e.g.,
+EESSI/software-layer). `key` points to the file of the key being used
+for signing. The bot calls the script with the two arguments:
+ 1. private key (as provided by the attribute 'key')
+ 2. path to the file to be signed (the upload script will determine that)
+NOTE (on `container_runtime`), signing requires a recent installation of OpenSSH
+(8.2 or newer). If the frontend where the event handler runs does not have that
+version installed, you can specify a container runtime via the `container_runtime`
+attribute below. Currently, only Singularity or Apptainer are supported.
+Note (on the key), make sure the file permissions are restricted to `0600` (only
+readable+writable by the file owner, or the signing will likely fail.
+Note (on json format), make sure no trailing commas are used after any elements
+or parsing/loading the json will likely fail. Also, the whole value should start
+at a new line and be indented as shown above.
 
 ```
 endpoint_url = URL_TO_S3_SERVER
@@ -675,11 +746,29 @@ scontrol_command = /usr/bin/scontrol
 #### `[submitted_job_comments]` section
 
 The `[submitted_job_comments]` section specifies templates for messages about newly submitted jobs.
+
+DEPRECATED setting (use `awaits_release_delayed_begin_msg` and/or `awaits_release_hold_release_msg`)
 ```
 awaits_release = job id `{job_id}` awaits release by job manager
 ```
 `awaits_release` is used to provide a status update of a job (shown as a row in the job's status
 table).
+
+```
+awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
+```
+`awaits_release_delayed_begin_msg` is used when the `job_handover_protocol` is
+set to `delayed_begin`. Note, both `{job_id}` and `{delay_seconds}` need to be
+present in the value or the event handler will throw an exception when formatting
+the update of the PR comment corresponding to the job.
+
+```
+awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
+```
+`awaits_release_hold_release_msg` is used when the `job_handover_protocol` is
+set to `hold_release`. Note, `{job_id}` needs to be present in the value or the
+event handler will throw an exception when formatting the update of the PR
+comment corresponding to the job.
 
 ```
 initial_comment = New job on instance `{app_name}` for architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
@@ -806,7 +895,7 @@ The first approach is the easiest, and thus recommended, since you can use CPU a
 ## Approach 1 (recommended): describing the physical node and setting the `REFRAME_SCALE_TAG` to match the bot config's allocation size
 In this approach, we describe the physical node configuration. That means: the amount of physical CPUs and GPUs present in the node.
 
-For the CPU part, we can rely on ReFrame's CPU autodetection: if the local spawner is configured, and no CPU topology information is provided in the ReFrame configuration file, ReFrame will automatically detect the [CPU topology](https://reframe-hpc.readthedocs.io/en/stable/config_reference.html#config.systems.partitions.processor).
+For the CPU part, we can rely on ReFrame's CPU autodetection: if `remote_detect` is set to `True` in the general section of the config, and no CPU topology information is provided in the ReFrame configuration file, ReFrame will automatically detect the [CPU topology](https://reframe-hpc.readthedocs.io/en/stable/config_reference.html#config.systems.partitions.processor).
 
 For the GPU part, we need to configure the vendor and the amount of GPUs. E.g. for a partition with 4 Nvidia GPUs per node:
 ```
@@ -888,6 +977,7 @@ site_configuration = {
         {
             'purge_environment': True,
             'resolve_module_conflicts': False,  # avoid loading the module before submitting the job
+            'remote_detect': True,  # Make sure to automatically detect the CPU topology
         }
     ],
     'logging': common_logging_config(),

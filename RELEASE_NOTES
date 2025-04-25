@@ -1,6 +1,37 @@
 This file contains a description of the major changes to the EESSI
 build-and-deploy bot. For more detailed information, please see the git log.
 
+v0.7.0 (13 March 2025)
+--------------------------
+
+This is a minor release of the EESSI build-and-deploy bot.
+
+Bug fixes:
+* bot only reports moving to trash_bin when relevant (#292)
+
+Improvements:
+* add support for specifying that build job script is located in another repository (#283)
+* implement exportvariable filter (#288, #291)
+  * see related configuration setting `allowed_exportvars`
+* add alternative method to submit job (using `--begin=now+SOME_DELAY`) (#297)
+  * also see the new related configuration settings `job_handover_protocol` and `job_delay_begin_factor`
+* set the local_tmp that is configured for a site as tmpdir in bot build job script (#299)
+* add setting for a script to customize build environment (#302)
+* add support for signing tarball and metadata file and uploading signatures to S3 bucket (#303)
+* add SSH signing script `sign_verify_file_ssh.sh` (#304)
+* updates of the docs (#293, #298)
+
+Changes to 'app.cfg' settings (see README.md and app.cfg.example for details):
+* NEW (optional) 'allowed_exportvars' in section '[buildenv]'
+* NEW (required) 'awaits_release_hold_release_msg' in section '[submitted_job_comments]'
+* NEW (required) 'awaits_release_hold_release_msg' in section '[submitted_job_comments]'
+* DEPRECATED (optional) 'awaits_release' in section '[submitted_job_comments]'
+* NEW (optional) 'job_delay_begin_factor' in section '[buildenv]'
+* NEW (required) 'job_handover_protocol' in section '[buildenv]'
+* NEW (optional) 'signing' in section '[deploycfg]'
+* NEW (optional) 'site_config_script' in section '[buildenv]'
+
+
 v0.6.0 (18 September 2024)
 --------------------------
 

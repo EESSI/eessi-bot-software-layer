@@ -1,0 +1,74 @@
+# documentation: https://help.github.com/en/articles/workflow-syntax-for-github-actions
+name: Tests for scripts
+on:
+  push:
+    paths:
+      - scripts/sign_verify_file_ssh.sh
+      - .github/workflows/tests_scripts.yml
+  pull_request:
+    paths:
+      - scripts/sign_verify_file_ssh.sh
+      - .github/workflows/tests_scripts.yml
+permissions:
+  contents: read # to fetch code (actions/checkout)
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Prepare SSH key pair, file and signature
+        run: |
+          ssh-keygen -t rsa -b 4096 -m PEM -f id_rsa.pem -N ""
+          echo "Very important stuff" > out.txt
+          export FILE_TO_SIGN="out.txt"
+          ./scripts/sign_verify_file_ssh.sh --sign --private-key id_rsa.pem --file "$FILE_TO_SIGN" --namespace ci
+
+      - name: Create allowed signers file and verify
+        run: |
+          valid_before=$(date --date='today+3days' +%Y%m%d)
+          echo -n 'allowed_identity namespaces="ci",valid-before="'$valid_before'" ' > allowed_signers
+          cat id_rsa.pem.pub >> allowed_signers
+          ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt
+
+      - name: Replace allowed signers with disallowed identity
+        run: |
+          valid_before=$(date --date='today+3days' +%Y%m%d)
+          ssh-keygen -t rsa -b 4096 -m PEM -f id_rsa.alt.pem -N ""
+          echo -n 'disallowed_identity namespaces="ci",valid-before="'$valid_before'" ' > allowed_signers
+          cat id_rsa.alt.pem.pub >> allowed_signers
+
+      - name: Ensure verification fails for unknown identity
+        run: |
+          ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt && exit 1 || echo "Expected failure for unknown identity"
+
+      - name: Replace allowed signers with wrong namespace
+        run: |
+          valid_before=$(date --date='today+3days' +%Y%m%d)
+          echo -n 'wrong_namespace_identity namespaces="CI",valid-before="'$valid_before'" ' > allowed_signers
+          cat id_rsa.pem.pub >> allowed_signers
+
+      - name: Ensure verification fails for wrong namespace
+        run: |
+          ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt && exit 2 || echo "Expected failure for wrong namespace"
+
+      - name: Replace allowed signers with expired key
+        run: |
+          valid_expired=$(date --date='today-3days' +%Y%m%d)
+          echo -n 'expired_key_identity namespaces="ci",valid-before="'$valid_expired'" ' > allowed_signers
+          cat id_rsa.pem.pub >> allowed_signers
+
+      - name: Ensure verification fails for expired key
+        run: |
+          ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt && exit 3 || echo "Expected failure for expired key"
+
+      - name: Ensure verification when looping through allowed signers file
+        run: |
+          # Add the approved identity to the end
+          valid_before=$(date --date='today+3days' +%Y%m%d)
+          echo -n 'listed_identity namespaces="ci",valid-before="'$valid_before'" ' >> allowed_signers
+          cat id_rsa.pem.pub >> allowed_signers
+          ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt
+          # Make sure we get exactly what we want in terse mode
+          ./scripts/sign_verify_file_ssh.sh --verify --allowed-signers-file allowed_signers --file out.txt --terse | grep -q '{\"identity\": \"listed_identity\", \"namespace\": \"ci\"}'
