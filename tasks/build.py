@@ -34,6 +34,7 @@ from retry.api import retry_call
 from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
+from tools.pr_comments import ChatLevels
 
 
 # defaults (used if not specified via, eg, 'app.cfg')
@@ -484,7 +485,7 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
 
         download_comment = pr_comments.create_comment(
-            repo_name=base_repo_name, pr_number=pr.number, comment=download_comment
+            repo_name=base_repo_name, pr_number=pr.number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
             )
         if download_comment:
             log(f"{fn}(): created PR issue comment with id {download_comment.id}")
@@ -1056,7 +1057,8 @@ def check_build_permission(pr, event_info):
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
                                    pr.number,
-                                   no_build_permission_comment.format(build_labeler=build_labeler))
+                                   no_build_permission_comment.format(build_labeler=build_labeler),
+                                   ChatLevels.MINIMAL)
         return False
     else:
         log(f"{fn}(): GH account '{build_labeler}' is authorized to build")

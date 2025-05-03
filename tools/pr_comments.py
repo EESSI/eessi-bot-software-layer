@@ -15,6 +15,7 @@
 
 # Standard library imports
 from collections import namedtuple
+from enum import Enum
 import re
 
 # Third party imports (anything installed into the local Python environment)
@@ -24,12 +25,20 @@ from retry.api import retry_call
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
+from tools import config
 
 
 PRComment = namedtuple('PRComment', ('repo_name', 'pr_number', 'pr_comment_id'))
 
 
-def create_comment(repo_name, pr_number, comment):
+class ChatLevels(Enum):
+    "chattiness levels"
+    MINIMAL = 1
+    BASIC = 2
+    CHATTY = 3
+
+
+def create_comment(repo_name, pr_number, comment, req_chatlevel):
     """
     Create a comment to a pull request on GitHub
 
@@ -37,15 +46,29 @@ def create_comment(repo_name, pr_number, comment):
         repo_name (string): name of the repository
         pr_number (int): number of the pull request within the repository
         comment (string): comment body
+        req_chatlevel (member of ChatLevels Enum): minimum required chattiness level for creating the PR comment
 
     Returns:
         github.IssueComment.IssueComment instance or None (note, github refers to
             PyGithub, not the github from the internal connections module)
     """
-    gh = github.get_instance()
-    repo = gh.get_repo(repo_name)
-    pull_request = repo.get_pull(pr_number)
-    return pull_request.create_issue_comment(comment)
+    fn = sys._getframe().f_code.co_name
+
+    cfg = config.read_config()
+    chatlevel = cfg[config.SECTION_BOT_CONTROL].get(
+        config.BOT_CONTROL_SETTING_CHATLEVEL, ChatLevels.BASIC.name).upper()
+
+    if ChatLevels[chatlevel].value >= req_chatlevel.value:
+        gh = github.get_instance()
+        repo = gh.get_repo(repo_name)
+        pull_request = repo.get_pull(pr_number)
+        return pull_request.create_issue_comment(comment)
+
+    else:
+        log(f"{fn}(): not creating PR comment: "
+            f"chatlevel {ChatLevels[chatlevel].value} < required chatlevel {req_chatlevel.value}")
+
+    return None
 
 
 def determine_issue_comment(pull_request, pr_comment_id, search_pattern=None):
