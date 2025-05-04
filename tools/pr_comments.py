@@ -17,6 +17,7 @@
 from collections import namedtuple
 from enum import Enum
 import re
+import sys
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import log
