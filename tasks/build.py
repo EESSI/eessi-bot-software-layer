@@ -34,7 +34,7 @@ from retry.api import retry_call
 from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
-from tools.pr_comments import ChatLevels
+from tools.pr_comments import ChatLevels, create_comment
 
 
 # defaults (used if not specified via, eg, 'app.cfg')
@@ -962,10 +962,7 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
-    repo = gh.get_repo(repo_name)
-    pull_request = repo.get_pull(pr.number)
-    issue_comment = retry_call(pull_request.create_issue_comment, fargs=[job_comment],
-                               exceptions=Exception, tries=3, delay=1, backoff=2, max_delay=10)
+    issue_comment = create_comment(repo_name, pr.number, job_comment, ChatLevels.MINIMAL)
     if issue_comment:
         log(f"{fn}(): created PR issue comment with id {issue_comment.id}")
         return issue_comment

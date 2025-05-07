@@ -9,6 +9,7 @@
 # author: Hafsa Naeem (@hafsa-naeem)
 # author: Jonas Qvigstad (@jonas-lq)
 # author: Thomas Roeblitz (@trz42)
+# author: Sam Moors (@smoors)
 #
 # license: GPLv2
 #
@@ -34,6 +35,7 @@ PRComment = namedtuple('PRComment', ('repo_name', 'pr_number', 'pr_comment_id'))
 
 class ChatLevels(Enum):
     "chattiness levels"
+    INCOGNITO = 0
     MINIMAL = 1
     BASIC = 2
     CHATTY = 3
@@ -63,7 +65,9 @@ def create_comment(repo_name, pr_number, comment, req_chatlevel):
         gh = github.get_instance()
         repo = gh.get_repo(repo_name)
         pull_request = repo.get_pull(pr_number)
-        return pull_request.create_issue_comment(comment)
+        issue_comment = retry_call(pull_request.create_issue_comment, fargs=[comment],
+                                   exceptions=Exception, tries=3, delay=1, backoff=2, max_delay=10)
+        return issue_comment
 
     else:
         log(f"{fn}(): not creating PR comment: "
