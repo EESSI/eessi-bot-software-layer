@@ -17,10 +17,12 @@ on: [push, pull_request]
 permissions: read-all
 jobs:
   test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8, 3.9, '3.10', '3.11']
+        # for now, only test with Python 3.9+ (since we're testing in Ubuntu 24.04)
+        #python: [3.6, 3.7, 3.8, 3.9, '3.10', '3.11']
+        python: ['3.9', '3.10', '3.11']
       fail-fast: false
     steps:
       - name: checkout
