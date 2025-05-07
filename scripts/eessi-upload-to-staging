@@ -43,26 +43,107 @@ function create_metadata_file
   _repository=$3
   _pull_request_number=$4
   _pull_request_comment_id=$5
+  _action=$6
+  _order=$7
+  _mode=$8
 
   _tmpfile=$(mktemp)
 
-  jq -n \
-    --arg un $(whoami) \
-    --arg ip $(curl -s https://checkip.amazonaws.com) \
-    --arg hn "$(hostname -f)" \
-    --arg fn "$(basename ${_artefact})" \
-    --arg sz "$(du -b "${_artefact}" | awk '{print $1}')" \
-    --arg ct "$(date -r "${_artefact}")" \
-    --arg sha256 "$(sha256sum "${_artefact}" | awk '{print $1}')" \
-    --arg url "${_url}" \
-    --arg repo "${_repository}" \
-    --arg pr "${_pull_request_number}" \
-    --arg pr_comment_id "${_pull_request_comment_id}" \
-    '{
-       uploader: {username: $un, ip: $ip, hostname: $hn},
-       payload: {filename: $fn, size: $sz, ctime: $ct, sha256sum: $sha256, url: $url},
-       link2pr: {repo: $repo, pr: $pr, pr_comment_id: $pr_comment_id},
-     }' > "${_tmpfile}"
+  # Define the base JSON structure without the task section
+  local base_json='{
+    uploader: {username: $un, ip: $ip, hostname: $hn},
+    payload: {filename: $fn, size: $sz, ctime: $ct, sha256sum: $sha256, url: $url},
+    link2pr: {repo: $repo, pr: $pr, pr_comment_id: $pr_comment_id}
+  }'
+
+  # Only add the task section if an action is provided
+  if [[ ! -z "${_action}" ]]; then
+    # Determine the mode:
+    # 1. If mode is NOT explicitly provided (is empty):
+    #    a. Use "order" mode if an order value is provided
+    #    b. Use "timestamp" mode if no order value is provided
+    # 2. If mode IS explicitly provided, we'll use that value (handled implicitly by not changing it)
+    if [[ -z "${_mode}" ]]; then
+      if [[ ! -z "${_order}" ]]; then
+        _mode="order"  # Default when order is provided but mode isn't
+      else
+        _mode="timestamp"  # Default when neither order nor mode is provided
+      fi
+    fi
+
+    # If mode is "order" but no order is provided, create a default order
+    if [[ -z "${_order}" && "${_mode}" == "order" ]]; then
+      # Get timestamp from the artefact file instead of current time
+      # This is consistent with how ctime is obtained for the payload section
+      local file_date=$(date -r "${_artefact}" +%s)
+
+      # Create a default order based on action type and file timestamp
+      case "${_action}" in
+        "start")
+          _order=$((0x2000000000000000 | file_date))
+          ;;
+        "delete")
+          _order=$((0x4000000000000000 | file_date))
+          ;;
+        "add")
+          _order=$((0x7000000000000000 | file_date))
+          ;;
+        "update")
+          _order=$((0xB000000000000000 | file_date))
+          ;;
+        "end")
+          _order=$((0xD000000000000000 | file_date))
+          ;;
+        *)
+          # For unknown actions, default to "add" priority
+          _order=$((0x7000000000000000 | file_date))
+          ;;
+      esac
+    fi
+
+    # Add the task section to the JSON
+    base_json='{
+      uploader: {username: $un, ip: $ip, hostname: $hn},
+      payload: {filename: $fn, size: $sz, ctime: $ct, sha256sum: $sha256, url: $url},
+      link2pr: {repo: $repo, pr: $pr, pr_comment_id: $pr_comment_id},
+      task: {action: $action, order: $order, mode: $mode}
+    }'
+  fi
+
+  # Generate the JSON with jq
+  # Only include action, order, and mode args when action is provided
+  if [[ ! -z "${_action}" ]]; then
+    jq -n \
+      --arg un $(whoami) \
+      --arg ip $(curl -s https://checkip.amazonaws.com) \
+      --arg hn "$(hostname -f)" \
+      --arg fn "$(basename ${_artefact})" \
+      --arg sz "$(du -b "${_artefact}" | awk '{print $1}')" \
+      --arg ct "$(date -r "${_artefact}")" \
+      --arg sha256 "$(sha256sum "${_artefact}" | awk '{print $1}')" \
+      --arg url "${_url}" \
+      --arg repo "${_repository}" \
+      --arg pr "${_pull_request_number}" \
+      --arg pr_comment_id "${_pull_request_comment_id}" \
+      --arg action "${_action}" \
+      --arg order "${_order}" \
+      --arg mode "${_mode}" \
+      "${base_json}" > "${_tmpfile}"
+  else
+    jq -n \
+      --arg un $(whoami) \
+      --arg ip $(curl -s https://checkip.amazonaws.com) \
+      --arg hn "$(hostname -f)" \
+      --arg fn "$(basename ${_artefact})" \
+      --arg sz "$(du -b "${_artefact}" | awk '{print $1}')" \
+      --arg ct "$(date -r "${_artefact}")" \
+      --arg sha256 "$(sha256sum "${_artefact}" | awk '{print $1}')" \
+      --arg url "${_url}" \
+      --arg repo "${_repository}" \
+      --arg pr "${_pull_request_number}" \
+      --arg pr_comment_id "${_pull_request_comment_id}" \
+      "${base_json}" > "${_tmpfile}"
+  fi
 
   echo "${_tmpfile}"
 }
@@ -75,6 +156,8 @@ function display_help
   echo "                                    expansion will be applied; arg '-l'"   >&2
   echo "                                    lists variables that are defined at"   >&2
   echo "                                    the time of expansion"                 >&2
+  echo "  -A | --action ACTION           -  specify the action type (add, delete," >&2
+  echo "                                    update); used for task ordering"       >&2
   echo "  -b | --bot-instance NAME       -  name of the bot instance that uploads" >&2
   echo "                                    files to S3"                           >&2
   echo "  -e | --endpoint-url URL        -  endpoint url (needed for non AWS S3)"  >&2
@@ -93,7 +176,11 @@ function display_help
   echo "                                    expansion will be applied; arg '-l'"   >&2
   echo "                                    lists variables that are defined at"   >&2
   echo "                                    the time of expansion"                 >&2
+  echo "  -M | --mode MODE               -  specify ordering mode (order,"         >&2
+  echo "                                    timestamp) for task processing"        >&2
   echo "  -n | --bucket-name BUCKET      -  bucket name (same as BUCKET above)"    >&2
+  echo "  -O | --order ORDER             -  specify the order value for task"      >&2
+  echo "                                    prioritization"                        >&2
   echo "  -p | --pull-request-number INT -  a pull request number (INT); used to"  >&2
   echo "                                    link the upload to a PR"               >&2
   echo "  -r | --repository FULL_NAME    -  a repository name ACCOUNT/REPONAME;"   >&2
@@ -140,6 +227,11 @@ bot_instance=
 metadata_prefix=
 artefact_prefix=
 
+# task section parameters
+action=""  # No default action - must be explicitly specified
+order=""   # No default order value
+mode=""    # No default mode
+
 # other variables
 legacy_aws_path=
 variables="github_repository legacy_aws_path pull_request_number"
@@ -148,6 +240,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     -a|--artefact-prefix)
       artefact_prefix="$2"
+      shift 2
+      ;;
+    -A|--action)
+      action="$2"
       shift 2
       ;;
     -b|--bot-instance)
@@ -186,8 +282,16 @@ while [[ $# -gt 0 ]]; do
       metadata_prefix="$2"
       shift 2
       ;;
+    -M|--mode)
+      mode="$2"
+      shift 2
+      ;;
     -n|--bucket-name)
       bucket_name="$2"
+      shift 2
+      ;;
+    -O|--order)
+      order="$2"
       shift 2
       ;;
     -p|--pull-request-number)
@@ -249,7 +353,7 @@ else
   bucket_base=${endpoint_url}/${bucket_name}
 fi
 
-for file in "$*"; do
+for file in "$@"; do
   if [[ -r "${file}" && -f "${file}" &&  -s "${file}" ]]; then
     basefile=$( basename ${file} )
     if check_file_name ${basefile}; then
@@ -305,12 +409,18 @@ for file in "$*"; do
                                    url=${url} \
                                    github_repository=${github_repository} \
                                    pull_request_number=${pull_request_number} \
-                                   pr_comment_id=${pr_comment_id}"
+                                   pr_comment_id=${pr_comment_id} \
+                                   action=${action} \
+                                   order=${order} \
+                                   mode=${mode}"
         metadata_file=$(create_metadata_file "${file}" \
                                              "${url}" \
                                              "${github_repository}" \
                                              "${pull_request_number}" \
-                                             "${pr_comment_id}")
+                                             "${pr_comment_id}" \
+                                             "${action}" \
+                                             "${order}" \
+                                             "${mode}")
         aws_metadata_file=${aws_file}.meta.txt
         # TODO check that creating the metadata file succeeded
         echo "metadata:"

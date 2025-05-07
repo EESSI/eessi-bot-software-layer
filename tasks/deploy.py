@@ -378,6 +378,9 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     cmd_args.extend(['--pull-request-number', str(pr_number)])
     cmd_args.extend(['--repository', repo_name])
     cmd_args.extend(['--bot-instance', app_name])
+    cmd_args.extend(['--action', 'add'])
+    cmd_args.extend(['--order', '1'])
+    cmd_args.extend(['--mode', 'order'])
     cmd_args.extend(sign_args)
     cmd_args.append(abs_path)
 
