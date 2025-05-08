@@ -888,7 +888,7 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
+def create_pr_comment(job, job_id, app_name, pr, symlink):
     """
     Create a comment to the pull request for a newly submitted job
 
@@ -897,7 +897,6 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
         job_id (string): id of the submitted job
         app_name (string): name of the app
         pr (github.PullRequest.PullRequest): instance representing the pull request
-        gh (object): github instance
         symlink (string): symlink from main pr_<ID> dir to job dir
 
     Returns:
@@ -1000,9 +999,6 @@ def submit_build_jobs(pr, event_info, action_filter):
         log(f"{fn}(): no jobs ({len(jobs)}) to be submitted")
         return {}
 
-    # obtain handle to GitHub
-    gh = github.get_instance()
-
     # process prepared jobs: submit, create metadata file and add comment to pull
     # request on GitHub
     job_id_to_comment_map = {}
@@ -1011,7 +1007,7 @@ def submit_build_jobs(pr, event_info, action_filter):
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, gh, symlink)
+        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink)
         job_id_to_comment_map[job_id] = pr_comment
 
         pr_comment = pr_comments.PRComment(pr.base.repo.full_name, pr.number, pr_comment.id)
