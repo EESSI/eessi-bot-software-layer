@@ -28,10 +28,8 @@ import sys
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import error, log
-from retry.api import retry_call
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
 from tools.pr_comments import ChatLevels, create_comment
