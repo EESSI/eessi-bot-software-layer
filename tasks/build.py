@@ -28,12 +28,11 @@ import sys
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import error, log
-from retry.api import retry_call
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
+from tools.pr_comments import ChatLevels, create_comment
 
 
 # defaults (used if not specified via, eg, 'app.cfg')
@@ -484,7 +483,7 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
 
         download_comment = pr_comments.create_comment(
-            repo_name=base_repo_name, pr_number=pr.number, comment=download_comment
+            repo_name=base_repo_name, pr_number=pr.number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
             )
         if download_comment:
             log(f"{fn}(): created PR issue comment with id {download_comment.id}")
@@ -887,7 +886,7 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
+def create_pr_comment(job, job_id, app_name, pr, symlink):
     """
     Create a comment to the pull request for a newly submitted job
 
@@ -896,7 +895,6 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
         job_id (string): id of the submitted job
         app_name (string): name of the app
         pr (github.PullRequest.PullRequest): instance representing the pull request
-        gh (object): github instance
         symlink (string): symlink from main pr_<ID> dir to job dir
 
     Returns:
@@ -961,10 +959,7 @@ def create_pr_comment(job, job_id, app_name, pr, gh, symlink):
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
-    repo = gh.get_repo(repo_name)
-    pull_request = repo.get_pull(pr.number)
-    issue_comment = retry_call(pull_request.create_issue_comment, fargs=[job_comment],
-                               exceptions=Exception, tries=3, delay=1, backoff=2, max_delay=10)
+    issue_comment = create_comment(repo_name, pr.number, job_comment, ChatLevels.MINIMAL)
     if issue_comment:
         log(f"{fn}(): created PR issue comment with id {issue_comment.id}")
         return issue_comment
@@ -1002,9 +997,6 @@ def submit_build_jobs(pr, event_info, action_filter):
         log(f"{fn}(): no jobs ({len(jobs)}) to be submitted")
         return {}
 
-    # obtain handle to GitHub
-    gh = github.get_instance()
-
     # process prepared jobs: submit, create metadata file and add comment to pull
     # request on GitHub
     job_id_to_comment_map = {}
@@ -1013,7 +1005,7 @@ def submit_build_jobs(pr, event_info, action_filter):
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, gh, symlink)
+        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink)
         job_id_to_comment_map[job_id] = pr_comment
 
         pr_comment = pr_comments.PRComment(pr.base.repo.full_name, pr.number, pr_comment.id)
@@ -1056,7 +1048,8 @@ def check_build_permission(pr, event_info):
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
                                    pr.number,
-                                   no_build_permission_comment.format(build_labeler=build_labeler))
+                                   no_build_permission_comment.format(build_labeler=build_labeler),
+                                   ChatLevels.MINIMAL)
         return False
     else:
         log(f"{fn}(): GH account '{build_labeler}' is authorized to build")
