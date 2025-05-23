@@ -28,6 +28,7 @@ from pyghee.utils import log
 from connections import github
 from tasks.build import get_build_env_cfg
 from tools import config, job_metadata, pr_comments, run_cmd
+from tools.pr_comments import ChatLevels
 
 
 def determine_job_dirs(pr_number):
@@ -266,6 +267,8 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     metadata_prefix = deploycfg.get(config.DEPLOYCFG_SETTING_METADATA_PREFIX)
     artefact_prefix = deploycfg.get(config.DEPLOYCFG_SETTING_ARTEFACT_PREFIX)
     signing_str = deploycfg.get(config.DEPLOYCFG_SETTING_SIGNING) or ''
+    github = cfg[config.SECTION_GITHUB]
+    app_name = github.get(config.GITHUB_SETTING_APP_NAME)
     try:
         signing = json.loads(signing_str)
     except json.decoder.JSONDecodeError:
@@ -375,6 +378,7 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     cmd_args.extend(['--pr-comment-id', str(pr_comment_id)])
     cmd_args.extend(['--pull-request-number', str(pr_number)])
     cmd_args.extend(['--repository', repo_name])
+    cmd_args.extend(['--bot-instance', app_name])
     cmd_args.extend(sign_args)
     cmd_args.append(abs_path)
 
@@ -417,6 +421,8 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
 
         container_cmd = [container_runtime, ]
         container_cmd.extend(['exec'])
+        # avoid execution of system level initialisation scripts
+        container_cmd.extend(['--contain'])
         # avoid that $HOME 'leaks' in due to system settings
         container_cmd.extend(['--no-home'])
         for bind in bind_mounts:
@@ -612,7 +618,8 @@ def deploy_built_artefacts(pr, event_info):
         repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
                                    pr.number,
-                                   no_deploy_permission_comment.format(deploy_labeler=labeler))
+                                   no_deploy_permission_comment.format(deploy_labeler=labeler),
+                                   ChatLevels.CHATTY)
         return
     else:
         log(f"{funcname}(): GH account '{labeler}' is authorized to deploy")

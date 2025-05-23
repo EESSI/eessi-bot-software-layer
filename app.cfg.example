@@ -61,6 +61,8 @@ command_response_fmt =
     {comment_result}
     </details>
 
+# chattiness level of the bot in terms of writing comments into PRs (minimal, basic, or chatty)
+chatlevel = basic
 
 [buildenv]
 # name of the job script used for building an EESSI stack

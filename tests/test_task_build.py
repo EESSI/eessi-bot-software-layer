@@ -157,6 +157,9 @@ class MockGitHub:
         repo = self.repos[repo_name]
         return repo
 
+    def get_instance(self):
+        return self
+
 
 MockBase = namedtuple('MockBase', ['repo'])
 
@@ -275,8 +278,9 @@ def mocked_github(request):
 #         returns !None --> create_pr_comment returns comment (with id == 1)
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
-def test_create_pr_comment_succeeds(mocked_github, tmpdir):
+def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
@@ -291,7 +295,7 @@ def test_create_pr_comment_succeeds(mocked_github, tmpdir):
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, mocked_github, symlink)
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink)
     assert comment.id == 1
     # check if created comment includes jobid?
     print("VERIFYING PR COMMENT")
@@ -304,8 +308,9 @@ def test_create_pr_comment_succeeds(mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_fails(True)
-def test_create_pr_comment_succeeds_none(mocked_github, tmpdir):
+def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
@@ -320,7 +325,7 @@ def test_create_pr_comment_succeeds_none(mocked_github, tmpdir):
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, mocked_github, symlink)
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink)
     assert comment is None
 
 
@@ -329,8 +334,9 @@ def test_create_pr_comment_succeeds_none(mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("1")
-def test_create_pr_comment_raises_once_then_succeeds(mocked_github, tmpdir):
+def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
@@ -345,7 +351,7 @@ def test_create_pr_comment_raises_once_then_succeeds(mocked_github, tmpdir):
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, mocked_github, symlink)
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink)
     assert comment.id == 1
     assert pr.create_call_count == 2
 
@@ -354,8 +360,9 @@ def test_create_pr_comment_raises_once_then_succeeds(mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("always_raise")
-def test_create_pr_comment_always_raises(mocked_github, tmpdir):
+def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
@@ -371,7 +378,7 @@ def test_create_pr_comment_always_raises(mocked_github, tmpdir):
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
     with pytest.raises(Exception) as err:
-        create_pr_comment(job, job_id, app_name, pr, mocked_github, symlink)
+        create_pr_comment(job, job_id, app_name, pr, symlink)
     assert err.type == CreateIssueCommentException
     assert pr.create_call_count == 3
 
@@ -380,8 +387,9 @@ def test_create_pr_comment_always_raises(mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("3")
-def test_create_pr_comment_three_raises(mocked_github, tmpdir):
+def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
@@ -397,7 +405,7 @@ def test_create_pr_comment_three_raises(mocked_github, tmpdir):
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
     with pytest.raises(Exception) as err:
-        create_pr_comment(job, job_id, app_name, pr, mocked_github, symlink)
+        create_pr_comment(job, job_id, app_name, pr, symlink)
     assert err.type == CreateIssueCommentException
     assert pr.create_call_count == 3
 
