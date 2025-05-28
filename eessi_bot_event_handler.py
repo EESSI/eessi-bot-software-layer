@@ -38,13 +38,14 @@ from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command
 from tools.permissions import check_command_permission
-from tools.pr_comments import create_comment
+from tools.pr_comments import ChatLevels, create_comment
 
 
 REQUIRED_CONFIG = {
     config.SECTION_ARCHITECTURETARGETS: [
         config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP],       # required
     config.SECTION_BOT_CONTROL: [
+        # config.BOT_CONTROL_SETTING_CHATLEVEL,                      # optional
         config.BOT_CONTROL_SETTING_COMMAND_PERMISSION,             # required
         config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT],          # required
     config.SECTION_BUILDENV: [
@@ -194,6 +195,8 @@ class EESSIBotSoftwareLayer(PyGHee):
             return
         # at this point we know that we are handling a new comment
 
+        issue_comment = None
+
         # check if comment does not contain a bot command
         if not contains_any_bot_command(comment_received):
             self.log("comment does not contain a bot comment; not processing it further")
@@ -230,7 +233,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                     comment_response=comment_response,
                     comment_result=''
                 )
-                issue_comment = create_comment(repo_name, pr_number, comment_body)
+                issue_comment = create_comment(repo_name, pr_number, comment_body, ChatLevels.CHATTY)
             else:
                 self.log(f"account `{sender}` seems to be a bot instance itself, hence not creating a new PR comment")
             return
@@ -264,6 +267,11 @@ class EESSIBotSoftwareLayer(PyGHee):
             # including a bot command; the logging should only be done when log
             # level is set to debug
 
+        if 'help' in (x.command for x in commands):
+            req_chatlevel = ChatLevels.MINIMAL
+        else:
+            req_chatlevel = ChatLevels.CHATTY
+
         if comment_response == '':
             # no update to be added, just log and return
             self.log("comment response is empty")
@@ -282,7 +290,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                 comment_response=comment_response,
                 comment_result=''
             )
-            issue_comment = create_comment(repo_name, pr_number, comment_body)
+            issue_comment = create_comment(repo_name, pr_number, comment_body, req_chatlevel)
         else:
             self.log(f"update '{comment_response}' is considered to contain bot command ... not creating PR comment")
             # TODO we may want to report this back to the PR on GitHub, e.g.,
@@ -307,7 +315,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                 continue
             except Exception as err:
                 log(f"Unexpected err={err}, type(err)={type(err)}")
-                if comment_result:
+                if comment_result and issue_comment:
                     comment_body = command_response_fmt.format(
                         app_name=app_name,
                         comment_response=comment_response,
@@ -315,16 +323,18 @@ class EESSIBotSoftwareLayer(PyGHee):
                     )
                     issue_comment.edit(comment_body)
                 raise
-        # only update PR comment once, that is, a single call to
-        # issue_comment.edit is made in the entire function
-        comment_body = command_response_fmt.format(
-            app_name=app_name,
-            comment_response=comment_response,
-            comment_result=comment_result
-        )
-        issue_comment.edit(comment_body)
 
-        self.log(f"issue_comment event (url {issue_url}) handled!")
+        if issue_comment:
+            # only update PR comment once, that is, a single call to
+            # issue_comment.edit is made in the entire function
+            comment_body = command_response_fmt.format(
+                app_name=app_name,
+                comment_response=comment_response,
+                comment_result=comment_result
+            )
+            issue_comment.edit(comment_body)
+
+            self.log(f"issue_comment event (url {issue_url}) handled!")
 
     def handle_installation_event(self, event_info, log_file=None):
         """
@@ -374,14 +384,14 @@ class EESSIBotSoftwareLayer(PyGHee):
                 comment_response=msg,
                 comment_result=''
             )
-            create_comment(repo_name, pr_number, comment_body)
+            create_comment(repo_name, pr_number, comment_body, ChatLevels.BASIC)
         elif label == "bot:deploy":
             # run function to deploy built artefacts
             deploy_built_artefacts(pr, event_info)
         else:
             self.log("handle_pull_request_labeled_event: no handler for label '%s'", label)
 
-    def handle_pull_request_opened_event(self, event_info, pr):
+    def handle_pull_request_opened_event(self, event_info, pr, req_chatlevel=ChatLevels.CHATTY):
         """
         Handle events of type pull_request with the action opened. Main action
         is to report for which architectures and repositories a bot instance is
@@ -421,10 +431,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         # create comment to pull request
         repo_name = pr.base.repo.full_name
-        gh = github.get_instance()
-        repo = gh.get_repo(repo_name)
-        pull_request = repo.get_pull(pr.number)
-        issue_comment = pull_request.create_issue_comment(comment)
+        issue_comment = create_comment(repo_name, pr.number, comment, req_chatlevel)
         return issue_comment
 
     def handle_pull_request_event(self, event_info, log_file=None):
@@ -555,8 +562,9 @@ class EESSIBotSoftwareLayer(PyGHee):
         repo_name = event_info['raw_request_body']['repository']['full_name']
         pr_number = event_info['raw_request_body']['issue']['number']
         pr = gh.get_repo(repo_name).get_pull(pr_number)
-        issue_comment = self.handle_pull_request_opened_event(event_info, pr)
-        return f"\n  - added comment {issue_comment.html_url} to show configuration"
+        issue_comment = self.handle_pull_request_opened_event(event_info, pr, req_chatlevel=ChatLevels.MINIMAL)
+        if issue_comment:
+            return f"\n  - added comment {issue_comment.html_url} to show configuration"
 
     def handle_bot_command_status(self, event_info, bot_command):
         """
@@ -572,7 +580,6 @@ class EESSIBotSoftwareLayer(PyGHee):
                  PyGithub, not the github from the internal connections module)
         """
         self.log("processing bot command 'status'")
-        gh = github.get_instance()
         repo_name = event_info['raw_request_body']['repository']['full_name']
         pr_number = event_info['raw_request_body']['issue']['number']
         status_table = request_bot_build_issue_comments(repo_name, pr_number)
@@ -589,9 +596,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             comment_status += f"{status_table['url'][x]}|"
 
         self.log(f"Overview of finished builds: comment '{comment_status}'")
-        repo = gh.get_repo(repo_name)
-        pull_request = repo.get_pull(pr_number)
-        issue_comment = pull_request.create_issue_comment(comment_status)
+        issue_comment = create_comment(repo_name, pr_number, comment_status, ChatLevels.MINIMAL)
         return issue_comment
 
     def start(self, app, port=3000):
@@ -670,12 +675,9 @@ class EESSIBotSoftwareLayer(PyGHee):
             # 4) report move to pull request
 
             repo_name = pr.base.repo.full_name
-            gh = github.get_instance()
-            repo = gh.get_repo(repo_name)
-            pull_request = repo.get_pull(pr.number)
             clean_up_comment = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT]
             moved_comment = clean_up_comment.format(job_dirs=job_dirs, trash_bin_dir=trash_bin_dir)
-            issue_comment = pull_request.create_issue_comment(moved_comment)
+            issue_comment = create_comment(repo_name, pr.number, moved_comment, ChatLevels.CHATTY)
             return issue_comment
 
 
