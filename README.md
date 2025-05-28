@@ -493,7 +493,7 @@ The `clone_git_repo_via` setting specifies via which mechanism the Git repositor
 should be cloned. This can be either:
 * `https` (default): clone repository via HTTPS with `git clone https://github.com/<owner>/<repo>`
 * `ssh`: clone repository via SSH with `git clone git@github.com:<owner>/<repo>.git`
-In case of using 'ssh', one may need additional steps to ensure that the bot uses the right ssh key and does not ask for a passphrase (if the key used is protected with one). Here are a few things to consider:
+In case of using 'ssh', one may need additional steps to ensure that the bot uses the right SSH key and does not ask for a passphrase (if the key used is protected with one). Here are a few things to consider:
 - if the ssh key to be used does not have a standard name (e.g., `id_rsa`), add the following entry to `~/.ssh/config` in the bot's account
   ```
   Host github.com
@@ -505,6 +505,8 @@ In case of using 'ssh', one may need additional steps to ensure that the bot use
   eval $(ssh-agent -s)
   ssh-add ~/.ssh/NAME_OF_PRIVATE_KEY_FILE
   ```
+
+Note that the `bot: status` command doesn't work with SSH keys; you'll still need a Github token for that to work.
 
 #### `[bot_control]` section
 
