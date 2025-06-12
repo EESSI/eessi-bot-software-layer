@@ -5,10 +5,6 @@ on:
     paths:
       - containers/Dockerfile.smee-client
       - .github/workflows/build_smee_client_container_image.yaml
-  pull_request:
-    paths:
-      - containers/Dockerfile.smee-client
-      - .github/workflows/build_smee_client_container_image.yaml
 
 # Declare default permissions as read only.
 permissions: read-all
