@@ -52,7 +52,7 @@ jobs:
           tags: ghcr.io/${{ env.REPOSITORY_OWNER }}/smee-client
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }} # don't publish if this is part of an open PR
-          file: containers/Dockerfile.smee
+          file: containers/Dockerfile.smee-client
           cache-from: type=local,src=${{ runner.temp }}/.buildx-cache
           cache-to: type=local,dest=${{ runner.temp }}/.buildx-cache-new,mode=max
 
