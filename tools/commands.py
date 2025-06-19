@@ -50,10 +50,10 @@ def get_bot_command(line):
     match = regex.search(line)
     if match:
         cmd = match.group(1).rstrip()
-        log(f"Bot command found in '{line}': {cmd}")
+        log(f"{fn}(): Bot command found in '{line}': {cmd}")
         return cmd
     else:
-        log(f"No bot command found using pattern '{regex.pattern}' in: {line}")
+        log(f"{fn}(): No bot command found using pattern '{regex.pattern}' in: {line}")
         return None
 
 
