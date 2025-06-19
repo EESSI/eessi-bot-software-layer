@@ -46,11 +46,13 @@ def get_bot_command(line):
     fn = sys._getframe().f_code.co_name
 
     log(f"{fn}(): searching for bot command in '{line}'")
-    match = re.search('^bot:( )?(.*)$', line)
-    # TODO add log messages for both cases
+    match = re.search('^bot:[ ]?(.*)$', line)
     if match:
-        return match.group(1).rstrip()
+        cmd = match.group(1).rstrip()
+        log(f"Bot command found in '{line}': {cmd}")
+        return cmd
     else:
+        log(f"No bot command found using pattern '{match.pattern}' in: {line}")
         return None
 
 
