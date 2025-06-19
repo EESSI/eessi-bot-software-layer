@@ -46,7 +46,7 @@ def get_bot_command(line):
     fn = sys._getframe().f_code.co_name
 
     log(f"{fn}(): searching for bot command in '{line}'")
-    match = re.search('^bot: (.*)$', line)
+    match = re.search('^bot:( )?(.*)$', line)
     # TODO add log messages for both cases
     if match:
         return match.group(1).rstrip()
