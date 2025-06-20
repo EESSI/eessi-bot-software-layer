@@ -89,7 +89,9 @@ REQUIRED_CONFIG = {
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE,  # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP,      # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE,     # required
-        config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP],        # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP,         # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE,       # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP],          # required
     config.SECTION_EVENT_HANDLER: [
         config.EVENT_HANDLER_SETTING_LOG_PATH],                    # required
     config.SECTION_GITHUB: [
