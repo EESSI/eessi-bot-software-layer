@@ -42,7 +42,8 @@ DEFAULT_JOB_TIME_LIMIT = "24:00:00"
 _ERROR_CURL = "curl"
 _ERROR_GIT_APPLY = "git apply"
 _ERROR_GIT_CHECKOUT = "git checkout"
-_ERROR_GIT_CLONE = "curl"
+_ERROR_GIT_CLONE = "git clone"
+_ERROR_PR_DIFF = "pr_diff"
 _ERROR_NONE = "none"
 
 # other constants
@@ -170,6 +171,10 @@ def get_build_env_cfg(cfg):
     load_modules = buildenv.get(config.BUILDENV_SETTING_LOAD_MODULES, None)
     log(f"{fn}(): load_modules '{load_modules}'")
     config_data[config.BUILDENV_SETTING_LOAD_MODULES] = load_modules
+
+    clone_git_repo_via = buildenv.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA, None)
+    log(f"{fn}(): clone_git_repo_via '{clone_git_repo_via}'")
+    config_data[config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA] = clone_git_repo_via
 
     return config_data
 
@@ -379,7 +384,7 @@ def clone_git_repo(repo, path):
     return (clone_output, clone_error, clone_exit_code)
 
 
-def download_pr(repo_name, branch_name, pr, arch_job_dir):
+def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     """
     Download pull request to job working directory
 
@@ -388,6 +393,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         branch_name (string): name of the base branch of the pull request
         pr (github.PullRequest.PullRequest): instance representing the pull request
         arch_job_dir (string): working directory of the job to be submitted
+        clone_via (string): mechanism to clone Git repository, should be 'https' (default) or 'ssh'
 
     Returns:
         None (implicitly), in case an error is caught in the git clone, git checkout, curl,
@@ -400,7 +406,29 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
     # - 'git checkout' base branch of pull request
     # - 'curl' diff for pull request
     # - 'git apply' diff file
-    clone_output, clone_error, clone_exit_code = clone_git_repo(f'https://github.com/{repo_name}', arch_job_dir)
+    log(f"Cloning Git repo via: {clone_via}")
+    if clone_via in (None, 'https'):
+        repo_url = f'https://github.com/{repo_name}'
+        pr_diff_cmd = ' '.join([
+            'curl -L',
+            '-H "Accept: application/vnd.github.diff"',
+            '-H "X-GitHub-Api-Version: 2022-11-28"',
+            f'https://api.github.com/repos/{repo_name}/pulls/{pr.number} > {pr.number}.diff',
+        ])
+    elif clone_via == 'ssh':
+        repo_url = f'git@github.com:{repo_name}.git'
+        pr_diff_cmd = ' && '.join([
+            f"git fetch origin pull/{pr.number}/head:pr{pr.number}",
+            f"git diff $(git merge-base pr{pr.number} HEAD) pr{pr.number} > {pr.number}.diff",
+        ])
+    else:
+        clone_output = ''
+        clone_error = f"Unknown mechanism to clone Git repo: {clone_via}"
+        clone_exit_code = 1
+        error_stage = _ERROR_GIT_CLONE
+        return clone_output, clone_error, clone_exit_code, error_stage
+
+    clone_output, clone_error, clone_exit_code = clone_git_repo(repo_url, arch_job_dir)
     if clone_exit_code != 0:
         error_stage = _ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
@@ -417,24 +445,18 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir):
         error_stage = _ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
-    curl_cmd = ' '.join([
-        'curl -L',
-        '-H "Accept: application/vnd.github.diff"',
-        '-H "X-GitHub-Api-Version: 2022-11-28"',
-        f'https://api.github.com/repos/{repo_name}/pulls/{pr.number} > {pr.number}.diff',
-    ])
-    log(f'curl with command {curl_cmd}')
-    curl_output, curl_error, curl_exit_code = run_cmd(
-        curl_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
+    log(f'obtaining PR diff with command {pr_diff_cmd}')
+    pr_diff_output, pr_diff_error, pr_diff_exit_code = run_cmd(
+        pr_diff_cmd, "obtain PR diff", arch_job_dir, raise_on_error=False
         )
-    if curl_exit_code != 0:
-        error_stage = _ERROR_CURL
-        return curl_output, curl_error, curl_exit_code, error_stage
+    if pr_diff_exit_code != 0:
+        error_stage = _ERROR_PR_DIFF
+        return pr_diff_output, pr_diff_error, pr_diff_exit_code, error_stage
 
     git_apply_cmd = f'git apply {pr.number}.diff'
     log(f'git apply with command {git_apply_cmd}')
     git_apply_output, git_apply_error, git_apply_exit_code = run_cmd(
-        git_apply_cmd, "Apply patch", arch_job_dir, raise_on_error=False
+        git_apply_cmd, "apply patch", arch_job_dir, raise_on_error=False
         )
     if git_apply_exit_code != 0:
         error_stage = _ERROR_GIT_APPLY
@@ -481,6 +503,12 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
+        elif error_stage == _ERROR_PR_DIFF:
+            download_comment = (f"```{download_pr_error}```\n"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE]}"
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP]}")
+        else:
+            download_comment = f"```{download_pr_error}```"
 
         download_comment = pr_comments.create_comment(
             repo_name=base_repo_name, pr_number=pr.number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
@@ -639,8 +667,9 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             log(f"{fn}(): job_dir '{job_dir}'")
 
             # TODO optimisation? download once, copy and cleanup initial copy?
+            clone_git_repo_via = build_env_cfg.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA)
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
-                base_repo_name, base_branch_name, pr, job_dir
+                base_repo_name, base_branch_name, pr, job_dir, clone_via=clone_git_repo_via,
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg

@@ -175,6 +175,25 @@ allow_update_submit_opts = false
 # "SKIP_TESTS=yes".
 # allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
 
+# mechanisn to use to clone Git repository
+# 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)
+# In case of using 'ssh', one may need additional steps to ensure that the bot
+# uses the right ssh key and does not ask for a passphrase (if the key used is
+# protected with one). Here are a few things to consider:
+#  - if the ssh key to be used does not have a standard name (e.g., 'id_rsa'),
+#    add the following entry to '~/.ssh/config' in the bot's account
+#
+#    Host github.com
+#      User git
+#      IdentityFile ~/.ssh/NAME_OF_PRIVATE_KEY_FILE
+#
+#  - if the key is protected by a passphrase (**highly recommended**), run an
+#    SSH agent and add the key to it (with the following two commands)
+#
+#    eval $(ssh-agent -s)
+#    ssh-add ~/.ssh/NAME_OF_PRIVATE_KEY_FILE
+
+clone_git_repo_via = https
 
 [deploycfg]
 # script for uploading built software packages
@@ -338,6 +357,8 @@ curl_failure = Unable to download the `.diff` file.
 curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
+pr_diff_failure = Unable to obtain PR diff.
+pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
 
 [clean_up]
 trash_bin_dir = $HOME/trash_bin

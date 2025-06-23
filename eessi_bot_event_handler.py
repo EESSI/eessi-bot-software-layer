@@ -54,6 +54,7 @@ REQUIRED_CONFIG = {
         config.BUILDENV_SETTING_BUILD_LOGS_DIR,                    # optional+recommended
         config.BUILDENV_SETTING_BUILD_PERMISSION,                  # optional+recommended
         config.BUILDENV_SETTING_CONTAINER_CACHEDIR,                # optional+recommended
+        # config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA,                # optional
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
         # config.BUILDENV_SETTING_HTTP_PROXY,                        # optional
@@ -88,7 +89,9 @@ REQUIRED_CONFIG = {
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE,  # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP,      # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE,     # required
-        config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP],        # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP,         # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE,       # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP],          # required
     config.SECTION_EVENT_HANDLER: [
         config.EVENT_HANDLER_SETTING_LOG_PATH],                    # required
     config.SECTION_GITHUB: [
