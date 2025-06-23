@@ -21,59 +21,66 @@ The bot consists of two main components provided in this repository:
 - GitHub account(s) (two needed for a development scenario), referring to them
   as `YOU_1` and `YOU_2` below
 - A fork, say `YOU_1/software-layer`, of
-  [EESSI/software-layer](https://github.com/EESSI/software-layer) and a fork,
-  say `YOU_2/software-layer` of your first fork if you want to emulate the
-  bot's behaviour but not change EESSI's repository. The EESSI bot will act on
-  events triggered for the target repository (in this context, either
-  `EESSI/software-layer` or `YOU_1/software-layer`).
+  [EESSI/software-layer](https://github.com/EESSI/software-layer). The EESSI bot will act on
+  events triggered for a repository its corresponding GitHub App was installed into.
+  To install the GitHub App into a repository, the GitHub App needs to be
+  configured such that it can be installed into any repository or all
+  repositories belonging to an account/organisation and the installer
+  (account/person who performs the "installation") has permissions to perform the
+  installation.
 - Access to a frontend/login node/service node of a Slurm cluster where the
   EESSI bot components will run. For the sake of brevity, we call this node
   simply `bot machine`.
 - `singularity` with version 3.6 or newer _OR_ `apptainer` with version 1.0 or
   newer on the compute nodes of the Slurm cluster.
-- On the cluster frontend (or where the bot components run), different tools
-  may be needed to run the Smee client. For `x86_64`, `singularity` or
-  `apptainer` are sufficient. For `aarch64`, the package manager `npm` is
-  needed.
+- On the `bot machine`, different tools may be needed to run the Smee client.
+  The Smee client is available via a docker container and can be run with
+  `singularity` or `apptainer`. Alternatively, the package manager `npm` may be
+  used to install the Smee client. Running via the EESSI-built container is
+  preferred.
 - The EESSI bot components and the (build) jobs will frequently access the
   Internet. Hence, worker nodes and the `bot machine` of the Slurm cluster
   need access to the Internet (either directly or via an HTTP proxy).
 
-## <a name="step1"></a>Step 1: Smee.io channel and smee client
+## <a name="step1"></a>Step 1: Relaying events via Smee
 
-We use [smee.io](https://smee.io) as a service to relay events from GitHub
+### Step 1a: Create a Smee channel for your own/test scenario
+_EESSI uses specific Smee channels. Access to them is restricted for
+EESSI-internal use._
+For development and testing purposes, one can use [smee.io](https://smee.io) as a service to relay events from GitHub
 to the EESSI bot. To do so, create a new channel via https://smee.io and note
 the URL, e.g., `https://smee.io/CHANNEL-ID`.
 
-On the `bot machine` we need a tool which receives events relayed from
-`https://smee.io/CHANNEL-ID` and forwards it to the EESSI bot. We use the Smee
-client for this.
+### Step 1b: Install Smee client on `bot machine`
+On the `bot machine` we need a tool (the Smee client) which receives events relayed from
+`https://smee.io/CHANNEL-ID` and forwards it to the EESSI bot event handler.
 
-On machines with `x86_64` architecture, the Smee client can be run via a
-container as follows
+NOTE, both options below rely on software (the Smee client) that is provided by
+3rd parties. Use any of these options at your own risk!
+
+#### EESSI-built container for Smee client (PREFERRED OPTION)
+The Smee client can be run via a container as follows
 
 ```
-singularity pull docker://deltaprojects/smee-client
-singularity run smee-client_latest.sif --url https://smee.io/CHANNEL-ID
+apptainer run docker://ghcr.io/eessi/smee-client:latest --url https://smee.io/CHANNEL-ID
 ```
 
 or
 
 ```
-singularity pull docker://deltaprojects/smee-client
-singularity run smee-client_latest.sif --port 3030 --url https://smee.io/CHANNEL-ID
+apptainer run docker://ghcr.io/eessi/smee-client:latest --url https://smee.io/CHANNEL-ID --port 3030
 ```
 
 for specifying a different port than the default (3000).
 
-On machines with `aarch64` architecture, we can install the the smee client via
-the `npm` package manager as follows
+#### Use Node.js-based Smee client (alternative option)
+The Smee client can be installed via the package manager `npm` as follows
 
 ```
 npm install smee-client
 ```
 
-and then running it with the default port (3000)
+and then running it with
 
 ```
 node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID
@@ -82,7 +89,7 @@ node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID
 Another port can be used by adding the `--port PORT` argument, for example,
 
 ```
-node_modules/smee-client/bin/smee.js --port 3030 --url https://smee.io/CHANNEL-ID
+node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID --port 3030
 ```
 
 ## <a name="step2"></a>Step 2: Registering GitHub App
