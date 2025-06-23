@@ -18,9 +18,8 @@ The bot consists of two main components provided in this repository:
 
 ## <a name="prerequisites"></a>Prerequisites
 
-- GitHub account(s) (two needed for a development scenario), referring to them
-  as `YOU_1` and `YOU_2` below
-- A fork, say `YOU_1/software-layer`, of
+- GitHub account, say `GH_ACCOUNT`
+- A fork, say `GH_ACCOUNT/software-layer`, of
   [EESSI/software-layer](https://github.com/EESSI/software-layer). The EESSI bot will act on
   events triggered for a repository its corresponding GitHub App was installed into.
   To install the GitHub App into a repository, the GitHub App needs to be
@@ -92,47 +91,63 @@ Another port can be used by adding the `--port PORT` argument, for example,
 node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID --port 3030
 ```
 
-## <a name="step2"></a>Step 2: Registering GitHub App
+## <a name="step2"></a>Step 2: Registering a GitHub App
 
 We need to:
-* register a GitHub App;
-* link it to the `smee.io` channel;
-* set a secret token to verify the webhook sender;
-* set some permissions for the GitHub app;
-* subscribe the GitHub app to selected events;
-* define that this GitHub app should only be installed in your GitHub account (or organisation).
+* register a GitHub App
+* link it to the `smee.io` channel
+* set a secret token used by GitHub to sign webhooks and used by the EESSI bot to
+  verify that a received event originates from GitHub
+* set some permissions for the GitHub app
+* subscribe the GitHub app to selected events
+* generate a private key (via GitHub GUI)
 
 At the [app settings page](https://github.com/settings/apps) click "`New GitHub App`" and fill in the page, in particular the following fields:
-- GitHub App name: give the app a name of you choice
-- Homepage URL: use the Smee.io channel (`https://smee.io/CHANNEL-ID`) created in [Step 1](#step1)
-- Webhook URL: use the Smee.io channel (`https://smee.io/CHANNEL-ID`) created in [Step 1](#step1)
-- Webhook secret: create a secret token which is used to verify the webhook sender, for example using:
+- **GitHub App name**: give the app a name of your choice
+- **Homepage URL**: can use the Smee.io channel (`https://smee.io/CHANNEL-ID`) created in [Step 1](#step1)
+- **Webhook URL**: MUST use the Smee.io channel (`https://smee.io/CHANNEL-ID`) created in [Step 1](#step1)
+- **Secret**: create a secret token which is used to verify the webhook sender, for example using:
   ```shell
   python3 -c 'import secrets; print(secrets.token_hex(64))'
   ```
-- Permissions: assign the required permissions to the app (e.g., read access to commits, issues, pull requests);
-  - Make sure to assign read and write access to the Pull requests and Issues in "Repository permissions" section; these permisions can be changed later on;
-  - Make sure to accept the new permissions from the "Install App" section that you can reach via the menu on the left hand side.
-  - Then select the wheel right next to your installed app, or use the link `https://github.com/settings/installations/INSTALLATION_ID`
-  - Once the page is open you will be able to accept the new permissions there.
-  - Some permissions (e.g., metadata) will be selected automatically because of others you have chosen.
+- **Permissions**: assign the required permissions to the app
+  - Under "Repository permissions" assign "Read and write" for both "Issues" and
+    "Pull requests"
 
-- Events: subscribe the app to events it shall react on (e.g., related to pull requests and comments)
-- Select that the app can only be installed by this (your) GitHub account or organisation.
+    NOTE, "Read and write" permissions to "Pull requests" gives the bot powerful
+    means to _mess_ with your pull requests. Unfortunately, there is currently no way
+    around this or the bot could not create comments in pull requests.
 
-Click on "`Create GitHub App`" to complete this step.
+- **Subscribe to events**: subscribe the app to events it shall react on
+  - Select "Issue comment" and "Pull request" (Note, they may only selectable
+    after needed Permissions have been chosen above.)
+- **Where can this GitHub App be installed?**
+  - Select "Only on this account"
+
+Click on "Create GitHub App" to create the app, then generate a private key
+(see below).
+
+### Generate private key
+After clicking "Create GitHub App" you will be informed with a banner
+to generate a private key. You can follow the link in the banner or simply
+scroll down to the section "Private keys"
+
+Generate the private key, which downloads it and note the SHA256 string (to
+more easily identify the key later on).
 
 ## <a name="step3"></a>Step 3: Installing GitHub App
 
 _Note, this will trigger the first event (`installation`). While the EESSI bot is not running yet, you can inspect this via the webpage for your Smee channel. Just open `https://smee.io/CHANNEL-ID` in a browser, and browse through the information included in the event. Naturally, some of the information will be different for other types of events._
 
-You also need to *install* the GitHub App -- essentially telling GitHub to link the app to an account and one, several, or all repositories on whose events the app then should act upon.
+You also need to *install* the GitHub App -- essentially telling GitHub for which
+repositories it should send events.
   
-Go to https://github.com/settings/apps and select the app you want to install by clicking on the icon left to the app's name or on the "`Edit`" button right next to the name of the app.
+Go to https://github.com/settings/apps/**APP_NAME** and select the menu item
+**Install App** on the left-hand side.
 
-On the next page you should see the menu item "`Install App`" on the left-hand side. When you click on this you should see a page with a list of accounts and organisations you can install the app on. Choose one and click on the "`Install`" button next to it.
+On the next page you should see a page with a list of accounts and organisations you can install the app on. Choose one and click on the "`Install`" button next to it.
 
-This leads to a page where you can select the repositories on whose the app should react to. Here, for the sake of simplicity, choose just `YOU_1/software-layer` as described in the [prerequisites](#prerequisites). Select one, multiple, or all and click on the "`Install`" button.
+This leads to a page where you can select the repositories on whose the app should react to. Here, for the sake of simplicity, choose just `GH_ACCOUNT/software-layer` as described in the [prerequisites](#prerequisites). Select one, multiple, or all and click on the "`Install`" button.
 
 ## <a name="step4"></a>Step 4: Installing the EESSI bot on a `bot machine`
 
