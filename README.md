@@ -352,7 +352,7 @@ Replace '`123456`' with the id of your GitHub App. You can find the id of your G
 app_name = 'MY-bot'
 ```
 
-The `app_name` specifies a short name for your bot. It will appear in comments to a pull request. For example, it could include the name of the cluster where the bot runs and a label representing the user that runs the bot, like `hal9000-bot`.
+The `app_name` specifies a short name for your bot. It will appear in comments to a pull request. For example, it could include the name of the cluster where the bot runs and a label representing the user that runs the bot, like `hal9000-bot`. The name will be used when signing files uploaded to an S3 bucket. Thus, the name has to be the same that is used as value for `namespaces` in the `allowed_signers` file used during the ingestion procedure (see [https://github.com/EESSI/filesystem-layer](https://github.com/EESSI/filesystem-layer)).
 
 _Note: avoid putting an actual username here as it will be visible on potentially publicly accessible GitHub pages._
 
@@ -362,15 +362,46 @@ installation_id = 12345678
 
 Replace '`12345678`' with the id of the _installation_ of your GitHub App (see [Step 3](#step3)).
 
-You find the installation id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). For determining the `installation_id` select "`Install App`" in the menu on the left-hand side. Then click on the gearwheel button of the installation (to the right of the "`Installed`" label). The URL of the resulting page contains the `installation_id` -- the number after the last "/".
+You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the URL of the page.
 
-The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the "`Advanced`" section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2), and choose "`Advanced`" in the menu on the left-hand side.
+The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the **Advanced** section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2), and choose **Advanced** in the menu on the left-hand side.
 
 ```ini
 private_key = PATH_TO_PRIVATE_KEY
 ```
 
 Replace `PATH_TO_PRIVATE_KEY` with the path you have noted in [Step 5.3](#step5.3).
+
+#### `[bot_control]` section
+
+The `[bot_control]` section contains settings for configuring the feature to
+send commands to the bot.
+
+```ini
+command_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+```
+
+The `command_permission` setting defines which GitHub accounts can send commands
+to the bot (via new PR comments). If the value is empty _no_ GitHub account can send
+commands.
+
+```ini
+command_response_fmt = FORMAT_MARKDOWN_AND_HTML
+```
+
+`command_response_fmt` allows to customize the format of the comments about the handling of bot
+commands. The format needs to include `{app_name}`, `{comment_response}` and
+`{comment_result}`. `{app_name}` is replaced with the name of the bot instance.
+`{comment_response}` is replaced with information about parsing the comment
+for commands before any command is run. `{comment_result}` is replaced with
+information about the result of the command that was run (can be empty).
+
+```ini
+chatlevel = basic
+```
+
+`chatlevel` defines the amount of comments the bot writes into PRs (incognito - no comments, minimal - respond with single comment on bot commands `help`, `show_config`, `status` and `build` and update job progress, basic - minimal + report failures, or chatty - comments on any event being processed)
+chatlevel = basic
 
 #### `[buildenv]` section
 
@@ -509,7 +540,7 @@ submit_command = /usr/bin/sbatch
 `submit_command` is the full path to the Slurm job submission command used for submitting batch jobs. You may want to verify if `sbatch` is provided at that path or determine its actual location (using `which sbatch`).
 
 ```ini
-build_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+build_permission = GH_ACCOUNT GH_ACCOUNT_2 -NOT_ALLOWED_GH_ACCOUNT_NAME- ...
 ```
 
 `build_permission` defines which GitHub accounts have the permission to trigger
@@ -530,6 +561,8 @@ allow_update_submit_opts = false
 `allow_update_submit_opts` determines whether or not to allow updating the submit
 options via custom module `det_submit_opts` provided by the pull request being
 processed.
+Should only be enabled (true) with care because this will result in code from the target
+repository being executed by the event handler process, that is, not in a compute job.
 
 ```ini
 allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
@@ -539,7 +572,7 @@ allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
 variables) that are allowed to be specified in a PR command with the
 `exportvariable` filter. To specify multiple environment variables, multiple
 `exportvariable` filters must be used (one per variable). These variables will
-be exported into the build environment before running the bot/build.sh script.
+be exported into the build environment before running the `bot/build.sh` script.
 
 The bot build script makes use of the variable `SKIP_TESTS` to determine if
 ReFrame tests shall be skipped or not. Default is not to skip them. To allow the
@@ -547,6 +580,12 @@ use of the variable the setting could look like
 
 ```ini
 allowed_exportvars = ["SKIP_TESTS=yes", "SKIP_TESTS=no"]
+```
+
+A resonable default setting is
+
+```ini
+allowed_exportvars = []
 ```
 
 ```ini
@@ -576,30 +615,6 @@ should be cloned. This can be either:
 
 Note that the `bot: status` command doesn't work with SSH keys; you'll still need a Github token for that to work.
 
-#### `[bot_control]` section
-
-The `[bot_control]` section contains settings for configuring the feature to
-send commands to the bot.
-
-```ini
-command_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
-```
-
-The `command_permission` setting defines which GitHub accounts can send commands
-to the bot (via new PR comments). If the value is empty _no_ GitHub account can send
-commands.
-
-```ini
-command_response_fmt = FORMAT_MARKDOWN_AND_HTML
-```
-
-`command_response_fmt` allows to customize the format of the comments about the handling of bot
-commands. The format needs to include `{app_name}`, `{comment_response}` and
-`{comment_result}`. `{app_name}` is replaced with the name of the bot instance.
-`{comment_response}` is replaced with information about parsing the comment
-for commands before any command is run. `{comment_result}` is replaced with
-information about the result of the command that was run (can be empty).
-
 #### `[deploycfg]` section
 
 The `[deploycfg]` section defines settings for uploading built artefacts (tarballs).
@@ -611,13 +626,58 @@ artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 `artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
 
 ```ini
+# example: same bucket for all target repos
+bucket_name = "eessi-staging"
+```
+
+```ini
+# example: bucket to use depends on target repo identifier (see setting
+#   `repo_target_map`)
+#   the key is the identifier of a repo, while the value is the name of the bucket
+bucket_name = {
+    "eessi.io-2023.06-software": "eessi.io-staging-2023.06",
+    "eessi.io-2025.06-software": "eessi.io-2025.06"
+}
+```
+
+`bucket_name` is the name of the bucket used for uploading of artefacts.
+The bucket must be available on the default server (`https://${bucket_name}.s3.amazonaws.com`), or the one provided via `endpoint_url`.
+
+`bucket_name` can be specified as a string value to use the same bucket for all target repos, or it can be mapping from target repo id to bucket name.
+
+```ini
+deploy_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+```
+
+The `deploy_permission` setting defines which GitHub accounts can trigger the
+deployment procedure. The value can be empty (_no_ GitHub account can trigger the
+deployment), or a space delimited list of GitHub accounts.
+
+```ini
+endpoint_url = URL_TO_S3_SERVER
+```
+
+`endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The
+server could be hosted by a commercial cloud provider like AWS or Azure, or
+running in a private environment, for example, using Minio. In EESSI, the bot uploads
+artefacts to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
+
+```ini
+no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
+```
+
+This defines a message that is added to the status table in a PR comment
+corresponding to a job whose artefact should have been uploaded (e.g., after
+setting the `bot:deploy` label).
+
+```ini
 signing =
     {
-        REPO_ID: {
-            "script": PATH_TO_SIGN_SCRIPT,
-            "key": PATH_TO_KEY_FILE,
-            "container_runtime": PATH_TO_CONTAINER_RUNTIME
-        }, ...
+        "REPO_ID": {
+            "script": "PATH_TO_SIGN_SCRIPT",
+            "key": "PATH_TO_KEY_FILE",
+            "container_runtime": "PATH_TO_CONTAINER_RUNTIME"
+        }
     }
 ```
 
@@ -631,42 +691,21 @@ for signing. The bot calls the script with the two arguments:
 
 1. private key (as provided by the attribute 'key')
 2. path to the file to be signed (the upload script will determine that)
-NOTE (on `container_runtime`), signing requires a recent installation of OpenSSH
-(8.2 or newer). If the frontend where the event handler runs does not have that
-version installed, you can specify a container runtime via the `container_runtime`
-attribute below. Currently, only Singularity or Apptainer are supported.
-Note (on the key), make sure the file permissions are restricted to `0600` (only
-readable+writable by the file owner, or the signing will likely fail.
-Note (on json format), make sure no trailing commas are used after any elements
-or parsing/loading the json will likely fail. Also, the whole value should start
-at a new line and be indented as shown above.
 
-```ini
-endpoint_url = URL_TO_S3_SERVER
-```
-
-`endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The
-server could be hosted by a commercial cloud provider like AWS or Azure, or
-running in a private environment, for example, using Minio. The bot uploads
-artefacts to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
-
-```ini
-# example: same bucket for all target repos
-bucket_name = "eessi-staging"
-```
-
-```ini
-# example: bucket to use depends on target repo
-bucket_name = {
-    "eessi-pilot-2023.06": "eessi-staging-2023.06",
-    "eessi.io-2023.06": "software.eessi.io-2023.06",
-}
-```
-
-`bucket_name` is the name of the bucket used for uploading of artefacts.
-The bucket must be available on the default server (`https://${bucket_name}.s3.amazonaws.com`), or the one provided via `endpoint_url`.
-
-`bucket_name` can be specified as a string value to use the same bucket for all target repos, or it can be mapping from target repo id to bucket name.
+> [!NOTE]
+> Wrt `container_runtime`, signing requires a recent installation of OpenSSH
+> (8.2 or newer). If the frontend where the event handler runs does not have that
+> version installed, you can specify a container runtime via the `container_runtime`
+> attribute below. Currently, only Singularity or Apptainer are supported.
+> [!NOTE]
+> Wrt to the private key file, make sure the file permissions are restricted to `0600`
+> (only readable+writable by the file owner) or the signing will likely fail.
+> [!NOTE]
+> Wrt to the JSON-like format, make sure commas are only used for separating elements
+> or parsing/loading the json will likely fail. Also, the whole value should start
+> at a new line and be indented as shown above.
+> [!NOTE]
+> As shown in the example, use double quotes for all keys and values.
 
 ```ini
 upload_policy = once
@@ -680,22 +719,6 @@ The `upload_policy` defines what policy is used for uploading built artefacts to
 |`latest`|For each build target (prefix in artefact name `eessi-VERSION-{software,init,compat}-OS-ARCH)` only upload the latest built artefact.|
 |`once`|Only once upload any built artefact for the build target.|
 |`none`|Do not upload any built artefacts.|
-
-```ini
-deploy_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
-```
-
-The `deploy_permission` setting defines which GitHub accounts can trigger the
-deployment procedure. The value can be empty (_no_ GitHub account can trigger the
-deployment), or a space delimited list of GitHub accounts.
-
-```ini
-no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
-```
-
-This defines a message that is added to the status table in a PR comment
-corresponding to a job whose artefact should have been uploaded (e.g., after
-setting the `bot:deploy` label).
 
 ```ini
 metadata_prefix = LOCATION_WHERE_METADATA_FILE_GETS_DEPOSITED

@@ -61,15 +61,20 @@ command_response_fmt =
     {comment_result}
     </details>
 
-# chattiness level of the bot in terms of writing comments into PRs (minimal, basic, or chatty)
+# chattiness level of the bot in terms of writing comments into PRs
+# (incognito - no comments, minimal - respond with single comment on bot
+# commands `help`, `show_config`, `status` and `build` and update job
+# progress, basic - minimal + report failures, or chatty - comments on
+# any event being processed)
 chatlevel = basic
 
 [buildenv]
-# name of the job script used for building an EESSI stack
+# name of the job script that is submitted by the event handler (e.g.,
+# used for building an EESSI stack)
 build_job_script = PATH_TO_EESSI_BOT/scripts/bot-build.slurm
 
-# path to directory on shared filesystem that can be used for sharing data across build jobs
-# (for example source tarballs used by EasyBuild)
+# path to a directory on a shared filesystem that can be used for sharing
+# data across build jobs (for example source tarballs used by EasyBuild)
 shared_fs_path = PATH_TO_SHARED_DIRECTORY
 
 # Path (directory) to which build logs for (only) failing builds should be copied by bot/build.sh script
@@ -150,16 +155,17 @@ slurm_params = --hold
 # full path to the job submission command
 submit_command = /usr/bin/sbatch
 
-# which GH account has the permission to trigger the build (by setting
-# the label 'bot:build' (apparently this cannot be restricted on GitHub)
-# if value is left/empty everyone can trigger the build
-# value can be a space delimited list of GH accounts
-build_permission =
+# defines which GitHub accounts have the permission to trigger
+# build jobs, i.e., for which accounts the bot acts on `bot: build ...`
+# commands. If the value is left empty, everyone can trigger build jobs.
+build_permission = -NOT_ALLOWED_GH_ACCOUNT_NAME-
 
 # template for comment when user who set a label has no permission to trigger build jobs
 no_build_permission_comment = Label `bot:build` has been set by user `{build_labeler}`, but this person does not have permission to trigger builds
 
 # whether or not to allow updating the submit options via custom module det_submit_opts
+# Should only be enabled (true) with care because this will result in code from the target
+# repository being executed by the event handler process, that is, not in a compute job.
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
@@ -174,6 +180,9 @@ allow_update_submit_opts = false
 # 'exportvariable:SKIP_TESTS=yes' as a filter, the key-value pair would be
 # "SKIP_TESTS=yes".
 # allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
+#
+# It's safe to use the following line as default setting:
+allowed_exportvars = []
 
 # mechanisn to use to clone Git repository
 # 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)
@@ -199,6 +208,22 @@ clone_git_repo_via = https
 # script for uploading built software packages
 artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 
+# bucket name:
+# the value can be a simple string, to always use same bucket regardless of
+# the target repo, or can be a mapping of a target repo id (see also
+# setting repo_target_map) to a bucket name as in
+# bucket_name = {
+#   "eessi.io-2023.06-software": "eessi.io-staging-2023.06",
+#   "eessi.io-2025.06-software": "software.eessi.io-2023.06"
+# }
+bucket_name = eessi-staging
+
+# which GH account has the permission to trigger the deployment by setting
+# the label 'bot:deploy' (apparently this cannot be restricted on GitHub)
+# if value is left/empty _no one_ can trigger the deployment
+# value can be a space delimited list of GH accounts
+deploy_permission =
+
 # URL to S3/minio bucket
 #   if attribute is set, bucket_base will be constructed as follows
 #     bucket_base=${endpoint_url}/${bucket_name}
@@ -209,37 +234,47 @@ artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 # - The latter variant is used for AWS S3 services.
 endpoint_url = URL_TO_S3_SERVER
 
-# bucket name:
-# can be a string value, to always use same bucket regardless of target repo,
-# or can be a mapping of target repo id (see also repo_target_map) to bucket name
-# like: bucket_name = {"eessi-pilot-2023.06": "eessi-staging-pilot-2023.06", "eessi.io-2023.06": "software.eessi.io-2023.06"}
-bucket_name = eessi-staging
+# template for comment when user who set a label has no permission to trigger deploying artefacts
+no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
 
 # settings for signing artefacts with JSON-like format
-#   REPO_ID: { "script": PATH_TO_SIGN_SCRIPT, "key": PATH_TO_KEY_FILE, "container_runtime": PATH_TO_CONTAINER_RUNTIME }
+#
+#    "REPO_ID": { "script": "PATH_TO_SIGN_SCRIPT", "key": "PATH_TO_KEY_FILE", "container_runtime": "PATH_TO_CONTAINER_RUNTIME" }
+#
+#  REPO_ID is the repository ID. Repository IDs are defined in a file `repos.cfg`
+#  (see setting `repos_cfg_dir`).
+#
 #  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
 #  checked out pull request of the target repository (e.g.,
 #  EESSI/software-layer).
+#
 #  The bot calls the script with the two arguments:
 #   1. private key (as provided by the attribute 'key')
 #   2. path to the file to be signed (the upload script will determine that)
+#
 # NOTE (on "container_runtime"), signing requires a recent installation of OpenSSH
 #   (8.2 or newer). If the frontend where the event handler runs does not have that
 #   version installed, you can specify a container runtime via the 'container_runtime'
 #   attribute below. Currently, only Singularity or Apptainer are supported.
-# NOTE (on the key), make sure the file permissions are restricted to `0600` (only
-#   readable+writable by the file owner, or the signing will likely fail.
-# Note (on json format), make sure no trailing commas are used after any elements
+# NOTE (on the private key file), make sure the file permissions are restricted to `0600`
+#   (only readable+writable by the file owner) or the signing will likely fail.
+# NOTE (on json format), make sure no trailing commas are used after any elements
 #   or parsing/loading the json will likely fail. Also, the whole value should start
 #   at a new line and be indented as shown below.
+# NOTE (on the JSON-like format), make sure commas are only used for separating elements
+#   or parsing/loading the json will likely fail. Also, the whole value should start
+#   at a new line and be indented as shown below.
+# NOTE (on double quotes), as shown in the example below, use double quotes for all keys
+#   and values.
 signing =
     {
-        "eessi.io-2023.06-software: {
-            "script": PATH_TO_SIGN_SCRIPT,
-            "key": PATH_TO_EESSI_BOT/config/user-site-system.key,
-            "container_runtime": PATH_TO_CONTAINER_RUNTIME
+        "eessi.io-2023.06-software": {
+            "script": "PATH_TO_SIGN_SCRIPT",
+            "key": "PATH_TO_EESSI_BOT/config/user-site-system.key",
+            "container_runtime": "PATH_TO_CONTAINER_RUNTIME"
         }
     }
+
 # upload policy: defines what policy is used for uploading built artefacts
 #                to an S3 bucket
 # 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
@@ -248,15 +283,6 @@ signing =
 # 'once'  : only once upload any built artefact for the build target
 # 'none'  : do not upload any built artefacts
 upload_policy = once
-
-# which GH account has the permission to trigger the deployment (by setting
-# the label 'bot:deploy' (apparently this cannot be restricted on GitHub)
-# if value is left/empty everyone can trigger the deployment
-# value can be a space delimited list of GH accounts
-deploy_permission =
-
-# template for comment when user who set a label has no permission to trigger deploying artefacts
-no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
 
 # settings for where (directory) in the S3 bucket to store the metadata file and
 # the artefact
