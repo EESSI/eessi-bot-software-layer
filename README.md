@@ -114,9 +114,10 @@ At the [app settings page](https://github.com/settings/apps) click "`New GitHub 
   - Under "Repository permissions" assign "Read and write" for both "Issues" and
     "Pull requests"
 
-    NOTE, "Read and write" permissions to "Pull requests" gives the bot powerful
-    means to _mess_ with your pull requests. Unfortunately, there is currently no way
-    around this or the bot could not create comments in pull requests.
+    > [!NOTE]
+    > "Read and write" permissions to "Pull requests" gives the bot powerful
+    > means to _mess_ with your pull requests. Unfortunately, there is currently no way
+    > around this or the bot could not create comments in pull requests.
 
 - **Subscribe to events**: subscribe the app to events it shall react on
   - Select "Issue comment" and "Pull request" (Note, they may only selectable
