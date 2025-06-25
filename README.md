@@ -145,9 +145,10 @@ scroll down to the section "Private keys"
 Generate the private key, which downloads it and note the SHA256 string (to
 more easily identify the key later on).
 
-## <a name="step3"></a>Step 3: Installing GitHub App
+## <a name="step3"></a>Step 3: Installing the GitHub App into a repository
 
-_Note, this will trigger the first event (`installation`). While the EESSI bot is not running yet, you can inspect this via the webpage for your Smee channel. Just open `https://smee.io/CHANNEL-ID` in a browser, and browse through the information included in the event. Naturally, some of the information will be different for other types of events._
+> [!NOTE]
+> This will trigger the first event (`installation`). While the EESSI bot is not running yet, you can inspect this via the webpage for your Smee channel. Just open `https://smee.io/CHANNEL-ID` in a browser, and browse through the information included in the event. Naturally, some of the information will be different for other types of events.
 
 You also need to _install_ the GitHub App -- essentially telling GitHub for which
 repositories it should send events.
@@ -155,9 +156,9 @@ repositories it should send events.
 Go to [https://github.com/settings/apps/**APP_NAME**](https://github.com/settings/apps/**APP_NAME**) and select the menu item
 **Install App** on the left-hand side.
 
-On the next page you should see a page with a list of accounts and organisations you can install the app on. Choose one and click on the "`Install`" button next to it.
+On the next page you should see a list of accounts and organisations you can install the app on. Choose one and click on the <kbd style="background-color: #28a745; color: white;">Install</kdb> button next to it.
 
-This leads to a page where you can select the repositories on whose the app should react to. Here, for the sake of simplicity, choose just `GH_ACCOUNT/software-layer` as described in the [prerequisites](#prerequisites). Select one, multiple, or all and click on the "`Install`" button.
+This leads to a page where you can select the repositories on whose the app should react to. Here, for the sake of simplicity, choose "Only select repositories", then open the pull-down menu named "Select repositories" and in there select `GH_ACCOUNT/software-layer` (`GH_ACCOUNT` is the GitHub account mentioned in section [prerequisites](#prerequisites)). Finally, click on the <kbd style="background-color: #28a745; color: white;">Install</kbd> button.
 
 ## <a name="step4"></a>Step 4: Installing the EESSI bot on a `bot machine`
 
@@ -176,7 +177,7 @@ cd eessi-bot-software-layer
 pwd
 ```
 
-Note the output of `pwd`. This will be used to replace `PATH_TO_EESSI_BOT` in the
+Take note of the output of `pwd`. This will be used to replace `PATH_TO_EESSI_BOT` in the
 configuration file `app.cfg` (see [Step 5.4](#step5.4)). In the remainder of this
 page we will refer to this directory as `PATH_TO_EESSI_BOT`.
 
@@ -208,7 +209,7 @@ pip install -r requirements.txt
 
 Note, before you can start the bot components (see below), you have to activate the virtual environment with `source venv_eessi_bot_p37/bin/activate`.
 
-You can exit the virtual environment simply by running `deactivate`.
+You can exit the virtual environment by running `deactivate`.
 
 ### <a name="step4.1"></a>Step 4.1: Installing tools to access S3 bucket
 
