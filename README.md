@@ -290,9 +290,9 @@ For both the event handler and the job manager you need a private key (see [Step
 
 ### <a name="step5.1"></a>Step 5.1: GitHub Personal Access Token (PAT)
 
-Create a Personal Access Token (PAT) for your GitHub account via the page [https://github.com/settings/tokens](https://github.com/settings/tokens) where you find a button "`Generate new token`".
+Create a Personal Access Token (PAT) for your GitHub account via the page [https://github.com/settings/tokens](https://github.com/settings/tokens) where you find a button <kbd style="background-color: #28a745; color: white;">Generate new token</kbd>.
 
-Give it meaningful name (field titled "`Note`"), and set the expiration date. Then select the scopes this PAT will be used for. Then click "`Generate token`".
+Give it meaningful name in the field titled **Note**, and set the expiration date. Then select the scopes this PAT will be used for. Finally, click <kbd style="background-color: #28a745; color: white;">Generate token</kbd>.
 
 On the result page, take note/copy the resulting token string -- it will only be shown once.
 
@@ -314,28 +314,19 @@ On the `bot machine` set the environment variable `$GITHUB_APP_SECTRET_TOKEN`:
 export GITHUB_APP_SECRET_TOKEN='THE_SECRET_TOKEN_STRING'
 ```
 
-in which you replace `THE_SECRET_TOKEN_STRING` with the actual token.
+in which you replace `THE_SECRET_TOKEN_STRING` with the secret token you have created in [Step 2](#step2).
 
 Note that depending on the characters used in the string you will likely have to use _single quotes_ (`'...'`) when setting the value of the environment variable.
 
 ### <a name="step5.3"></a>Step 5.3: Create a private key and store it on the `bot machine`
 
-The private key is needed to let the app authenticate when updating information at the repository such as commenting on PRs, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2).
+The private key is needed to let the app authenticate when updating information at the repository such as commenting on pull requests, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2).
 
-Open the page [https://github.com/settings/apps](https://github.com/settings/apps) and then click on the icon left to the name of the GitHub App for the EESSI bot or the "`Edit`" button for the app.
+Open the page [https://github.com/settings/apps](https://github.com/settings/apps) and then click on the icon left to the name of the GitHub App for the EESSI bot or the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Edit</kbd> button for the app.
 
-Near the end of the page you will find a section "`Private keys`" where you can create a private key by clicking on the button "`Generate a private key`".
+Near the end of the page you will find a section **Private keys** where you can create a private key by clicking on the button <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Generate a private key</kbd>.
 
 The private key should be automatically downloaded to your system. Copy it to the `bot machine` and note the full path to it (`PATH_TO_PRIVATE_KEY`).
-
-For example: the private key is on your LOCAL computer. To transfer it to the
-`bot machine` use the `scp` command for example:
-
-```bash
-scp PATH_TO_PRIVATE_KEY_FILE_LOCAL_COMPUTER REMOTE_USERNAME@TARGET_HOST:TARGET/PATH
-```
-
-The location to where the private key is copied on the bot machine (`TARGET/PATH`) should be noted for `PATH_TO_PRIVATE_KEY`.
 
 ### <a name="step5.4"></a>Step 5.4: Create the configuration file `app.cfg`
 
