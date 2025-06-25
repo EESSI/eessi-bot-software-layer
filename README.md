@@ -107,7 +107,7 @@ We need to:
 - subscribe the GitHub app to selected events
 - generate a private key (via GitHub GUI)
 
-At the [app settings page](https://github.com/settings/apps) click "`New GitHub App`" and fill in the page, in particular the following fields:
+At the [app settings page](https://github.com/settings/apps) click <kbd style="background-color: #28a745; color: white;">New GitHub App</kbd> and fill in the page, in particular the following fields:
 
 - **GitHub App name**: give the app a name of your choice
 - **Homepage URL**: can use the Smee.io channel (`https://smee.io/CHANNEL-ID`) created in [Step 1](#step1)
@@ -128,17 +128,17 @@ At the [app settings page](https://github.com/settings/apps) click "`New GitHub 
     > around this or the bot could not create comments in pull requests.
 
 - **Subscribe to events**: subscribe the app to events it shall react on
-  - Select "Issue comment" and "Pull request" (Note, they may only selectable
-    after needed Permissions have been chosen above.)
+  - Select "Issue comment" and "Pull request" (Note, they may only be selectable
+    after the required _Permissions_ have been chosen above.)
 - **Where can this GitHub App be installed?**
   - Select "Only on this account"
 
-Click on "Create GitHub App" to create the app, then generate a private key
+Click on <kbd style="background-color: #28a745; color: white;">Create GitHub App</kbd> to create the app, then generate a private key
 (see below).
 
 ### Generate private key
 
-After clicking "Create GitHub App" you will be informed with a banner
+After clicking <kbd style="background-color: #28a745; color: white;">Create GitHub App</kbd> you will be informed with a banner
 to generate a private key. You can follow the link in the banner or simply
 scroll down to the section "Private keys"
 
