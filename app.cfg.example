@@ -95,6 +95,10 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# Used to give all jobs of a bot instance the same name. Can be used to allow
+# multiple bot instances running on the same Slurm cluster.
+job_name = prod
+
 # The job_delay_begin_factor setting defines how many times the poll_interval a
 # job's begin (EligibleTime) from now should be delayed if the handover protocol
 # is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
@@ -113,10 +117,6 @@ job_delay_begin_factor = 2
 #    also, the status update in the PR comment of the job is extended by noting
 #    the 'EligibleTime'
 job_handover_protocol = hold_release
-
-# Used to give all jobs of a bot instance the same name. Can be used to allow
-# multiple bot instances running on the same Slurm cluster.
-job_name = prod
 
 # directory under which the bot prepares directories per job
 #   structure created is as follows: YYYY.MM/pr_PR_NUMBER/event_EVENT_ID/run_RUN_NUMBER/OS+SUBDIR
@@ -208,22 +208,6 @@ clone_git_repo_via = https
 # script for uploading built software packages
 artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 
-# bucket name:
-# the value can be a simple string, to always use same bucket regardless of
-# the target repo, or can be a mapping of a target repo id (see also
-# setting repo_target_map) to a bucket name as in
-# bucket_name = {
-#   "eessi.io-2023.06-software": "eessi.io-staging-2023.06",
-#   "eessi.io-2025.06-software": "software.eessi.io-2023.06"
-# }
-bucket_name = eessi-staging
-
-# which GH account has the permission to trigger the deployment by setting
-# the label 'bot:deploy' (apparently this cannot be restricted on GitHub)
-# if value is left/empty _no one_ can trigger the deployment
-# value can be a space delimited list of GH accounts
-deploy_permission =
-
 # URL to S3/minio bucket
 #   if attribute is set, bucket_base will be constructed as follows
 #     bucket_base=${endpoint_url}/${bucket_name}
@@ -234,8 +218,55 @@ deploy_permission =
 # - The latter variant is used for AWS S3 services.
 endpoint_url = URL_TO_S3_SERVER
 
+# bucket name:
+# the value can be a simple string, to always use same bucket regardless of
+# the target repo, or can be a mapping of a target repo id (see also
+# setting repo_target_map) to a bucket name as in
+# bucket_name = {
+#   "eessi.io-2023.06-software": "eessi.io-staging-2023.06",
+#   "eessi.io-2025.06-software": "software.eessi.io-2023.06"
+# }
+bucket_name = eessi-staging
+
+# upload policy: defines what policy is used for uploading built artefacts
+#                to an S3 bucket
+# 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
+# 'latest': for each build target (eessi-VERSION-{software,init,compat}-OS-ARCH)
+#           only upload the latest built artefact
+# 'once'  : only once upload any built artefact for the build target
+# 'none'  : do not upload any built artefacts
+upload_policy = once
+
+# which GH account has the permission to trigger the deployment by setting
+# the label 'bot:deploy' (apparently this cannot be restricted on GitHub)
+# if value is left/empty _no one_ can trigger the deployment
+# value can be a space delimited list of GH accounts
+deploy_permission =
+
 # template for comment when user who set a label has no permission to trigger deploying artefacts
 no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
+
+# settings for where (directory) in the S3 bucket to store the metadata file and
+# the artefact
+# - Can be a string value to always use the same 'prefix' regardless of the target
+#   CVMFS repository, or can be a mapping of a target repository id (see also
+#   repo_target_map) to a prefix.
+# - The prefix itself can use some (environment) variables that are set within
+#   the script. Currently those are:
+#   * 'github_repository' (which would be expanded to the full name of the GitHub
+#     repository, e.g., 'EESSI/software-layer'),
+#   * 'legacy_aws_path' (which expands to the legacy/old prefix being used for
+#     storing artefacts/metadata files) and
+#   * 'pull_request_number' (which would be expanded to the number of the pull
+#     request from which the artefact originates).
+# - The list of supported variables can be shown by running
+#   `scripts/eessi-upload-to-staging --list-variables`.
+# - Examples:
+#   metadata_prefix = {"eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
+#   artefact_prefix = {"eessi-pilot-2023.06": "", "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
+# If left empty, the old/legacy prefix is being used.
+metadata_prefix =
+artefact_prefix =
 
 # settings for signing artefacts with JSON-like format
 #
@@ -275,52 +306,24 @@ signing =
         }
     }
 
-# upload policy: defines what policy is used for uploading built artefacts
-#                to an S3 bucket
-# 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
-# 'latest': for each build target (eessi-VERSION-{software,init,compat}-OS-ARCH)
-#           only upload the latest built artefact
-# 'once'  : only once upload any built artefact for the build target
-# 'none'  : do not upload any built artefacts
-upload_policy = once
-
-# settings for where (directory) in the S3 bucket to store the metadata file and
-# the artefact
-# - Can be a string value to always use the same 'prefix' regardless of the target
-#   CVMFS repository, or can be a mapping of a target repository id (see also
-#   repo_target_map) to a prefix.
-# - The prefix itself can use some (environment) variables that are set within
-#   the script. Currently those are:
-#   * 'github_repository' (which would be expanded to the full name of the GitHub
-#     repository, e.g., 'EESSI/software-layer'),
-#   * 'legacy_aws_path' (which expands to the legacy/old prefix being used for
-#     storing artefacts/metadata files) and
-#   * 'pull_request_number' (which would be expanded to the number of the pull
-#     request from which the artefact originates).
-# - The list of supported variables can be shown by running
-#   `scripts/eessi-upload-to-staging --list-variables`.
-# - Examples:
-#   metadata_prefix = {"eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
-#   artefact_prefix = {"eessi-pilot-2023.06": "", "eessi.io-2023.06": "new/${github_repository}/${pull_request_number}"}
-# If left empty, the old/legacy prefix is being used.
-metadata_prefix =
-artefact_prefix =
-
 
 [architecturetargets]
-# defines both for which architectures the bot will build
-#   and what submission parameters shall be used
-arch_target_map = { "linux/x86_64/generic" : "--constraint shape=c4.2xlarge", "linux/x86_64/amd/zen2": "--constraint shape=c5a.2xlarge" }
+# defines for which architectures the bot will build and what job submission
+#   parameters shall be used to allocate a compute node with the correct
+arch_target_map = {
+    "linux/x86_64/generic": "--partition x86-64-generic-node",
+    "linux/x86_64/amd/zen2": "--partition x86-64-amd-zen2-node" }
 
 
 [repo_targets]
 # defines for which repository a arch_target should be build for
 #
-# EESSI/2021.12 and NESSI/2022.11
-repo_target_map = { "linux/x86_64/amd/zen2" : ["eessi-2021.12","nessi.no-2022.11"] }
+# EESSI/2023.06 and EESSI/2025.06
+repo_target_map = {
+    "linux/x86_64/amd/zen2" : ["eessi.io-2023.06-software","eessi.io-2025.06-software"] }
 
 # points to definition of repositories (default repository defined by build container)
-repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/cfg_bundles
+repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/repos
 
 
 # configuration for event handler which receives events from a GitHub repository.
@@ -356,7 +359,8 @@ scontrol_command = /usr/bin/scontrol
 #         are removed, the output (in PR comments) will lack important
 #         information.
 [submitted_job_comments]
-awaits_release = job id `{job_id}` awaits release by job manager
+# awaits_release is no longer used since bot release v0.7.0
+# awaits_release = job id `{job_id}` awaits release by job manager
 awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
 awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
 initial_comment = New job on instance `{app_name}` for CPU micro-architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
@@ -366,6 +370,7 @@ with_accelerator = &nbsp;and accelerator `{accelerator}`
 [new_job_comments]
 awaits_launch = job awaits launch by Slurm scheduler{extra_info} 
 
+
 [running_job_comments]
 running_job = job `{job_id}` is running
 
@@ -373,6 +378,7 @@ running_job = job `{job_id}` is running
 [finished_job_comments]
 job_result_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job results file `{filename}` does not exist in job directory, or parsing it failed.</li><li>No artefacts were found/reported.</li></ul></details>
 job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job test file `{filename}` does not exist in job directory, or parsing it failed.</li></ul></details>
+
 
 [download_pr_comments]
 git_clone_failure = Unable to clone the target repository. 
@@ -385,6 +391,7 @@ git_apply_failure = Unable to download or merge changes between the source branc
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
 pr_diff_failure = Unable to obtain PR diff.
 pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+
 
 [clean_up]
 trash_bin_dir = $HOME/trash_bin

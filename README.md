@@ -457,6 +457,14 @@ Slurm job. However, when entering the [EESSI compatibility layer](https://www.ee
 most environment settings are cleared. Hence, they need to be set again at a later stage.
 
 ```ini
+job_name = JOB_NAME
+```
+
+Replace `JOB_NAME` with a string of at least 3 characters that is used as job
+name when a job is submitted. This is used to filter jobs, e.g., should be used
+to make sure that multiple bot instances can run in the same Slurm environment.
+
+```ini
 job_delay_begin_factor = 2
 ```
 
@@ -482,14 +490,6 @@ job from the event handler to the job manager. Values are
   bot account cannot run `scontrol release` to remove the hold of the job;
   also, the status update in the PR comment of the job is extended by noting
   the `EligibleTime`
-
-```ini
-job_name = JOB_NAME
-```
-
-Replace `JOB_NAME` with a string of at least 3 characters that is used as job
-name when a job is submitted. This is used to filter jobs, e.g., should be used
-to make sure that multiple bot instances can run in the same Slurm environment.
 
 ```ini
 jobs_base_dir = PATH_TO_JOBS_BASE_DIR
@@ -626,6 +626,15 @@ artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 `artefact_upload_script` provides the location for the script used for uploading built software packages to an S3 bucket.
 
 ```ini
+endpoint_url = URL_TO_S3_SERVER
+```
+
+`endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The
+server could be hosted by a commercial cloud provider like AWS or Azure, or
+running in a private environment, for example, using Minio. In EESSI, the bot uploads
+artefacts to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
+
+```ini
 # example: same bucket for all target repos
 bucket_name = "eessi-staging"
 ```
@@ -646,68 +655,6 @@ The bucket must be available on the default server (`https://${bucket_name}.s3.a
 `bucket_name` can be specified as a string value to use the same bucket for all target repos, or it can be mapping from target repo id to bucket name.
 
 ```ini
-deploy_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
-```
-
-The `deploy_permission` setting defines which GitHub accounts can trigger the
-deployment procedure. The value can be empty (_no_ GitHub account can trigger the
-deployment), or a space delimited list of GitHub accounts.
-
-```ini
-endpoint_url = URL_TO_S3_SERVER
-```
-
-`endpoint_url` provides an endpoint (URL) to a server hosting an S3 bucket. The
-server could be hosted by a commercial cloud provider like AWS or Azure, or
-running in a private environment, for example, using Minio. In EESSI, the bot uploads
-artefacts to the bucket which will be periodically scanned by the ingestion procedure at the Stratum 0 server.
-
-```ini
-no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
-```
-
-This defines a message that is added to the status table in a PR comment
-corresponding to a job whose artefact should have been uploaded (e.g., after
-setting the `bot:deploy` label).
-
-```ini
-signing =
-    {
-        "REPO_ID": {
-            "script": "PATH_TO_SIGN_SCRIPT",
-            "key": "PATH_TO_KEY_FILE",
-            "container_runtime": "PATH_TO_CONTAINER_RUNTIME"
-        }
-    }
-```
-
-`signing` provides a setting for signing artefacts. The value uses a JSON-like format
-with `REPO_ID` being the repository ID. Repository IDs are defined in a file
-`repos.cfg` (see setting `repos_cfg_dir`), `script` provides the location of the
-script that is used to sign a file. If the location is a relative path, the script
-must reside in the checked out pull request of the target repository (e.g.,
-EESSI/software-layer). `key` points to the file of the key being used
-for signing. The bot calls the script with the two arguments:
-
-1. private key (as provided by the attribute 'key')
-2. path to the file to be signed (the upload script will determine that)
-
-> [!NOTE]
-> Wrt `container_runtime`, signing requires a recent installation of OpenSSH
-> (8.2 or newer). If the frontend where the event handler runs does not have that
-> version installed, you can specify a container runtime via the `container_runtime`
-> attribute below. Currently, only Singularity or Apptainer are supported.
-> [!NOTE]
-> Wrt to the private key file, make sure the file permissions are restricted to `0600`
-> (only readable+writable by the file owner) or the signing will likely fail.
-> [!NOTE]
-> Wrt to the JSON-like format, make sure commas are only used for separating elements
-> or parsing/loading the json will likely fail. Also, the whole value should start
-> at a new line and be indented as shown above.
-> [!NOTE]
-> As shown in the example, use double quotes for all keys and values.
-
-```ini
 upload_policy = once
 ```
 
@@ -719,6 +666,22 @@ The `upload_policy` defines what policy is used for uploading built artefacts to
 |`latest`|For each build target (prefix in artefact name `eessi-VERSION-{software,init,compat}-OS-ARCH)` only upload the latest built artefact.|
 |`once`|Only once upload any built artefact for the build target.|
 |`none`|Do not upload any built artefacts.|
+
+```ini
+deploy_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+```
+
+The `deploy_permission` setting defines which GitHub accounts can trigger the
+deployment procedure. The value can be empty (_no_ GitHub account can trigger the
+deployment), or a space delimited list of GitHub accounts.
+
+```ini
+no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_labeler}`, but this person does not have permission to trigger deployments
+```
+
+This defines a message that is added to the status table in a PR comment
+corresponding to a job whose artefact should have been uploaded (e.g., after
+setting the `bot:deploy` label).
 
 ```ini
 metadata_prefix = LOCATION_WHERE_METADATA_FILE_GETS_DEPOSITED
@@ -759,15 +722,54 @@ artefact_prefix = {
 
 If left empty, the old/legacy prefix is being used.
 
+```ini
+signing =
+    {
+        "REPO_ID": {
+            "script": "PATH_TO_SIGN_SCRIPT",
+            "key": "PATH_TO_KEY_FILE",
+            "container_runtime": "PATH_TO_CONTAINER_RUNTIME"
+        }
+    }
+```
+
+`signing` provides a setting for signing artefacts. The value uses a JSON-like format
+with `REPO_ID` being the repository ID. Repository IDs are defined in a file
+`repos.cfg` (see setting `repos_cfg_dir`), `script` provides the location of the
+script that is used to sign a file. If the location is a relative path, the script
+must reside in the checked out pull request of the target repository (e.g.,
+EESSI/software-layer). `key` points to the file of the key being used
+for signing. The bot calls the script with the two arguments:
+
+1. private key (as provided by the attribute 'key')
+2. path to the file to be signed (the upload script will determine that)
+
+> [!NOTE]
+> Wrt `container_runtime`, signing requires a recent installation of OpenSSH
+> (8.2 or newer). If the frontend where the event handler runs does not have that
+> version installed, you can specify a container runtime via the `container_runtime`
+> attribute below. Currently, only Singularity or Apptainer are supported.
+> [!NOTE]
+> Wrt to the private key file, make sure the file permissions are restricted to `0600`
+> (only readable+writable by the file owner) or the signing will likely fail.
+> [!NOTE]
+> Wrt to the JSON-like format, make sure commas are only used for separating elements
+> or parsing/loading the json will likely fail. Also, the whole value should start
+> at a new line and be indented as shown above.
+> [!NOTE]
+> As shown in the example, use double quotes for all keys and values.
+
 #### `[architecturetargets]` section
 
 The section `[architecturetargets]` defines for which targets (OS/SUBDIR), (for example `linux/x86_64/amd/zen2`) the EESSI bot should submit jobs, and which additional `sbatch` parameters will be used for requesting a compute node with the CPU microarchitecture needed to build the software stack.
 
 ```ini
-arch_target_map = { "linux/x86_64/generic" : "--constraint shape=c4.2xlarge", "linux/x86_64/amd/zen2" : "--constraint shape=c5a.2xlarge" }
+arch_target_map = {
+    "linux/x86_64/generic": "--partition x86-64-generic-node",
+    "linux/x86_64/amd/zen2": "--partition x86-64-amd-zen2-node" }
 ```
 
-The map has one-to-many entries of the format `OS/SUBDIR :
+The map has one-to-many entries of the format `OS/SUBDIR:
 ADDITIONAL_SBATCH_PARAMETERS`. For your cluster, you will have to figure out
 which microarchitectures (`SUBDIR`) are available (as `OS` only `linux` is
 currently supported) and how to instruct Slurm to allocate nodes with that
@@ -776,7 +778,7 @@ architecture to a job (`ADDITIONAL_SBATCH_PARAMETERS`).
 Note, if you do not have to specify additional parameters to `sbatch` to request a compute node with a specific microarchitecture, you can just write something like:
 
 ```ini
-arch_target_map = { "linux/x86_64/generic" : "" }
+arch_target_map = { "linux/x86_64/generic": "" }
 ```
 
 #### `[repo_targets]` section
@@ -787,8 +789,8 @@ by `OS/SUBDIR` which correspond to settings in the `arch_target_map`.
 
 ```ini
 repo_target_map = {
-    "OS_SUBDIR_1" : ["REPO_ID_1_1","REPO_ID_1_2"],
-    "OS_SUBDIR_2" : ["REPO_ID_2_1","REPO_ID_2_2"] }
+    "OS_SUBDIR_1": ["REPO_ID_1_1","REPO_ID_1_2"],
+    "OS_SUBDIR_2": ["REPO_ID_2_1","REPO_ID_2_2"] }
 ```
 
 For each `OS/SUBDIR` combination a list of available repository IDs can be
@@ -798,13 +800,13 @@ The repository IDs are defined in a separate file, say `repos.cfg` which is
 stored in the directory defined via `repos_cfg_dir`:
 
 ```ini
-repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/cfg_bundles
+repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/repos
 ```
 
 The `repos.cfg` file also uses the `ini` format as follows
 
 ```ini
-[eessi-2023.06]
+[eessi.io-2023.06-software]
 repo_name = software.eessi.io
 repo_version = 2023.06
 config_bundle = eessi.io-cfg_files.tgz
@@ -868,7 +870,7 @@ scontrol_command = /usr/bin/scontrol
 
 The `[submitted_job_comments]` section specifies templates for messages about newly submitted jobs.
 
-DEPRECATED setting (use `awaits_release_delayed_begin_msg` and/or `awaits_release_hold_release_msg`)
+The following setting is no longer used since bot release v0.7.0. Instead, use the replacement settings `awaits_release_delayed_begin_msg` and/or `awaits_release_hold_release_msg`.
 
 ```ini
 awaits_release = job id `{job_id}` awaits release by job manager
@@ -1003,6 +1005,18 @@ git_apply_tip = _Tip: This can usually be resolved by syncing your branch and re
 
 `git_apply_tip` should guide the contributor/maintainer about resolving the cause
 of `git apply` failing.
+
+```ini
+pr_diff_failure = Unable to obtain PR diff.
+```
+
+The value of `pr_diff_failure` is shown when the `.diff` file could not be obtained.
+
+```ini
+pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+```
+
+The value of `pr_diff_tip` should guide the maintainer / bot administrator about resolving the cause for the failing procedure to obtain the `.diff` file.
 
 #### `[clean_up]` section
 
