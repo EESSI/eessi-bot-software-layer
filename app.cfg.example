@@ -289,9 +289,6 @@ artefact_prefix =
 #   attribute below. Currently, only Singularity or Apptainer are supported.
 # NOTE (on the private key file), make sure the file permissions are restricted to `0600`
 #   (only readable+writable by the file owner) or the signing will likely fail.
-# NOTE (on json format), make sure trailing commas are used after any elements
-#  except for the last one or parsing/loading the json will likely fail. Also, the
-#   whole value should start a new line and be indented as shown below.
 # NOTE (on the JSON-like format), make sure commas are only used for separating elements
 #   or parsing/loading the json will likely fail. Also, the whole value should start
 #   at a new line and be indented as shown below.

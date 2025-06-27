@@ -352,7 +352,16 @@ Replace '`123456`' with the id of your GitHub App. You can find the id of your G
 app_name = 'MY-bot'
 ```
 
-The `app_name` specifies a short name for your bot. It will appear in comments to a pull request. For example, it could include the name of the cluster where the bot runs and a label representing the user that runs the bot, like `hal9000-bot`. The name will be used when signing files uploaded to an S3 bucket. Thus, the name has to be the same that is used as value for `namespaces` in the `allowed_signers` file used during the ingestion procedure (see [https://github.com/EESSI/filesystem-layer](https://github.com/EESSI/filesystem-layer)).
+The `app_name` specifies a short name for your bot. It will appear in comments to
+a pull request. For example, it could include the name of the cluster where the
+bot runs and a label representing the user that runs the bot, like `hal9000-bot`.
+The name will be used when signing files uploaded to an S3 bucket. Thus, the name
+has to be the same that is used as value for `namespaces` in the
+`allowed_signers` file used during the ingestion procedure (see
+[https://github.com/EESSI/filesystem-layer](https://github.com/EESSI/filesystem-layer)).
+The file `allowed_signers` is provided by another (private) repository. More
+information on its content can be obtained from the manual page for `ssh-keygen`
+or from the sign script which is available as `scripts/sign_verify_file_ssh.sh`.
 
 _Note: avoid putting an actual username here as it will be visible on potentially publicly accessible GitHub pages._
 
@@ -540,12 +549,15 @@ submit_command = /usr/bin/sbatch
 `submit_command` is the full path to the Slurm job submission command used for submitting batch jobs. You may want to verify if `sbatch` is provided at that path or determine its actual location (using `which sbatch`).
 
 ```ini
-build_permission = GH_ACCOUNT GH_ACCOUNT_2 -NOT_ALLOWED_GH_ACCOUNT_NAME- ...
+build_permission = -NOT_ALLOWED_GH_ACCOUNT_NAME- [...]
 ```
 
 `build_permission` defines which GitHub accounts have the permission to trigger
 build jobs, i.e., for which accounts the bot acts on `bot: build ...` commands.
-If the value is left empty, everyone can trigger build jobs.
+If the value is left empty, everyone can trigger build jobs. The string
+`-NOT_ALLOWED_GH_ACCOUNT_NAME-` in the example above is not an allowed account
+name on GitHub. Thus, one could not - by accident - give build permissions to an
+unknown account.
 
 ```ini
 no_build_permission_comment = The `bot: build ...` command has been used by user `{build_labeler}`, but this person does not have permission to trigger builds.
