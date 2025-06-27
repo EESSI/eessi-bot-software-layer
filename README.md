@@ -89,7 +89,7 @@ and then running it with
 node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID
 ```
 
-Another port can be used by adding the `--port PORT` argument, for example,
+Another port can be used by adding the `--port PORT` argument. This can be particularly useful if you have multiple bot instances running on the same cluster, in which case you'd want a different port for each. As an example, one could use the non-default port 3030 in this way:
 
 ```bash
 node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID --port 3030
@@ -158,7 +158,7 @@ Go to [https://github.com/settings/apps/**APP_NAME**](https://github.com/setting
 
 On the next page you should see a list of accounts and organisations you can install the app on. Choose one and click on the <kbd style="background-color: #28a745; color: white;">Install</kdb> button next to it.
 
-This leads to a page where you can select the repositories on whose the app should react to. Here, for the sake of simplicity, choose "Only select repositories", then open the pull-down menu named "Select repositories" and in there select `GH_ACCOUNT/software-layer` (`GH_ACCOUNT` is the GitHub account mentioned in section [prerequisites](#prerequisites)). Finally, click on the <kbd style="background-color: #28a745; color: white;">Install</kbd> button.
+This leads to a page where you can select the repositories where the app should react to. Here, for the sake of simplicity, choose "Only select repositories", then open the pull-down menu named "Select repositories" and in there select `GH_ACCOUNT/software-layer` (`GH_ACCOUNT` is the GitHub account mentioned in section [prerequisites](#prerequisites)). Finally, click on the <kbd style="background-color: #28a745; color: white;">Install</kbd> button.
 
 ## <a name="step4"></a>Step 4: Installing the EESSI bot on a `bot machine`
 
@@ -326,7 +326,7 @@ Open the page [https://github.com/settings/apps](https://github.com/settings/app
 
 Near the end of the page you will find a section **Private keys** where you can create a private key by clicking on the button <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Generate a private key</kbd>.
 
-The private key should be automatically downloaded to your system. Copy it to the `bot machine` and note the full path to it (`PATH_TO_PRIVATE_KEY`).
+The private key should be automatically downloaded to your system. Copy it to the `bot machine` and note the full path to it (`PATH_TO_PRIVATE_KEY`). Also note down the day when the key was generated. The keys should be rotated every 6 months.
 
 ### <a name="step5.4"></a>Step 5.4: Create the configuration file `app.cfg`
 
@@ -362,7 +362,7 @@ installation_id = 12345678
 
 Replace '`12345678`' with the id of the _installation_ of your GitHub App (see [Step 3](#step3)).
 
-You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the URL of the page.
+You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the number after the last `/` of the page's URL.
 
 The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the **Advanced** section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2), and choose **Advanced** in the menu on the left-hand side.
 
@@ -754,8 +754,9 @@ for signing. The bot calls the script with the two arguments:
 > (only readable+writable by the file owner) or the signing will likely fail.
 > [!NOTE]
 > Wrt to the JSON-like format, make sure commas are only used for separating elements
-> or parsing/loading the json will likely fail. Also, the whole value should start
-> at a new line and be indented as shown above.
+> and that there is no trailing comma on the last element, or parsing/loading the json 
+> will likely fail. Also, the whole value should start a new line and be indented as shown 
+> above.
 > [!NOTE]
 > As shown in the example, use double quotes for all keys and values.
 

@@ -273,7 +273,7 @@ artefact_prefix =
 #    "REPO_ID": { "script": "PATH_TO_SIGN_SCRIPT", "key": "PATH_TO_KEY_FILE", "container_runtime": "PATH_TO_CONTAINER_RUNTIME" }
 #
 #  REPO_ID is the repository ID. Repository IDs are defined in a file `repos.cfg`
-#  (see setting `repos_cfg_dir`).
+#  and _must_ match it (see setting `repos_cfg_dir`).
 #
 #  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
 #  checked out pull request of the target repository (e.g.,
@@ -289,9 +289,9 @@ artefact_prefix =
 #   attribute below. Currently, only Singularity or Apptainer are supported.
 # NOTE (on the private key file), make sure the file permissions are restricted to `0600`
 #   (only readable+writable by the file owner) or the signing will likely fail.
-# NOTE (on json format), make sure no trailing commas are used after any elements
-#   or parsing/loading the json will likely fail. Also, the whole value should start
-#   at a new line and be indented as shown below.
+# NOTE (on json format), make sure trailing commas are used after any elements
+#  except for the last one or parsing/loading the json will likely fail. Also, the
+#   whole value should start a new line and be indented as shown below.
 # NOTE (on the JSON-like format), make sure commas are only used for separating elements
 #   or parsing/loading the json will likely fail. Also, the whole value should start
 #   at a new line and be indented as shown below.
