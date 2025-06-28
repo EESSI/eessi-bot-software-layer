@@ -766,8 +766,8 @@ for signing. The bot calls the script with the two arguments:
 > (only readable+writable by the file owner) or the signing will likely fail.
 > [!NOTE]
 > Wrt to the JSON-like format, make sure commas are only used for separating elements
-> and that there is no trailing comma on the last element, or parsing/loading the json 
-> will likely fail. Also, the whole value should start a new line and be indented as shown 
+> and that there is no trailing comma on the last element, or parsing/loading the json
+> will likely fail. Also, the whole value should start a new line and be indented as shown
 > above.
 > [!NOTE]
 > As shown in the example, use double quotes for all keys and values.
