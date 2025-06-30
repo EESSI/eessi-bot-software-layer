@@ -638,10 +638,14 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     #      },
     #     'virtual_partition_name2': {
     # ... etc
+    # DEBUG LOGGING
+    log(f"arch_map: {arch_map})")
     for virtual_partition_name, partition_info in arch_map.items():
+        # DEBUG LOGGING
+        log(f"virtual_partition_name: {virtual_partition_name}, partition_info={partition_info}")
         # Unpack for convenience
         arch_dir = partition_info['cpu_subdir']
-        if partition_info['accel']:
+        if 'accel' in partition_info:
             # Use the accelerator as defined by the action_filter. We check if this is valid for the current
             # virtual partition later
             arch_dir += accelerator
@@ -671,7 +675,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 }
                 # Optionally add accelerator to the context
                 check = False
-                if partition_info['accel']:
+                if 'accel' in partition_info:
                     # Create a context for each accelerator, check if _any_ of them is valid
                     # (one is enough to continue)
                     for accel in partition_info['accel']:
@@ -708,7 +712,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
-            log(f"{fn}(): arch = '{arch}' => cpu_target = '{partition_info['cpu_subdir']}' , "
+            log(f"{fn}(): virtual partition = '{virtual_partition_name}' => cpu_target = '{partition_info['cpu_subdir']}' , "
                 f"os_type = '{partition_info['os']}', accelerator = '{accelerator}'")
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, partition_info['cpu_subdir'],
