@@ -638,11 +638,8 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     #      },
     #     'virtual_partition_name2': {
     # ... etc
-    # DEBUG LOGGING
-    log(f"arch_map: {arch_map})")
     for virtual_partition_name, partition_info in arch_map.items():
-        # DEBUG LOGGING
-        log(f"virtual_partition_name: {virtual_partition_name}, partition_info={partition_info}")
+        log(f"{fn}(): virtual_partition_name is {virtual_partition_name}, partition_info is {partition_info}")
         # Unpack for convenience
         arch_dir = partition_info['cpu_subdir']
         if 'accel' in partition_info and accelerator is not None:
@@ -682,7 +679,6 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                     for accel in partition_info['accel']:
                         context['accelerator'] = accel
                         log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                        # TODO: it seems the check_filters does not enforce the accelerator to be present in the context - that should be implemented
                         if not action_filter.check_filters(context):
                             log(f"{fn}(): context does NOT satisfy filter(s), skipping")
                             continue
