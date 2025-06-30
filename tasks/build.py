@@ -645,7 +645,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
         log(f"virtual_partition_name: {virtual_partition_name}, partition_info={partition_info}")
         # Unpack for convenience
         arch_dir = partition_info['cpu_subdir']
-        if 'accel' in partition_info:
+        if 'accel' in partition_info and accelerator is not None:
             # Use the accelerator as defined by the action_filter. We check if this is valid for the current
             # virtual partition later
             arch_dir += accelerator
@@ -676,14 +676,26 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 # Optionally add accelerator to the context
                 check = False
                 if 'accel' in partition_info:
-                    # Create a context for each accelerator, check if _any_ of them is valid
-                    # (one is enough to continue)
+                    match = False
+                    # Create a context for each accelerator defined in app.cfg, then
+                    # check if _any_ of them is valid (one is enough to continue)
                     for accel in partition_info['accel']:
                         context['accelerator'] = accel
                         log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                        check = check | action_filter.check_filters(context)
-                    if not check:
-                        log(f"{fn}(): none of the contexts satisfy filter(s), skipping")
+                        # TODO: it seems the check_filters does not enforce the accelerator to be present in the context - that should be implemented
+                        if not action_filter.check_filters(context):
+                            log(f"{fn}(): context does NOT satisfy filter(s), skipping")
+                            continue
+                        # check = check | action_filter.check_filters(context)
+                        else:
+                            log(f"{fn}(): context DOES satisfy filter(s), going on with job")
+                            match = True
+                            # Break as soon as we have found a valid context, it means the build args are valid
+                            # for at least one of the accelerators in this virtual partition, that's enough
+                            break
+                    # If we get to this point, and none of the contexts matched the filter, we should continue to the
+                    # next iteration of the partition_info['repo_targets'] loop
+                    if not match:
                         continue
                 else:
                     log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
@@ -713,7 +725,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
             log(f"{fn}(): virtual partition = '{virtual_partition_name}' => cpu_target = '{partition_info['cpu_subdir']}' , "
-                f"os_type = '{partition_info['os']}', accelerator = '{accelerator}'")
+                f"os_type = '{partition_info['os']}', requested accelerator = '{accelerator}'")
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, partition_info['cpu_subdir'],
                             partition_info['os'], accelerator)
