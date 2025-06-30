@@ -1,0 +1,7 @@
+ARG smee_client_version=4.2.1
+
+FROM node:lts-alpine
+ARG smee_client_version
+RUN npm install --global smee-client@${smee_client_version}
+ENTRYPOINT ["smee"]
+CMD ["--help"]
