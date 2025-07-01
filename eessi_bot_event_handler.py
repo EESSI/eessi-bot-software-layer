@@ -414,15 +414,18 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment = f"Instance `{app_name}` is configured to build for:"
         for partition_num, arch in enumerate(arch_map):
-            comment += f"\n- partition {partition_num+1}:"
-            if "os" in arch:
-                comment += f"\n  - os: {arch['os']}"
-            if "cpu_subdir" in arch:
-                comment += f"\n  - architecture: {arch['cpu_subdir']}"
-            if "repo_targets" in arch:
-                comment += f"\n  - repositories: {arch['repo_targets']}"
-            if "accel" in arch:
-                comment += f"\n  - accelerators: {arch['accel']}"
+            # Do not print virtual partition names, a bot admin may not want to share those
+            # Instead, just number them
+            comment += f"\n- Partition {partition_num+1}:"
+            current_partition = arch_map[arch]
+            if "os" in current_partition:
+                comment += f"\n  - OS: {current_partition['os']}"
+            if "cpu_subdir" in current_partition:
+                comment += f"\n  - CPU architecture: {current_partition['cpu_subdir']}"
+            if "repo_targets" in current_partition:
+                comment += f"\n  - Repositories: {current_partition['repo_targets']}"
+            if "accel" in current_partition:
+                comment += f"\n  - Accelerators: {current_partition['accel']}"
             comment += "\n"
 
         self.log(f"PR opened: comment '{comment}'")
