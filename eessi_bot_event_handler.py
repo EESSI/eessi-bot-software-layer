@@ -29,8 +29,8 @@ import waitress
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
-from tasks.build import check_build_permission, get_architecture_targets, get_repo_cfg, \
-    request_bot_build_issue_comments, submit_build_jobs
+from tasks.build import check_build_permission, get_architecture_targets, request_bot_build_issue_comments, \
+    submit_build_jobs
 from tasks.deploy import deploy_built_artefacts, determine_job_dirs
 from tasks.clean_up import move_to_trash_bin
 from tools import config
