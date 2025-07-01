@@ -306,19 +306,78 @@ signing =
 
 [architecturetargets]
 # defines for which architectures the bot will build and what job submission
-#   parameters shall be used to allocate a compute node with the correct
+# parameters shall be used to allocate a compute node with the correct
+# The keys of the arch_target_map are virtual partition names. They don't have any meaning in the bot code,
+# and can thus be chosen as desired.
+# Note that you are responsible that ANY bot:build command ONLY matches a single virtual partition!
+# If multiple partitions match the same bot:build command, a failure will be triggered in the job dir preparation
 arch_target_map = {
-    "linux/x86_64/generic": "--partition x86-64-generic-node",
-    "linux/x86_64/amd/zen2": "--partition x86-64-amd-zen2-node" }
-
+    # This is a CPU-based partition. We do not specify an "accel" property explicitly. In this case, invoking the bot
+    # with ANY accelerator command will trigger a build on this partition, as long as the CPU type matches. E.g. 
+    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen2 accel:nvidia/cc90
+    # will cause the event_filter to mark this virtual partition as a valid match, and will use it to start building
+    # for zen2 + nvidia/cc90. Thus, by not specifying an "accel" property, this partition may be used for
+    # cross-compilation for any accelerator.
+    "cpu_zen2": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen2",
+        "slurm_params": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    # This is a CPU partition. We specify an explicit "accel": "None" property. Thus, this partition will only be
+    # used if the bot build command does NOT contain an accel argument, e.g.
+    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4
+    # will cause the event_filter to mark this virtual partition as a valid match, and will use it to start building
+    # for zen4.
+    # When invoking the bot with an accelerator command, such as 
+    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4 accel:nvidia/cc90
+    # the event_filter will NOT mark this virtual partition as a valid match. This is intentional, as this particular
+    # (example) cluster has a native zen4+cc90 partition (gpu_h100) and we want this command to trigger a native build
+    # on that partition, rather than cross-compiling on this cpu_zen4 partition.
+    # One could still allow cross-compilation for other accelerator architectures, e.g. cc70 and cc80 by defining
+    # "accel": ["nvidia/cc70", "nvidia/cc80"]
+    "cpu_zen4": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen4",
+        "accel": ["None"],
+        "slurm_params": "-p genoa --nodes 1 --ntasks-per-node 24 --cpus-per-task 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    # This is a GPU partition. We specify an explicit "accel" property. Thus, only if the bot build command
+    # specifies that explicit accelerator in combination with the relevant CPU type,
+    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:icelake accel:nvidia/cc80
+    # will a build be triggered on this partition
+    # If you want to use this partition also for CPU only builds, you can alter the "accel" property to
+    # "accel": ["None", "nvidia/cc80"]
+    "gpu_a100": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/intel/icelake",
+        "accel": ["nvidia/cc80"],
+        "slurm_params": "-p gpu_a100 --nodes 1 --tasks-per-node 18 --cpus-per-task 1 --gpus-per-node 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    # This is a GPU partition. We specify an explicit "accel" property. Thus, only if the bot build command
+    # specifies that explicit accelerator in combination with the relevant CPU type,
+    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4 accel:nvidia/cc90
+    # will a build be triggered on this partition
+    # If you want to use this partition also for cross-compiling for cc70 and cc80 architectures, you can alter
+    # the "accel" property to 
+    # "accel": ["nvidia/cc70", "nvidia/cc80", "nvidia/cc90"]
+    # Note that setting:
+    # "accel": ["None", "nvidia/cc90"]
+    # is invalid here, since it would lead to both the cpu_zen4 and the gpu_h100 partitions matching the build command
+    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4 accel:nvidia/cc90
+    # This would cause the same job dir to be prepared twice, for different virtual partitions, which will lead
+    # to an error in the job preparation step
+    "gpu_h100": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen4",
+        "accel": ["nvidia/cc90"],
+        "slurm_params": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    }}
 
 [repo_targets]
-# defines for which repository a arch_target should be build for
-#
-# EESSI/2023.06 and EESSI/2025.06
-repo_target_map = {
-    "linux/x86_64/amd/zen2" : ["eessi.io-2023.06-software","eessi.io-2025.06-software"] }
-
 # points to definition of repositories (default repository defined by build container)
 repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/repos
 

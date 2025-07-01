@@ -104,7 +104,6 @@ REQUIRED_CONFIG = {
     config.SECTION_JOB_MANAGER: [
         config.JOB_MANAGER_SETTING_POLL_INTERVAL],                 # required
     config.SECTION_REPO_TARGETS: [
-        config.REPO_TARGETS_SETTING_REPO_TARGET_MAP,               # required
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required
     config.SECTION_SUBMITTED_JOB_COMMENTS: [
         config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,     # required
@@ -412,22 +411,19 @@ class EESSIBotSoftwareLayer(PyGHee):
         # TODO check if PR already has a comment with arch targets and
         # repositories
         arch_map = get_architecture_targets(self.cfg)
-        repo_cfg = get_repo_cfg(self.cfg)
 
         comment = f"Instance `{app_name}` is configured to build for:"
-        architectures = ['/'.join(arch.split('/')[1:]) for arch in arch_map.keys()]
-        comment += "\n- architectures: "
-        if len(architectures) > 0:
-            comment += f"{', '.join([f'`{arch}`' for arch in architectures])}"
-        else:
-            comment += "none"
-        repositories = list(set([repo_id for repo_ids in repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP].values()
-                            for repo_id in repo_ids]))
-        comment += "\n- repositories: "
-        if len(repositories) > 0:
-            comment += f"{', '.join([f'`{repo_id}`' for repo_id in repositories])}"
-        else:
-            comment += "none"
+        for partition_num, arch in enumerate(arch_map):
+            comment += f"\n- partition {partition_num+1}:"
+            if "os" in arch:
+                comment += f"\n  - os: {arch[os]}"
+            if "cpu_subdir" in arch:
+                comment += f"\n  - architecture: {arch[cpu_subdir]}"
+            if "repo_targets" in arch:
+                comment += f"\n  - repositories: {arch[repo_targets]}"
+            if "accel" in arch:
+                comment += f"\n  - accelerators: {arch[accel]}"
+            comment += "\n"
 
         self.log(f"PR opened: comment '{comment}'")
 

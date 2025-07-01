@@ -110,7 +110,6 @@ SECTION_NEW_JOB_COMMENTS = 'new_job_comments'
 NEW_JOB_COMMENTS_SETTING_AWAITS_LAUNCH = 'awaits_launch'
 
 SECTION_REPO_TARGETS = 'repo_targets'
-REPO_TARGETS_SETTING_REPO_TARGET_MAP = 'repo_target_map'
 REPO_TARGETS_SETTING_REPOS_CFG_DIR = 'repos_cfg_dir'
 
 SECTION_RUNNING_JOB_COMMENTS = 'running_job_comments'

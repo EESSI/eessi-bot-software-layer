@@ -241,8 +241,6 @@ def get_repo_cfg(cfg):
     Returns:
         (dict): dictionary containing repository settings as follows
            - {config.REPO_TARGETS_SETTING_REPOS_CFG_DIR: path to repository config directory as defined in 'app.cfg'}
-           - {config.REPO_TARGETS_SETTING_REPO_TARGET_MAP: json of
-               config.REPO_TARGETS_SETTING_REPO_TARGET_MAP value as defined in 'app.cfg'}
            - for all sections [repo_id] defined in config.REPO_TARGETS_SETTING_REPOS_CFG_DIR/repos.cfg add a
              mapping {repo_id: dictionary containing settings of that section}
     """
@@ -258,21 +256,6 @@ def get_repo_cfg(cfg):
     repo_cfg = {}
     settings_repos_cfg_dir = config.REPO_TARGETS_SETTING_REPOS_CFG_DIR
     repo_cfg[settings_repos_cfg_dir] = repo_cfg_org.get(settings_repos_cfg_dir, None)
-
-    repo_map = {}
-    try:
-        repo_map_str = repo_cfg_org.get(config.REPO_TARGETS_SETTING_REPO_TARGET_MAP)
-        log(f"{fn}(): repo_map '{repo_map_str}'")
-
-        if repo_map_str is not None:
-            repo_map = json.loads(repo_map_str)
-
-        log(f"{fn}(): repo_map '{json.dumps(repo_map)}'")
-    except json.JSONDecodeError as err:
-        print(err)
-        error(f"{fn}(): Value for repo_map ({repo_map_str}) could not be decoded.")
-
-    repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP] = repo_map
 
     if repo_cfg[config.REPO_TARGETS_SETTING_REPOS_CFG_DIR] is None:
         return repo_cfg
@@ -627,12 +610,14 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             return []
 
     jobs = []
-    # This loop assumes the following structure for arch_target_map:
+    # This loop assumes the following structure for arch_target_map
+    # Note that 'accel' is a list, to easily allow a single CPU partition to be used for cross compilation
+    # for a lot of accelerator targets
     # arch_target_map = {
     #     'virtual_partition_name': {
     #         'os': 'linux',
     #         'cpu_subdir': 'x86_64/amd/zen4',
-    #         'accel': ['nvidia/cc90'],  # Make this a list, so that we can easily cross compile for a large list with one defined virtual partition
+    #         'accel': ['nvidia/cc90'],
     #         'slurm_params': '-p genoa <etc>',
     #         'repo_targets': ["eessi.io-2023.06-compat","eessi.io-2023.06-software"],
     #      },
@@ -648,9 +633,9 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             arch_dir += accelerator
         arch_dir.replace('/', '_')
         # check if repo_targets is defined for this virtual partition
-        if not 'repo_targets' in partition_info:
+        if 'repo_targets' not in partition_info:
             log(f"{fn}(): skipping arch {virtual_partition_name}, "
-                 "because no repo_targets were defined for this (virtual) partition")
+                "because no repo_targets were defined for this (virtual) partition")
             continue
         for repo_id in partition_info['repo_targets']:
             # ensure repocfg contains information about the repository repo_id if repo_id != EESSI
@@ -671,7 +656,6 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                     "instance": app_name
                 }
                 # Optionally add accelerator to the context
-                check = False
                 if 'accel' in partition_info:
                     match = False
                     # Create a context for each accelerator defined in app.cfg, then
@@ -720,8 +704,13 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
-            log(f"{fn}(): virtual partition = '{virtual_partition_name}' => cpu_target = '{partition_info['cpu_subdir']}' , "
-                f"os_type = '{partition_info['os']}', requested accelerator = '{accelerator}'")
+            msg = f"{fn}(): virtual partition = '{virtual_partition_name}' => "
+            msg += f"configured cpu_target = '{partition_info['cpu_subdir']}' , "
+            msg += f"configured os = '{partition_info['os']}', "
+            if 'accel' in partition_info:
+                msg += f"configured accelerator(s) = '{partition_info['accel']}, "
+            msg += f"requested accelerator = '{accelerator}'"
+            log(msg)
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, partition_info['cpu_subdir'],
                             partition_info['os'], accelerator)
