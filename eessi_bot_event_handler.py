@@ -416,13 +416,13 @@ class EESSIBotSoftwareLayer(PyGHee):
         for partition_num, arch in enumerate(arch_map):
             comment += f"\n- partition {partition_num+1}:"
             if "os" in arch:
-                comment += f"\n  - os: {arch[os]}"
+                comment += f"\n  - os: {arch['os']}"
             if "cpu_subdir" in arch:
-                comment += f"\n  - architecture: {arch[cpu_subdir]}"
+                comment += f"\n  - architecture: {arch['cpu_subdir']}"
             if "repo_targets" in arch:
-                comment += f"\n  - repositories: {arch[repo_targets]}"
+                comment += f"\n  - repositories: {arch['repo_targets']}"
             if "accel" in arch:
-                comment += f"\n  - accelerators: {arch[accel]}"
+                comment += f"\n  - accelerators: {arch['accel']}"
             comment += "\n"
 
         self.log(f"PR opened: comment '{comment}'")
