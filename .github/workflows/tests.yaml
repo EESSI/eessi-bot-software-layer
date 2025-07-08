@@ -40,14 +40,30 @@ jobs:
           python -m pip install pytest
           python -m pip install --upgrade flake8
 
-      - name: Run test suite (without coverage)
+      - name: Run test suite
         run: |
           ./test.sh --verbose
 
-      - name: Run test suite (with coverage)
+      - name: Run coverage and create report
         run: |
-          python -m pip install pytest-cov
-          ./test.sh -q --cov=$PWD
+          python -m pip install coverage
+          PYTHON_SOURCES=$(find . -name "*.py" -not -path "tests/*" -not -path ".github/*" | tr '\n' ',' | sed 's/,$//')
+          echo "determine coverage of pytests for:"
+          echo "${PYTHON_SOURCES}" | tr ',' '\n' | sed 's/^\.\///' | awk '{print gsub(/\//, "/"), $0}' | sort -n | cut -d' ' -f2- | tree --fromfile -U
+          coverage run --include="${PYTHON_SOURCES}" -m pytest
+          coverage report -m
+          coverage html
+
+#      - name: Upload coverage report
+#        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v 4.6.2
+#        with:
+#          name: coverage-report-python-${{ matrix.python }}
+#          path: htmlcov/
+#          retention-days: 7
+#          compression-level: 6  # default GNU Gzip level
+#          if-no-files-found: warn
+#          overwrite: false
+#          include-hidden-files: false
 
       - name: Run flake8 to verify PEP8-compliance of Python code
         run: |

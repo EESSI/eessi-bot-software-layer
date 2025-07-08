@@ -648,7 +648,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 log(f"{fn}(): checking filter {action_filter.to_string()}")
                 context = {"architecture": arch, "repository": repo_id, "instance": app_name}
                 log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                if not action_filter.check_filters(context):
+                if not action_filter.check_build_filters(context):
                     log(f"{fn}(): context does NOT satisfy filter(s), skipping")
                     continue
                 else:

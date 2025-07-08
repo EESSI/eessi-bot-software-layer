@@ -11,7 +11,6 @@
 
 # Standard library imports
 from collections import namedtuple
-import re
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import log
@@ -37,13 +36,13 @@ FILTER_COMPONENTS = [FILTER_COMPONENT_ACCEL,
                      FILTER_COMPONENT_REPO
                      ]
 
-COMPONENT_TOO_SHORT = "component in filter spec '{component}:{pattern}' is too short; must be 3 characters or longer"
-COMPONENT_UNKNOWN = "unknown component={component} in {component}:{pattern}"
-FILTER_EMPTY_PATTERN = "pattern in filter string '{filter_string}' is empty"
-FILTER_FORMAT_ERROR = "filter string '{filter_string}' does not conform to format 'component:pattern'"
+COMPONENT_TOO_SHORT = "component in filter spec '{component}:{value}' is too short; must be 3 characters or longer"
+COMPONENT_UNKNOWN = "unknown component={component} in {component}:{value}"
+FILTER_EMPTY_VALUE = "value in filter string '{filter_string}' is empty"
+FILTER_FORMAT_ERROR = "filter string '{filter_string}' does not conform to format 'component:value'"
 UNKNOWN_COMPONENT_CONST = "unknown component constant {component}"
 
-Filter = namedtuple('Filter', ('component', 'pattern'))
+Filter = namedtuple('Filter', ('component', 'value'))
 
 
 class EESSIBotActionFilterError(Exception):
@@ -64,7 +63,7 @@ class EESSIBotActionFilter:
     Class for representing a filter that limits in which contexts bot commands
     are applied. A filter contains a list of key:value pairs where the key
     corresponds to a component (see FILTER_COMPONENTS) and the value is a
-    pattern used to filter commands based on the context a command is applied to.
+    string used to filter commands based on the context a command is applied to.
     """
     def __init__(self, filter_string):
         """
@@ -101,15 +100,15 @@ class EESSIBotActionFilter:
         """
         self.action_filters = []
 
-    def add_filter(self, component, pattern):
+    def add_filter(self, component, value):
         """
-        Adds a filter given by a component and a pattern
+        Adds a filter given by a component and a value. Uses the full component
+        name even if only a prefix was used.
 
         Args:
             component (string): any prefix (min 3 characters long) of known filter
                 components (see FILTER_COMPONENTS)
-            pattern (string): regular expression pattern that is applied to a
-                string representing the component
+            value (string): string that represents value of component
 
         Returns:
             None (implicitly)
@@ -122,7 +121,7 @@ class EESSIBotActionFilter:
         # - it is a 3+ character-long string, _and_
         # - it is a prefix of one of the elements in FILTER_COMPONENTS
         if len(component) < 3:
-            msg = COMPONENT_TOO_SHORT.format(component=component, pattern=pattern)
+            msg = COMPONENT_TOO_SHORT.format(component=component, value=value)
             log(msg)
             raise EESSIBotActionFilterError(msg)
         full_component = None
@@ -135,17 +134,17 @@ class EESSIBotActionFilter:
                 break
         if full_component:
             log(f"processing component {component}")
-            # replace '-' with '/' in pattern when using 'architecture' filter
+            # replace '-' with '/' in value when using 'architecture' filter
             #   component (done to make sure that values are comparable)
             if full_component == FILTER_COMPONENT_ARCH:
-                pattern = pattern.replace('-', '/')
-            # replace '=' with '/' in pattern when using 'accelerator' filter
+                value = value.replace('-', '/')
+            # replace '=' with '/' in value when using 'accelerator' filter
             #   component (done to make sure that values are comparable)
             if full_component == FILTER_COMPONENT_ACCEL:
-                pattern = pattern.replace('=', '/')
-            self.action_filters.append(Filter(full_component, pattern))
+                value = value.replace('=', '/')
+            self.action_filters.append(Filter(full_component, value))
         else:
-            msg = COMPONENT_UNKNOWN.format(component=component, pattern=pattern)
+            msg = COMPONENT_UNKNOWN.format(component=component, value=value)
             log(msg)
             raise EESSIBotActionFilterError(msg)
 
@@ -154,14 +153,14 @@ class EESSIBotActionFilter:
         Adds a filter provided as a string
 
         Args:
-            filter_string (string): filter provided as component:pattern string
+            filter_string (string): filter provided as component:value string
 
         Returns:
             None (implicitly)
 
         Raises:
            EESSIBotActionFilterError: raised if filter_string does not conform
-               to 'component:pattern' format or pattern is empty
+               to 'component:value' format or value is empty
         """
         _filter_split = filter_string.split(':')
         if len(_filter_split) != 2:
@@ -169,48 +168,48 @@ class EESSIBotActionFilter:
             log(msg)
             raise EESSIBotActionFilterError(msg)
         if len(_filter_split[0]) < 3:
-            msg = COMPONENT_TOO_SHORT.format(component=_filter_split[0], pattern=_filter_split[1])
+            msg = COMPONENT_TOO_SHORT.format(component=_filter_split[0], value=_filter_split[1])
             log(msg)
             raise EESSIBotActionFilterError(msg)
         if len(_filter_split[1]) == 0:
-            msg = FILTER_EMPTY_PATTERN.format(filter_string=filter_string)
+            msg = FILTER_EMPTY_VALUE.format(filter_string=filter_string)
             log(msg)
             raise EESSIBotActionFilterError(msg)
         self.add_filter(_filter_split[0], _filter_split[1])
 
     def get_filter_by_component(self, component):
         """
-        Returns filter pattern for component.
+        Returns filter value for component.
 
         Args:
             component (string): one of FILTER_COMPONENTS
 
         Returns:
-            (list): list of pattern for filters whose component matches argument
+            (list): list of value for filters whose component matches argument
         """
         if component not in FILTER_COMPONENTS:
             msg = UNKNOWN_COMPONENT_CONST.format(component=component)
             raise EESSIBotActionFilterError(msg)
 
-        pattern = []
+        values = []
         for _filter in self.action_filters:
             if component == _filter.component:
-                pattern.append(_filter.pattern)
-        return pattern
+                values.append(_filter.value)
+        return values
 
-    def remove_filter(self, component, pattern):
+    def remove_filter(self, component, value):
         """
-        Removes all elements matching the filter given by (component, pattern)
+        Removes all elements matching the filter given by (component, value)
 
         Args:
             component (string): one of FILTER_COMPONENTS
-            pattern (string): regex that is applied to a string representing the component
+            value (string): value for the component
 
         Returns:
             None (implicitly)
         """
         if len(component) < 3:
-            msg = COMPONENT_TOO_SHORT.format(component=component, pattern=pattern)
+            msg = COMPONENT_TOO_SHORT.format(component=component, value=value)
             log(msg)
             raise EESSIBotActionFilterError(msg)
         full_component = None
@@ -223,7 +222,7 @@ class EESSIBotActionFilter:
                 break
         if not full_component:
             # the component provided as argument is not in the list of FILTER_COMPONENTS
-            msg = COMPONENT_UNKNOWN.format(component=component, pattern=pattern)
+            msg = COMPONENT_UNKNOWN.format(component=component, value=value)
             log(msg)
             raise EESSIBotActionFilterError(msg)
 
@@ -238,8 +237,8 @@ class EESSIBotActionFilter:
             #      3-character-long prefix (e.g., 'repository' and 'repeat' would
             #      have the same prefix 'rep')
             _filter = self.action_filters[index]
-            if _filter.component.startswith(component) and pattern == _filter.pattern:
-                log(f"removing filter ({_filter.component}, {pattern})")
+            if _filter.component.startswith(component) and value == _filter.value:
+                log(f"removing filter ({_filter.component}, {value})")
                 self.action_filters.pop(index)
 
     def to_string(self):
@@ -254,53 +253,91 @@ class EESSIBotActionFilter:
         """
         filter_str_list = []
         for _filter in self.action_filters:
-            cm = _filter.component
-            re = _filter.pattern
-            filter_str_list.append(f"{cm}:{re}")
+            component = _filter.component
+            value = _filter.value
+            filter_str_list.append(f"{component}:{value}")
         return " ".join(filter_str_list)
 
-    def check_filters(self, context):
+    def check_build_filters(self, context):
         """
-        Checks filters for a given context which is defined by one to five
-        components (accelerator, architecture, instance, job, repository)
+        Checks if the filter in self matches a given context which is defined
+        by the three components FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST and
+        FILTER_COMPONENT_REPO for building.
+        A single component of a filter matches the corresponding component in a
+        context if the values for these components are exactly the same.
 
         Args:
-            context (dict) : dictionary that maps components to their value
+            context (dict) : dictionary that contents (component,value)-pairs
+                representing the context in which the method is called
 
         Returns:
-            True if no filters are defined or all defined filters match
-                their corresponding component in the given context
-            False if any defined filter does not match its corresponding
-                component in the given context
+            True if all required components in a given context match their
+                corresponding component in a filter
+            False otherwise
         """
-        # if no filters are defined we return True
-        if len(self.action_filters) == 0:
-            return True
+        build_components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST, FILTER_COMPONENT_REPO]
+        return self.check_filters(context, build_components)
 
-        # we have at least one filter which has to match or we return False
-        check = False
+    def check_filters(self, context, components):
+        """
+        Checks if the filter in self matches a given context which is defined
+        by components.
+        A single component of a filter matches the corresponding component in a
+        context if the values for these components are exactly the same.
 
+        Args:
+            context (dict) : dictionary that contents (component,value)-pairs
+                representing the context in which the method is called
+                The context is typically defined by a combination of the build
+                target (CPU microarchitecture, CernVM-FS repository, optionally
+                accelerator architecture) and the build system.
+            components (list) : contains constants FILTER_COMPONENT_* that must
+                be checked
+
+        Returns:
+            True if all required components in a given context match their
+                corresponding component in a filter
+            False otherwise
+        """
         # examples:
         #   filter: 'arch:intel instance:AWS' --> evaluates to True if
-        #       context['architecture'] matches 'intel' and if
-        #       context['instance'] matches 'AWS'
+        #     context['architecture'] is 'intel' and if context['instance'] is 'AWS'
         #   filter: 'repository:eessi-2023.06' --> evaluates to True if
-        #       context['repository'] matches 'eessi-2023.06'
+        #     context['repository'] is 'eessi-2023.06'
 
-        # we iterate over all defined filters
-        for af in self.action_filters:
-            if af.component in context:
-                value = context[af.component]
-                # replace - with / in architecture component
-                if af.component == FILTER_COMPONENT_ARCH:
-                    value = value.replace('-', '/')
-                # replace = with / in accelerator component
-                if af.component == FILTER_COMPONENT_ACCEL:
-                    value = value.replace('=', '/')
-                if re.search(af.pattern, value):
-                    # if the pattern of the filter matches
-                    check = True
-                else:
-                    check = False
-                    break
-        return check
+        # TODO should we require a 'double'-match, that is, all components given
+        #      have to match AND all filters given have to match?
+        #
+        # we iterate over the components and verify if their value in the given
+        #   context matches the corresponding value in the filter
+        for component in components:
+            filter_values = self.get_filter_by_component(component)
+            if len(filter_values) == 0:
+                # no filter for component provided --> at least one filter per
+                #   component MUST be given
+                log(f"no filter for component '{component}' provided; check_filters returns False")
+                return False
+            if component in context:
+                # check if all values for the filter are identical to the value
+                #   of the component in the context
+                context_value = context[component]
+                if component == FILTER_COMPONENT_ARCH:
+                    if context_value.startswith('linux'):
+                        # strip leading OS name from architecture string
+                        context_value = '/'.join(context_value.split('/')[1:])
+                    # replace '-' with '/' in architecture string
+                    context_value = context_value.replace('-', '/')
+                if component == FILTER_COMPONENT_ACCEL:
+                    context_value = context_value.replace('=', '/')
+                for filter_value in filter_values:
+                    if filter_value != context_value:
+                        log_msg = "filter value '%s' does not match context value '%s' for component '%s';"
+                        log_msg += " check_filters returns False"
+                        log(log_msg % (filter_value, context_value, component))
+                        return False
+            else:
+                # missing required component in context, could lead to unexpected behavior
+                log_msg = "missing required component '%s' in context; check_filters returns False"
+                log(log_msg % component)
+                return False
+        return True
