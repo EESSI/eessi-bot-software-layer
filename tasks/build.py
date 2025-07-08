@@ -630,7 +630,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
         if 'accel' in partition_info and accelerator is not None:
             # Use the accelerator as defined by the action_filter. We check if this is valid for the current
             # virtual partition later
-            arch_dir += accelerator
+            arch_dir += f"/{accelerator}"
         arch_dir.replace('/', '_')
         # check if repo_targets is defined for this virtual partition
         if 'repo_targets' not in partition_info:
