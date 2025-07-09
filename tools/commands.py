@@ -85,19 +85,71 @@ class EESSIBotCommand:
         """
         # TODO add function name to log messages
         cmd_as_list = cmd_str.split()
-        self.command = cmd_as_list[0]
+        self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
+
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
         if len(cmd_as_list) > 1:
-            arg_str = " ".join(cmd_as_list[1:])
-            try:
-                self.action_filters = EESSIBotActionFilter(arg_str)
-            except EESSIBotActionFilterError as err:
-                log(f"ERROR: EESSIBotActionFilterError - {err.args}")
-                self.action_filters = None
-                raise EESSIBotCommandError("invalid action filter")
-            except Exception as err:
-                log(f"Unexpected err={err}, type(err)={type(err)}")
-                raise
+
+            # Extract arguments for the action filters
+            # By default, everything that follows the 'on:' argument (until the next space) is
+            # considered part of the argument list for the action filters
+            target_args = []
+            other_filter_args = []
+            on_found = False
+            for arg in cmd_as_list[1:]:
+                if arg.startswith('on:'):
+                    on_found = True
+                    # Extract everything after 'on:' and split by comma
+                    filter_content = arg[3:]  # Remove 'on:' prefix
+                    target_args.extend(filter_content.split(','))
+                elif not arg.startswith('off:'):
+                    # Anything that is not 'on:' or 'for:' should just be passed on as normal
+                    # No further parsing of the value is needed
+                    other_filter_args.extend([arg])
+
+            # If no 'on:' is found in the argument list, everything that follows the 'for:' argument
+            # (until the next space) is considered the argument list for the action filters
+            # Essentially, this represents a native build, i.e. the hardware we build on should be the
+            # hardware we build on
+            if not on_found:
+                for arg in cmd_as_list[1:]:
+                    if arg.startswith('for:'):
+                        # Extract everything after the 'for:' suffix and split by comma
+                        filter_content=arg[4:]
+                        target_args.extend(filter_content.split(','))
+
+            # Join the filter arguments and pass to EESSIBotActionFilter
+            # At this point, target_args is e.g. ["arch=amd/zen2","accel=nvidia/cc90"]
+            # But EESSIBotActionFilter expects e.g. "arch:amd/zen2 accel:nvidia/cc90"
+            # First, normalize to the ["arch:amd/zen2", "accel:nvidia/cc90"] format
+            normalized_filters = []
+            if target_args:
+                for filter_item in target_args:
+                    if '=' in filter_item:
+                        component, pattern = filter_item.split('=', 1)
+                        normalized_filters.append(f"{component}:{pattern}")
+
+            # Add the other filter args to the normalized filters. The other_filter_args are already colon-separated
+            # so no special parsing needed there
+            log(f"Extracted filter arguments related to hardware target: {normalized_filters}")
+            log(f"Other extracted filter arguments: {other_filter_args}")
+            normalized_filters += other_filter_args
+
+            # Finally, change into a space-separated string, as expected by EESSIBotActionFilter
+            # e.g "arch:amd/zen2 accel:nvidia/cc90 repo:my.repo.io"
+            if normalized_filters:
+                arg_str = " ".join(normalized_filters)
+                try:
+                    log(f"Passing the following arguments to the EESSIBotActionFilter: {arg_str}")
+                    self.action_filters = EESSIBotActionFilter(arg_str)
+                except EESSIBotActionFilterError as err:
+                    log(f"ERROR: EESSIBotActionFilterError - {err.args}")
+                    self.action_filters = None
+                    raise EESSIBotCommandError("invalid action filter")
+                except Exception as err:
+                    log(f"Unexpected err={err}, type(err)={type(err)}")
+                    raise
+        # No arguments were passed to the command self.command
         else:
             self.action_filters = EESSIBotActionFilter("")
 

@@ -304,16 +304,13 @@ class EESSIBotActionFilter:
                     check = False
                     break
 
-        # If the context declares an accelerator, but the build command did not (i.e. no action filter is defined
-        # for the accelerator component) then the check should only return True if "None" was the accelerator defined
-        # in the context. This ensures that no CPU-only builds are done on accelerated partitions, unless these
-        # partitions are explicitly configured with "None" as _one_ of the valid accelerators in their `accel:` list
-        # in app.cfg
+        # If the context declares an accelerator, enforce that a filter is defined for this component as well
+        # I.e. this enforces that a context with accelerator will only be used if an accelerator is explicitely
+        # requested in the build command, thus preventing CPU-only builds on GPU nodes (unless explicitely intended)
         if (
             FILTER_COMPONENT_ACCEL in context and not
             any(af.component == FILTER_COMPONENT_ACCEL for af in self.action_filters)
         ):
-            if not context[FILTER_COMPONENT_ACCEL] == "None":
-                check = False
+            check = False
 
         return check
