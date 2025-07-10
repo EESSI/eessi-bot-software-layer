@@ -615,27 +615,25 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     # Note that 'accel' is a list, to easily allow a single CPU partition to be used for cross compilation
     # for a lot of accelerator targets
     # arch_target_map = {
-    #     'virtual_partition_name': {
+    #     'node_type_name': {
     #         'os': 'linux',
     #         'cpu_subdir': 'x86_64/amd/zen4',
     #         'accel': ['nvidia/cc90'],
     #         'slurm_params': '-p genoa <etc>',
     #         'repo_targets': ["eessi.io-2023.06-compat","eessi.io-2023.06-software"],
     #      },
-    #     'virtual_partition_name2': {
+    #     'node_type_name2': {
     # ... etc
-    for virtual_partition_name, partition_info in arch_map.items():
-        log(f"{fn}(): virtual_partition_name is {virtual_partition_name}, partition_info is {partition_info}")
+    for node_type_name, partition_info in arch_map.items():
+        log(f"{fn}(): node_type_name is {node_type_name}, partition_info is {partition_info}")
         # Unpack for convenience
-        arch_dir = partition_info['cpu_subdir']
-        if 'accel' in partition_info and accelerator is not None:
-            # Use the accelerator as defined by the action_filter. We check if this is valid for the current
-            # virtual partition later
-            arch_dir += f"/{accelerator}"
+        arch_dir = build_params[BUILD_PARAM_ARCH]
+        if BUILD_PARAM_ACCEL in build_params:
+            arch_dir += f"/{build_params[BUILD_PARAM_ACCEL]}"
         arch_dir.replace('/', '_')
         # check if repo_targets is defined for this virtual partition
         if 'repo_targets' not in partition_info:
-            log(f"{fn}(): skipping arch {virtual_partition_name}, "
+            log(f"{fn}(): skipping arch {node_type_name}, "
                 "because no repo_targets were defined for this (virtual) partition")
             continue
         for repo_id in partition_info['repo_targets']:
@@ -705,7 +703,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
-            msg = f"{fn}(): virtual partition = '{virtual_partition_name}' => "
+            msg = f"{fn}(): node type = '{node_type_name}' => "
             msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
             msg += f"build cpu_target = '{build_params[BUILD_PARAM_ARCH]}', "
             msg += f"configured os = '{partition_info['os']}', "
@@ -715,7 +713,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             log(msg)
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
-                            partition_info['os'], build_params[BUILD_PARAM_ACCEL])
+                            partition_info['os'], build_params[BUILD_PARAM_ACCEL], node_type_name)
 
             if exportvars:
                 prepare_export_vars_file(job_dir, exportvars)
@@ -732,7 +730,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     return jobs
 
 
-def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator):
+def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator, node_type_name):
     """
     Set up job configuration file 'job.cfg' in directory <job_dir>/cfg
 
@@ -744,6 +742,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         software_subdir (string): software subdirectory to build for (e.g., 'x86_64/generic')
         os_type (string): type of the os (e.g., 'linux')
         accelerator (string): defines accelerator to build for (e.g., 'nvidia/cc80')
+        node_type_name (string): the node type name, as configured in app.cfg
 
     Returns:
         None (implicitly)
@@ -814,6 +813,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
 
     job_cfg_arch_section = job_metadata.JOB_CFG_ARCHITECTURE_SECTION
     job_cfg[job_cfg_arch_section] = {}
+    job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_NODE_TYPE] = node_type_name
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_SOFTWARE_SUBDIR] = software_subdir
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_OS_TYPE] = os_type
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_ACCELERATOR] = accelerator if accelerator else ''
