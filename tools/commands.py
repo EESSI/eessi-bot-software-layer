@@ -18,7 +18,7 @@ from pyghee.utils import log
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from tools.filter import EESSIBotActionFilter, EESSIBotActionFilterError
-
+from tools.build_params import EESSIBotBuildParams
 
 def contains_any_bot_command(body):
     """
@@ -89,7 +89,6 @@ class EESSIBotCommand:
 
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
         if len(cmd_as_list) > 1:
-
             # Extract arguments for the action filters
             # By default, everything that follows the 'on:' argument (until the next space) is
             # considered part of the argument list for the action filters
@@ -102,7 +101,13 @@ class EESSIBotCommand:
                     # Extract everything after 'on:' and split by comma
                     filter_content = arg[3:]  # Remove 'on:' prefix
                     target_args.extend(filter_content.split(','))
-                elif not arg.startswith('off:'):
+                elif arg.startswith('for:'):
+                    # Anything listed as 'for:' is build parameters
+                    build_params = arg[4:]
+                    # EESSIBotBuildParams is essentially a dict, but parses the input argument
+                    # according to the expected argument format for 'for:'
+                    self.build_params = EESSIBotBuildParams(build_params)
+                else:
                     # Anything that is not 'on:' or 'for:' should just be passed on as normal
                     # No further parsing of the value is needed
                     other_filter_args.extend([arg])

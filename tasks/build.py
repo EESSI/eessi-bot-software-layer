@@ -33,7 +33,7 @@ from pyghee.utils import error, log
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
 from tools.pr_comments import ChatLevels, create_comment
-
+from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
 
 # defaults (used if not specified via, eg, 'app.cfg')
 DEFAULT_JOB_TIME_LIMIT = "24:00:00"
@@ -551,7 +551,7 @@ def prepare_export_vars_file(job_dir, exportvars):
     log(f"{fn}(): created exported variables file {export_vars_path}")
 
 
-def prepare_jobs(pr, cfg, event_info, action_filter):
+def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     """
     Prepare all jobs whose context matches the given filter. Preparation includes
     creating a working directory for a job, downloading the pull request into
@@ -562,6 +562,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
         cfg (ConfigParser): instance holding full configuration (typically read from 'app.cfg')
         event_info (dict): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         (list): list of the prepared jobs
@@ -705,15 +706,16 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
             msg = f"{fn}(): virtual partition = '{virtual_partition_name}' => "
-            msg += f"configured cpu_target = '{partition_info['cpu_subdir']}' , "
+            msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
+            msg += f"build cpu_target = '{build_params[BUILD_PARAM_ARCH]}', "
             msg += f"configured os = '{partition_info['os']}', "
             if 'accel' in partition_info:
-                msg += f"configured accelerator(s) = '{partition_info['accel']}, "
-            msg += f"requested accelerator = '{accelerator}'"
+                msg += f"requested accelerator(s) = '{partition_info['accel']}, "
+            msg += f"build accelerator = '{build_params[BUILD_PARAM_ACCEL]}'"
             log(msg)
 
-            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, partition_info['cpu_subdir'],
-                            partition_info['os'], accelerator)
+            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
+                            partition_info['os'], build_params[BUILD_PARAM_ACCEL])
 
             if exportvars:
                 prepare_export_vars_file(job_dir, exportvars)
@@ -1032,7 +1034,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         return None
 
 
-def submit_build_jobs(pr, event_info, action_filter):
+def submit_build_jobs(pr, event_info, action_filter, build_params):
     """
     Create build jobs for a pull request by preparing jobs which match the given
     filters, submitting them, adding comments to the pull request on GitHub and
@@ -1042,6 +1044,7 @@ def submit_build_jobs(pr, event_info, action_filter):
         pr (github.PullRequest.PullRequest): instance representing the pull request
         event_info (dict): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         (dict): dictionary mapping a job id to a github.IssueComment.IssueComment
@@ -1054,7 +1057,7 @@ def submit_build_jobs(pr, event_info, action_filter):
     app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
-    jobs = prepare_jobs(pr, cfg, event_info, action_filter)
+    jobs = prepare_jobs(pr, cfg, event_info, action_filter, build_params)
 
     # return if there are no jobs to be submitted
     if not jobs:

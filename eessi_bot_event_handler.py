@@ -531,7 +531,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         build_msg = ''
         if check_build_permission(pr, event_info):
             # use filter from command
-            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters)
+            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters, bot_command.build_params)
             if submitted_jobs is None or len(submitted_jobs) == 0:
                 build_msg = "\n  - no jobs were submitted"
             else:
