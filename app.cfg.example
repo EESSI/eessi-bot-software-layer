@@ -308,7 +308,7 @@ signing =
 # defines for which architectures the bot will build and what job submission
 # parameters shall be used to allocate a compute node with the correct
 # The keys of the arch_target_map are virtual partition names. They don't have any meaning in the bot code,
-# and can thus be chosen as desired.
+# and can thus be chosen as desired. They are publicly visible though if a bot:show_config command is issued.
 # Note that you are responsible that ANY bot:build command ONLY matches a single virtual partition!
 # If multiple partitions match the same bot:build command, a failure will be triggered in the job dir preparation
 arch_target_map = {
