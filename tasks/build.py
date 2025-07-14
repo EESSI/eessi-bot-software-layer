@@ -1040,9 +1040,6 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                            on_accelerator=on_accelerator_str,
                            for_accelerator=for_accelerator_str)
 
-    # Make sure newline characters are taken as new line characters, not as literal \n
-    job_comment='\n'.join(job_comment.split('\n'))
-
     # create comment to pull request
     repo_name = pr.base.repo.full_name
     issue_comment = create_comment(repo_name, pr.number, job_comment, ChatLevels.MINIMAL)
