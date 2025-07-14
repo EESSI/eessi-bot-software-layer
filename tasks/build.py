@@ -631,6 +631,9 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
         arch_dir = build_params[BUILD_PARAM_ARCH]
         if BUILD_PARAM_ACCEL in build_params:
             arch_dir += f"/{build_params[BUILD_PARAM_ACCEL]}"
+            build_for_accel = build_params[BUILD_PARAM_ACCEL]
+        else:
+            build_for_accel = ''
         arch_dir.replace('/', '_')
         # check if repo_targets is defined for this virtual partition
         if 'repo_targets' not in partition_info:
@@ -692,12 +695,11 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             msg += f"configured os = '{partition_info['os']}', "
             if 'accel' in partition_info:
                 msg += f"requested accelerator(s) = '{partition_info['accel']}, "
-            if BUILD_PARAM_ACCEL in build_params:
-                msg += f"build accelerator = '{build_params[BUILD_PARAM_ACCEL]}'"
+            msg += f"build accelerator = '{build_for_accel}'"
             log(msg)
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
-                            partition_info['os'], build_params[BUILD_PARAM_ACCEL], node_type_name)
+                            partition_info['os'], build_for_accel, node_type_name)
 
             if exportvars:
                 prepare_export_vars_file(job_dir, exportvars)
