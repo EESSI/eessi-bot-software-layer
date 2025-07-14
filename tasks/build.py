@@ -657,26 +657,14 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
                 }
                 # Optionally add accelerator to the context
                 if 'accel' in partition_info:
-                    match = False
-                    # Create a context for each accelerator defined in app.cfg, then
-                    # check if _any_ of them is valid (one is enough to continue)
-                    for accel in partition_info['accel']:
-                        context['accelerator'] = accel
-                        log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                        if not action_filter.check_filters(context):
-                            log(f"{fn}(): context does NOT satisfy filter(s), skipping")
-                            continue
-                        # check = check | action_filter.check_filters(context)
-                        else:
-                            log(f"{fn}(): context DOES satisfy filter(s), going on with job")
-                            match = True
-                            # Break as soon as we have found a valid context, it means the build args are valid
-                            # for at least one of the accelerators in this virtual partition, that's enough
-                            break
-                    # If we get to this point, and none of the contexts matched the filter, we should continue to the
-                    # next iteration of the partition_info['repo_targets'] loop
-                    if not match:
+                    context['accelerator'] = accel
+                    log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
+                    if not action_filter.check_filters(context):
+                        log(f"{fn}(): context does NOT satisfy filter(s), skipping")
                         continue
+                    # check = check | action_filter.check_filters(context)
+                    else:
+                        log(f"{fn}(): context DOES satisfy filter(s), going on with job")
                 else:
                     log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
                     if not action_filter.check_filters(context):
@@ -686,13 +674,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
                         log(f"{fn}(): context DOES satisfy filter(s), going on with job")
             # we reached this point when the filter matched (otherwise we
             # 'continue' with the next repository)
-            # for each match of the filter we create a specific job directory
-            #   however, matching CPU architectures works differently to handling
-            #   accelerators; multiple CPU architectures defined in arch_target_map
-            #   can match the (CPU) architecture component of a filter; in
-            #   contrast, the value of the accelerator filter is just passed down
-            #   to scripts in bot/ directory of the pull request (see function
-            #   prepare_job_cfg and creation of Job tuple below)
+            # We create a specific job directory for the architecture that is going to be build 'for:'
             job_dir = os.path.join(run_dir, arch_dir, repo_id)
             os.makedirs(job_dir, exist_ok=True)
             log(f"{fn}(): job_dir '{job_dir}'")
@@ -710,7 +692,8 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             msg += f"configured os = '{partition_info['os']}', "
             if 'accel' in partition_info:
                 msg += f"requested accelerator(s) = '{partition_info['accel']}, "
-            msg += f"build accelerator = '{build_params[BUILD_PARAM_ACCEL]}'"
+            if BUILD_PARAM_ACCEL in build_params:
+                msg += f"build accelerator = '{build_params[BUILD_PARAM_ACCEL]}'"
             log(msg)
 
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
