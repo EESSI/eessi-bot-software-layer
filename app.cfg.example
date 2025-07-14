@@ -339,7 +339,7 @@ arch_target_map = {
     "cpu_zen4": {
         "os": "linux",
         "cpu_subdir": "x86_64/amd/zen4",
-        "accel": ["None"],
+        "accel": "None",
         "slurm_params": "-p genoa --nodes 1 --ntasks-per-node 24 --cpus-per-task 1",
         "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
     },
@@ -352,7 +352,7 @@ arch_target_map = {
     "gpu_a100": {
         "os": "linux",
         "cpu_subdir": "x86_64/intel/icelake",
-        "accel": ["nvidia/cc80"],
+        "accel": "nvidia/cc80",
         "slurm_params": "-p gpu_a100 --nodes 1 --tasks-per-node 18 --cpus-per-task 1 --gpus-per-node 1",
         "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
     },
@@ -372,7 +372,7 @@ arch_target_map = {
     "gpu_h100": {
         "os": "linux",
         "cpu_subdir": "x86_64/amd/zen4",
-        "accel": ["nvidia/cc90"],
+        "accel": "nvidia/cc90",
         "slurm_params": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1",
         "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
     }}

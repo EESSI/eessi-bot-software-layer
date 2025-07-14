@@ -657,7 +657,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
                 }
                 # Optionally add accelerator to the context
                 if 'accel' in partition_info:
-                    context['accelerator'] = accel
+                    context['accelerator'] = partition_info['accel']
                     log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
                     if not action_filter.check_filters(context):
                         log(f"{fn}(): context does NOT satisfy filter(s), skipping")
