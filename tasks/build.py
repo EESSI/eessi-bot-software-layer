@@ -20,6 +20,7 @@
 # Standard library imports
 from collections import namedtuple
 import configparser
+import codecs
 from datetime import datetime, timezone
 import json
 import os
@@ -952,7 +953,7 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, symlink):
+def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     """
     Create a comment to the pull request for a newly submitted job
 
@@ -962,6 +963,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         app_name (string): name of the app
         pr (github.PullRequest.PullRequest): instance representing the pull request
         symlink (string): symlink from main pr_<ID> dir to job dir
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         github.IssueComment.IssueComment instance or None (note, github refers to
@@ -969,16 +971,24 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
     """
     fn = sys._getframe().f_code.co_name
 
-    # obtain arch from job.arch_target which has the format OS/ARCH
-    arch_name = '-'.join(job.arch_target.split('/')[1:])
+    # Obtain the architecture on which we are building from job.arch_target, which has the format OS/ARCH
+    on_arch = '-'.join(job.arch_target.split('/')[1:])
+
+    # Obtain the architecture to build for
+    for_arch = build_params[BUILD_PARAM_ARCH]
 
     submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
 
-    # set string for accelerator if job.accelerator is defined/set (e.g., not None)
-    accelerator_spec_str = ''
+    # Set string for accelerator to build on
+    accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
+    on_accelerator_str = ''
     if job.accelerator:
-        accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
-        accelerator_spec_str = accelerator_spec.format(accelerator=job.accelerator)
+        on_accelerator_str = accelerator_spec.format(accelerator=job.accelerator)
+
+    # Set string for accelerator to build for
+    for_accelerator_str = ''
+    if BUILD_PARAM_ACCEL in build_params:
+        for_accelerator_str = accelerator_spec.format(accelerator=build_params[BUILD_PARAM_ACCEL])
 
     # get current date and time
     dt = datetime.now(timezone.utc)
@@ -986,6 +996,9 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
     # construct initial job comment
     buildenv = config.read_config()[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+    raw_comment_template = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
+    # Support using escape chars in the INITIAL_COMMENT, that means \n should be interpreted as unicode
+    initial_comment_template = codecs.decode(raw_comment_template, 'unicode_escape')
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
@@ -994,34 +1007,41 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
-        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+        job_comment = (f"{initial_comment_template}"
                        f"\n|date|job status|comment|\n"
                        f"|----------|----------|------------------------|\n"
                        f"|{dt.strftime('%b %d %X %Z %Y')}|"
                        f"submitted|"
                        f"{release_comment_template}|").format(
                            app_name=app_name,
-                           arch_name=arch_name,
+                           on_arch=on_arch,
+                           for_arch=for_arch,
                            symlink=symlink,
                            repo_id=job.repo_id,
                            job_id=job_id,
                            delay_seconds=eligible_in_seconds,
-                           accelerator_spec=accelerator_spec_str)
+                           on_accelerator=on_accelerator_str,
+                           for_accelerator=for_accelerator_str)
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
-        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
+        job_comment = (f"{initial_comment_template}"
                        f"\n|date|job status|comment|\n"
                        f"|----------|----------|------------------------|\n"
                        f"|{dt.strftime('%b %d %X %Z %Y')}|"
                        f"submitted|"
                        f"{release_comment_template}|").format(
                            app_name=app_name,
-                           arch_name=arch_name,
+                           on_arch=on_arch,
+                           for_arch=for_arch,
                            symlink=symlink,
                            repo_id=job.repo_id,
                            job_id=job_id,
-                           accelerator_spec=accelerator_spec_str)
+                           on_accelerator=on_accelerator_str,
+                           for_accelerator=for_accelerator_str)
+
+    # Make sure newline characters are taken as new line characters, not as literal \n
+    job_comment='\n'.join(job_comment.split('\n'))
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
@@ -1072,7 +1092,7 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink)
+        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
         pr_comment = pr_comments.PRComment(pr.base.repo.full_name, pr.number, pr_comment.id)

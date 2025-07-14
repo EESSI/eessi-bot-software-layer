@@ -419,7 +419,7 @@ scontrol_command = /usr/bin/scontrol
 # awaits_release = job id `{job_id}` awaits release by job manager
 awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
 awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
-initial_comment = New job on instance `{app_name}` for CPU micro-architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
+initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 
 
