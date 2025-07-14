@@ -303,6 +303,10 @@ class EESSIBotActionFilter:
                 else:
                     check = False
                     break
+            # Action filter wasn't found in the context, we won't allow this
+            else:
+                check = False
+                break
 
         # If the context declares an accelerator, enforce that a filter is defined for this component as well
         # I.e. this enforces that a context with accelerator will only be used if an accelerator is explicitely
