@@ -73,7 +73,6 @@ REQUIRED_CONFIG = {
         config.RUNNING_JOB_COMMENTS_SETTING_RUNNING_JOB]              # required
     }
 
-
 class EESSIBotSoftwareLayerJobManager:
     """
     Class for representing the job manager of the build-and-deploy bot. It
@@ -623,7 +622,7 @@ def main():
 
     # config is read and checked for settings to raise an exception early when
     # the job_manager runs
-    if config.check_required_cfg_settings(REQUIRED_CONFIG):
+    if config.check_cfg_settings(REQUIRED_CONFIG):
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")

@@ -29,7 +29,7 @@ import waitress
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
-from tasks.build import check_build_permission, get_architecture_targets, request_bot_build_issue_comments, \
+from tasks.build import check_build_permission, get_node_types, request_bot_build_issue_comments, \
     submit_build_jobs
 from tasks.deploy import deploy_built_artefacts, determine_job_dirs
 from tasks.clean_up import move_to_trash_bin
@@ -43,7 +43,7 @@ from tools.pr_comments import ChatLevels, create_comment
 
 REQUIRED_CONFIG = {
     config.SECTION_ARCHITECTURETARGETS: [
-        config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP],       # required
+        config.NODE_TYPE_MAP],       # required
     config.SECTION_BOT_CONTROL: [
         # config.BOT_CONTROL_SETTING_CHATLEVEL,                      # optional
         config.BOT_CONTROL_SETTING_COMMAND_PERMISSION,             # required
@@ -106,7 +106,10 @@ REQUIRED_CONFIG = {
     config.SECTION_REPO_TARGETS: [
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required
     config.SECTION_SUBMITTED_JOB_COMMENTS: [
-        config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,     # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO,       # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH,       # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH,      # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR,              # required
         # config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE,      # optional
         config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG,  # required
         config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG,   # required
@@ -410,14 +413,14 @@ class EESSIBotSoftwareLayer(PyGHee):
         app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
         # TODO check if PR already has a comment with arch targets and
         # repositories
-        arch_map = get_architecture_targets(self.cfg)
+        node_map = get_node_types(self.cfg)
 
         comment = f"Instance `{app_name}` is configured to build for:"
-        for arch in arch_map:
+        for node in node_map:
             # Do not print virtual partition names, a bot admin may not want to share those
             # Instead, just number them
             comment += f"\n- Partition {arch}:"
-            current_partition = arch_map[arch]
+            current_partition = node_map[node]
             if "os" in current_partition:
                 comment += f"\n  - OS: {current_partition['os']}"
             if "cpu_subdir" in current_partition:
@@ -691,7 +694,7 @@ def main():
     opts = event_handler_parse()
 
     # config is read and checked for settings to raise an exception early when the event_handler starts.
-    if config.check_required_cfg_settings(REQUIRED_CONFIG):
+    if config.check_cfg_settings(REQUIRED_CONFIG):
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")

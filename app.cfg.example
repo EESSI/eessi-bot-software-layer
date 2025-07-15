@@ -305,37 +305,29 @@ signing =
 
 
 [architecturetargets]
-# defines for which architectures the bot will build and what job submission
-# parameters shall be used to allocate a compute node with the correct
-# The keys of the arch_target_map are virtual partition names. They don't have any meaning in the bot code,
-# and can thus be chosen as desired. They are publicly visible though if a bot:show_config command is issued.
-# Note that you are responsible that ANY bot:build command ONLY matches a single virtual partition!
-# If multiple partitions match the same bot:build command, a failure will be triggered in the job dir preparation
-arch_target_map = {
-    # This is a CPU-based partition. We do not specify an "accel" property explicitly. In this case, invoking the bot
-    # with ANY accelerator command will trigger a build on this partition, as long as the CPU type matches. E.g. 
-    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen2 accel:nvidia/cc90
-    # will cause the event_filter to mark this virtual partition as a valid match, and will use it to start building
-    # for zen2 + nvidia/cc90. Thus, by not specifying an "accel" property, this partition may be used for
-    # cross-compilation for any accelerator.
+# arch_target_map has been replaced by node_typ_map
+# arch_target_map = {
+# }
+
+# Each entry in node_type_map describes a node type: os, what CPU architecture it has (cpu_subdir) the SLURM parameters
+# that need to be passed to submit to it, which repository targets (repo_targets) can be build for on this node type
+# and (optionally) which accelerators ('accel')
+# All are strings, except repo_targets, which is a list of strings
+# Note that the Slurm parameters should typically be chosen such that a single type of node (with one specific type of
+# CPU and one specific type of GPU) should be allocated.
+# Below is an example configuration for a system that contains 4 types of nodes: zen2 CPU nodes, zen4 CPU nodes,
+# GPU nodes with an icelake CPU and A100 GPU, GPu nodes with a zen4 CPU and an H100 GPU
+# The 'on:' argument to the bot build command determines which node type will be allocated for the build job
+# E.g. 'bot:build on:arch=zen4,accel=nvidia/cc90 for:...' will match the gpu_h100 node type below
+# If no 'on:' argument is passed to the build command, the 'for:' argument is used instead
+# E.g. 'bot:build for:arch=icelake,accel=nvidia/cc80' will match the gpu_a100 node type below
+node_type_map = {
     "cpu_zen2": {
         "os": "linux",
         "cpu_subdir": "x86_64/amd/zen2",
         "slurm_params": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1",
         "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
     },
-    # This is a CPU partition. We specify an explicit "accel": "None" property. Thus, this partition will only be
-    # used if the bot build command does NOT contain an accel argument, e.g.
-    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4
-    # will cause the event_filter to mark this virtual partition as a valid match, and will use it to start building
-    # for zen4.
-    # When invoking the bot with an accelerator command, such as 
-    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4 accel:nvidia/cc90
-    # the event_filter will NOT mark this virtual partition as a valid match. This is intentional, as this particular
-    # (example) cluster has a native zen4+cc90 partition (gpu_h100) and we want this command to trigger a native build
-    # on that partition, rather than cross-compiling on this cpu_zen4 partition.
-    # One could still allow cross-compilation for other accelerator architectures, e.g. cc70 and cc80 by defining
-    # "accel": ["nvidia/cc70", "nvidia/cc80"]
     "cpu_zen4": {
         "os": "linux",
         "cpu_subdir": "x86_64/amd/zen4",
@@ -343,12 +335,6 @@ arch_target_map = {
         "slurm_params": "-p genoa --nodes 1 --ntasks-per-node 24 --cpus-per-task 1",
         "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
     },
-    # This is a GPU partition. We specify an explicit "accel" property. Thus, only if the bot build command
-    # specifies that explicit accelerator in combination with the relevant CPU type,
-    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:icelake accel:nvidia/cc80
-    # will a build be triggered on this partition
-    # If you want to use this partition also for CPU only builds, you can alter the "accel" property to
-    # "accel": ["None", "nvidia/cc80"]
     "gpu_a100": {
         "os": "linux",
         "cpu_subdir": "x86_64/intel/icelake",
@@ -356,19 +342,6 @@ arch_target_map = {
         "slurm_params": "-p gpu_a100 --nodes 1 --tasks-per-node 18 --cpus-per-task 1 --gpus-per-node 1",
         "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
     },
-    # This is a GPU partition. We specify an explicit "accel" property. Thus, only if the bot build command
-    # specifies that explicit accelerator in combination with the relevant CPU type,
-    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4 accel:nvidia/cc90
-    # will a build be triggered on this partition
-    # If you want to use this partition also for cross-compiling for cc70 and cc80 architectures, you can alter
-    # the "accel" property to 
-    # "accel": ["nvidia/cc70", "nvidia/cc80", "nvidia/cc90"]
-    # Note that setting:
-    # "accel": ["None", "nvidia/cc90"]
-    # is invalid here, since it would lead to both the cpu_zen4 and the gpu_h100 partitions matching the build command
-    # bot: build instance:xyz repo:eessi.io-2023.06-software arch:zen4 accel:nvidia/cc90
-    # This would cause the same job dir to be prepared twice, for different virtual partitions, which will lead
-    # to an error in the job preparation step
     "gpu_h100": {
         "os": "linux",
         "cpu_subdir": "x86_64/amd/zen4",
@@ -415,12 +388,15 @@ scontrol_command = /usr/bin/scontrol
 #         are removed, the output (in PR comments) will lack important
 #         information.
 [submitted_job_comments]
-# awaits_release is no longer used since bot release v0.7.0
-# awaits_release = job id `{job_id}` awaits release by job manager
+awaits_release = job id `{job_id}` awaits release by job manager
 awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
 awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
-initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`
+new_job_instance_repo = New job on instance `{app_name}` for repository `{repo_id}`
+build_on_arch = Building on: `{on_arch}`{on_accelerator}
+build_for_arch = Building for: `{for_arch}`{for_accelerator}
+jobdir = Job dir: `{symlink}`
 with_accelerator = &nbsp;and accelerator `{accelerator}`
+# initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`  # no longer used
 
 
 [new_job_comments]

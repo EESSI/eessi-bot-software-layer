@@ -24,7 +24,9 @@ import codecs
 from datetime import datetime, timezone
 import json
 import os
+import re
 import shutil
+import string
 import sys
 
 # Third party imports (anything installed into the local Python environment)
@@ -180,26 +182,47 @@ def get_build_env_cfg(cfg):
     return config_data
 
 
-def get_architecture_targets(cfg):
-    """
-    Obtain mappings of architecture targets to Slurm parameters
+def get_node_types(cfg):
+    """Obtain mappings of node types to Slurm parameters
 
     Args:
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
 
     Returns:
-        (dict): dictionary mapping architecture targets (format
-            OS/SOFTWARE_SUBDIR) to architecture specific Slurm job submission
-            parameters
+        (dict): Dictionary mapping node types names (arbitrary text) node properties
+        such as the OS, CPU software subdir, supported repositories, accelerator (optionally)
+        as well as the slurm parameters to allocate such a type of node
     """
     fn = sys._getframe().f_code.co_name
 
-    architecture_targets = cfg[config.SECTION_ARCHITECTURETARGETS]
+    node_types = cfg[config.SECTION_ARCHITECTURETARGETS]
 
-    arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
-    log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
-    return arch_target_map
+    node_type_map = json.loads(node_types.get(config.NODE_TYPE_MAP))
+    log(f"{fn}(): node type map '{json.dumps(node_type_map)}'")
+    return node_type_map
+
+# Replaced by get_node_types
+# def get_architecture_targets(cfg):
+#     """
+#     Obtain mappings of architecture targets to Slurm parameters
+#
+#     Args:
+#         cfg (ConfigParser): ConfigParser instance holding full configuration
+#             (typically read from 'app.cfg')
+#
+#     Returns:
+#         (dict): dictionary mapping architecture targets (format
+#             OS/SOFTWARE_SUBDIR) to architecture specific Slurm job submission
+#             parameters
+#     """
+#     fn = sys._getframe().f_code.co_name
+#
+#     architecture_targets = cfg[config.SECTION_ARCHITECTURETARGETS]
+#
+#     arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
+#     log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
+#     return arch_target_map
 
 
 def get_allowed_exportvars(cfg):
@@ -572,7 +595,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
 
     app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
     build_env_cfg = get_build_env_cfg(cfg)
-    arch_map = get_architecture_targets(cfg)
+    node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
     allowed_exportvars = get_allowed_exportvars(cfg)
 
@@ -625,7 +648,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     #      },
     #     'node_type_name2': {
     # ... etc
-    for node_type_name, partition_info in arch_map.items():
+    for node_type_name, partition_info in node_map.items():
         log(f"{fn}(): node_type_name is {node_type_name}, partition_info is {partition_info}")
         # Unpack for convenience
         arch_dir = build_params[BUILD_PARAM_ARCH]
@@ -846,7 +869,7 @@ def submit_job(job, cfg):
     # instances run on the same system
     job_name = cfg[config.SECTION_BUILDENV].get(config.BUILDENV_SETTING_JOB_NAME)
 
-    # add a default time limit of 24h to the job submit command if no other time
+    # add a default time limit of 24h to the job submit comnand if no other time
     # limit is specified already
     all_opts_str = " ".join([build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS], job.slurm_opts])
     all_opts_list = all_opts_str.split(" ")
@@ -981,9 +1004,15 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     # construct initial job comment
     buildenv = config.read_config()[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
-    raw_comment_template = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
+    # NO LONGER NEEDED now that we have cut up the sentence into different config items
+    # raw_comment_template = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
+    new_job_instance_repo = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
+    build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
+    build_for_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
+    jobdir = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR]
+    # NO LONGER NEEDED now that we have cut up the sentence into different config items
     # Support using escape chars in the INITIAL_COMMENT, that means \n should be interpreted as unicode
-    initial_comment_template = codecs.decode(raw_comment_template, 'unicode_escape')
+    # initial_comment_template = codecs.decode(raw_comment_template, 'unicode_escape')
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
@@ -992,8 +1021,11 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
-        job_comment = (f"{initial_comment_template}"
-                       f"\n|date|job status|comment|\n"
+        job_comment = (f"{new_job_instance_repo}\n"
+                       f"{build_on_arch}\n"
+                       f"{build_for_arch}\n"
+                       f"{jobdir}\n"
+                       f"|date|job status|comment|\n"
                        f"|----------|----------|------------------------|\n"
                        f"|{dt.strftime('%b %d %X %Z %Y')}|"
                        f"submitted|"
@@ -1010,8 +1042,11 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
-        job_comment = (f"{initial_comment_template}"
-                       f"\n|date|job status|comment|\n"
+        job_comment = (f"{new_job_instance_repo}\n"
+                       f"{build_on_arch}\n"
+                       f"{build_for_arch}\n"
+                       f"{jobdir}\n"
+                       f"|date|job status|comment|\n"
                        f"|----------|----------|------------------------|\n"
                        f"|{dt.strftime('%b %d %X %Z %Y')}|"
                        f"submitted|"
@@ -1125,11 +1160,57 @@ def check_build_permission(pr, event_info):
         return True
 
 
+def template_to_regex(format_str, with_eol=True):
+    """
+    Converts a formatting string into a regex that can extract all the formatted
+    parts of the string. If with_eol is True, it assumes the formatted string is followed by an end-of-line
+    character. This is a requirement if it has to succesfully match a formatting string that ends with a formatting
+    field.
+
+    Args:
+        format_str (string): a formatting string, with template placeholders.
+        with_eol (bool, optional): a boolean, indicating if the formatting string is expected to be followed by
+                                   an end of line character
+
+    """
+
+    # string.Formatter returns a 4-tuple of literal text, field name, format spec, and conversion
+    # E.g if format_str = "This is my {app} it is currently {status}"
+    # formatter = [
+    #    ("This is my", "app", "", None),
+    #    ("it is currently", "status", "", None),
+    #    ("", None, None, None),
+    # ]
+    formatter = string.Formatter()
+    regex_parts = []
+
+    for literal_text, field_name, _, _ in formatter.parse(format_str):
+        # We use re.escape to escape any special characters in the literal_text, as we want to match those literally
+        regex_parts.append(re.escape(literal_text))
+        if field_name is not None:
+            # Create a non-greedy, named capture group. Note that the name itself as an f-string
+            # So we get the actual field name as the name of the capture group
+            # We match any character, but in a non-greedy way. Thus, as soon as it can match the next
+            # literal text section, it will - thus assuming that that's the end of the field
+            # We use .* to allow for empty fields (such as the optional accelerator fields)
+            regex_parts.append(f"(?P<{field_name}>.*?)")
+
+    # Finally, make sure we append a $ to the regex. This is necessary because of our non-greedy matching
+    # strategy. Otherwise, a formatting string that ends with a formatting item would only match the first letter
+    # of the field, because it doesn't find anything to match after (and it is non-greedy). With the $, it has
+    # something to match after the field, thus making sure it matches the whole field
+    # This does assume that
+    full_pattern = ''.join(regex_parts)
+    if with_eol:
+        full_pattern += "$"
+    return re.compile(full_pattern)
+
+
 def request_bot_build_issue_comments(repo_name, pr_number):
     """
     Query the github API for the issue_comments in a pr.
 
-    Archs:
+    Args:
         repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
         pr_number (int): number og the pr
 
@@ -1139,7 +1220,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
     """
     fn = sys._getframe().f_code.co_name
 
-    status_table = {'arch': [], 'date': [], 'status': [], 'url': [], 'result': []}
+    status_table = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []}
     cfg = config.read_config()
 
     # for loop because github has max 100 items per request.
@@ -1154,19 +1235,55 @@ def request_bot_build_issue_comments(repo_name, pr_number):
         for comment in comments:
             # iterate through the comments to find the one where the status of the build was in
             submitted_job_comments_section = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
-            initial_comment_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
-            if initial_comment_fmt[:20] in comment['body']:
+            instance_repo_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
+            instance_repo_re = template_to_regex(instance_repo_fmt)
+            comment_body = comment['body'].split('\n')
+            print(f"Matching string {comment_body[0]} with re: {instance_repo_re}")
+            instance_repo_match = re.match(instance_repo_re, comment_body[0])
+            # Check if this body starts with an initial comment from the bot (first item is always the instance + repo
+            # it is building for)
+            # Then, check that it has at least 4 lines so that we can safely index up to that number
+            if instance_repo_match and len(comment_body) >= 4:
+                print(f"Instance match: {instance_repo_match.groupdict()}")
+                on_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
+                on_arch_re = template_to_regex(on_arch_fmt)
+                print(f"Matching string {comment_body[1]} with re: {on_arch_re}")
+                on_arch_match = re.match(on_arch_re, comment_body[1])
+                for_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
+                for_arch_re = template_to_regex(for_arch_fmt)
+                print(f"Matching string {comment_body[2]} with re: {for_arch_re}")
+                for_arch_match = re.match(for_arch_re, comment_body[2])
+                print(f"On arch match: {on_arch_match.groupdict()}")
+                print(f"For arch match: {for_arch_match.groupdict()}")
+                # Does everything match (it should, if we already had an instance_repo_match, but good to be sure)
+                if on_arch_match and for_arch_match:
+                    instance_repo_dict = instance_repo_match.groupdict()
+                    on_arch_dict = on_arch_match.groupdict()
+                    for_arch_dict = for_arch_match.groupdict()
+                    # Play it safe
+                    # TODO: probably log something in the 'else' case
+                    if 'on_arch' in on_arch_dict:
+                        status_table['on arch'].append(on_arch_dict['on_arch'])
+                    if 'for_arch' in for_arch_dict:
+                        status_table['for arch'].append(for_arch_dict['for_arch'])
+                    if 'repo_id' in instance_repo_dict:
+                        status_table['for repo'].append(instance_repo_dict['repo_id'])
+
+                # TODO: extract the building on, building for and repository name, and put those in the table
+                # NOTE: previously, we could use arch. We can't anymore, since we also want the 'for' architecture
+                # that is not available in this scope
+                # We should probably split the SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT into different components
+                # and create a regex out of those components?
 
                 # get archictecture from comment['body']
-                first_line = comment['body'].split('\n')[0]
-                arch_map = get_architecture_targets(cfg)
-                for arch in arch_map.keys():
-                    # drop the first element in arch (which names the OS type) and join the remaining items with '-'
-                    target_arch = '-'.join(arch.split('/')[1:])
-                    if target_arch in first_line:
-                        status_table['arch'].append(target_arch)
-                    else:
-                        log(f"{fn}(): target_arch '{target_arch}' not found in first line '{first_line}'")
+                node_map = get_node_types(cfg)
+                # for arch in node_map.keys():
+                #     # drop the first element in arch (which names the OS type) and join the remaining items with '-'
+                #     target_arch = '-'.join(arch.split('/')[1:])
+                #     if target_arch in first_line:
+                #         status_table['arch'].append(target_arch)
+                #     else:
+                #         log(f"{fn}(): target_arch '{target_arch}' not found in first line '{first_line}'")
 
                 # get date, status, url and result from the markdown table
                 comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]
