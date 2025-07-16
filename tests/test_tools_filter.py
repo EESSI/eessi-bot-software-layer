@@ -231,18 +231,20 @@ def test_match_empty_context(complex_filter):
     assert expected == actual
 
 
-# Test if it matches a context that does NOT contain all components
+# A context lacking keys for components in the filter shouldn't match
 def test_match_sparse_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake"}
     expected = False
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
+
 def test_matching_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A"}
     expected = True
     actual = complex_filter.check_filters(context)
     assert expected == actual
+
 
 def test_non_match_archictecture_context(complex_filter):
     context = {"architecture": "x86_64/amd/zen4", "repository": "EESSI", "instance": "mybot", "job": 1234}
@@ -252,11 +254,25 @@ def test_non_match_archictecture_context(complex_filter):
 
 
 def test_non_match_repository_context(complex_filter):
-    context = {"architecture": "x86_64/intel/cascadelake", "repository": "EESSI"}
+    context = {"architecture": "x86_64/intel/cascadelake", "repository": "EESSI", "instance": "A"}
     expected = False
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
+def test_non_match_instance_context(complex_filter):
+    context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "B"}
+    expected = False
+    actual = complex_filter.check_filters(context)
+    assert expected == actual
+
+
+# If additional keys are present in the context for which no filter component is defined
+# it should not prevent a match
+def test_match_additional_context(complex_filter):
+    context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A", "job": 1234}
+    expected = True
+    actual = complex_filter.check_filters(context)
+    assert expected == actual
 
 @pytest.fixture
 def arch_filter_slash_syntax():
