@@ -1206,6 +1206,15 @@ def template_to_regex(format_str, with_eol=True):
     return re.compile(full_pattern)
 
 
+class PartialFormatDict(dict):
+    """
+    A dictionary class that allows for missing keys - and will just return {key} in that case.
+    This can be used to partially format some, but not all placeholders in a formatting string.
+    """
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
 def request_bot_build_issue_comments(repo_name, pr_number):
     """
     Query the github API for the issue_comments in a pr.
@@ -1235,6 +1244,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
         for comment in comments:
             # iterate through the comments to find the one where the status of the build was in
             submitted_job_comments_section = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
+            accelerator_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]
             instance_repo_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
             instance_repo_re = template_to_regex(instance_repo_fmt)
             comment_body = comment['body'].split('\n')
@@ -1244,46 +1254,83 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             # it is building for)
             # Then, check that it has at least 4 lines so that we can safely index up to that number
             if instance_repo_match and len(comment_body) >= 4:
+                log(f"{fn}(): found bot build response in issue, processing...")
+                # First, extract the repo_id
                 print(f"Instance match: {instance_repo_match.groupdict()}")
+                log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
+                status_table['for repo'].append(instance_repo_match.group('repo_id'))
+
+                # TODO: this unconditionally adds the accelerator_fmt, but that's only needed _if an accelerator was used_
+                # We should split these cases. Probably by first doing a match _with_ accelerator (the most specific case)
+                # If that fails to match, we continue to match without accelerator
+
+                # Then, try to match the architecture we build on.
+                # First try this including accelerator, to see if one was defined
                 on_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
-                on_arch_re = template_to_regex(on_arch_fmt)
-                print(f"Matching string {comment_body[1]} with re: {on_arch_re}")
-                on_arch_match = re.match(on_arch_re, comment_body[1])
+                on_arch_fmt_with_accel = on_arch_fmt.format_map(PartialFormatDict(on_accelerator=accelerator_fmt))
+                on_arch_re_with_accel = template_to_regex(on_arch_fmt_with_accel)
+                print(f"Matching string {comment_body[1]} with re: {on_arch_re_with_accel}")
+                on_arch_match = re.match(on_arch_re_with_accel, comment_body[1])
+                if on_arch_match:
+                    # Pattern with accelerator matched, append to status_table
+                    print(f"On arch match: {on_arch_match.groupdict()}")
+                    log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}, "
+                        f"with accelerator {on_arch_match.group('accelerator')}")
+                    status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`, "
+                                                   f"`{on_arch_match.group('accelerator')}`")
+                else:
+                    # Pattern with accelerator did not match, retry without accelerator
+                    on_arch_re = template_to_regex(on_arch_fmt)
+                    print(f"Matching string {comment_body[1]} with re: {on_arch_re}")
+                    on_arch_match = re.match(on_arch_re, comment_body[1])
+                    if on_arch_match:
+                        # Pattern without accelerator matched, append to status_table
+                        print(f"On arch match: {on_arch_match.groupdict()}")
+                        log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}")
+                        status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`")
+                    else:
+                        # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
+                        msg = "Could not match regular expression for extracting the architecture to build on.\n"
+                        msg += "String to be matched:\n"
+                        msg += f"{comment_body[1]}\n"
+                        msg += "First regex attempted:\n"
+                        msg += f"{on_arch_re_with_accel.pattern}\n"
+                        msg += "Second regex attempted:\n"
+                        msg += f"{on_arch_re.pattern}\n"
+                        raise ValueError(msg)
+                # Now, do the same for the architecture we build for. I.e. first, try to match including accelerator
                 for_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
-                for_arch_re = template_to_regex(for_arch_fmt)
-                print(f"Matching string {comment_body[2]} with re: {for_arch_re}")
-                for_arch_match = re.match(for_arch_re, comment_body[2])
-                print(f"On arch match: {on_arch_match.groupdict()}")
-                print(f"For arch match: {for_arch_match.groupdict()}")
-                # Does everything match (it should, if we already had an instance_repo_match, but good to be sure)
-                if on_arch_match and for_arch_match:
-                    instance_repo_dict = instance_repo_match.groupdict()
-                    on_arch_dict = on_arch_match.groupdict()
-                    for_arch_dict = for_arch_match.groupdict()
-                    # Play it safe
-                    # TODO: probably log something in the 'else' case
-                    if 'on_arch' in on_arch_dict:
-                        status_table['on arch'].append(on_arch_dict['on_arch'])
-                    if 'for_arch' in for_arch_dict:
-                        status_table['for arch'].append(for_arch_dict['for_arch'])
-                    if 'repo_id' in instance_repo_dict:
-                        status_table['for repo'].append(instance_repo_dict['repo_id'])
-
-                # TODO: extract the building on, building for and repository name, and put those in the table
-                # NOTE: previously, we could use arch. We can't anymore, since we also want the 'for' architecture
-                # that is not available in this scope
-                # We should probably split the SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT into different components
-                # and create a regex out of those components?
-
-                # get archictecture from comment['body']
-                node_map = get_node_types(cfg)
-                # for arch in node_map.keys():
-                #     # drop the first element in arch (which names the OS type) and join the remaining items with '-'
-                #     target_arch = '-'.join(arch.split('/')[1:])
-                #     if target_arch in first_line:
-                #         status_table['arch'].append(target_arch)
-                #     else:
-                #         log(f"{fn}(): target_arch '{target_arch}' not found in first line '{first_line}'")
+                for_arch_fmt_with_accel = for_arch_fmt.format_map(PartialFormatDict(for_accelerator=accelerator_fmt))
+                for_arch_re_with_accel = template_to_regex(for_arch_fmt_with_accel)
+                print(f"Matching string {comment_body[2]} with re: {for_arch_re_with_accel}")
+                for_arch_match = re.match(for_arch_re_with_accel, comment_body[2])
+                if for_arch_match:
+                    # Pattern with accelerator matched, append to status_table
+                    print(f"For arch match: {for_arch_match.groupdict()}")
+                    log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
+                        f"with accelerator {for_arch_match.group('accelerator')}")
+                    status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`, "
+                                                   f"`{for_arch_match.group('accelerator')}`")
+                else:
+                    # Pattern with accelerator did not match, retry without accelerator
+                    for_arch_re = template_to_regex(for_arch_fmt)
+                    print(f"Matching string {comment_body[1]} with re: {for_arch_re}")
+                    for_arch_match = re.match(for_arch_re, comment_body[2])
+                    if for_arch_match:
+                        # Pattern without accelerator matched, append to status_table
+                        print(f"For arch match: {for_arch_match.groupdict()}")
+                        log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}")
+                        status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`")
+                    else:
+                        # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
+                        msg = "Could not match regular expression for extracting the architecture to build for.\n"
+                        msg += "String to be matched:\n"
+                        msg += f"{comment_body[2]}\n"
+                        msg += "First regex attempted:\n"
+                        msg += f"{for_arch_re_with_accel.pattern}\n"
+                        msg += "Second regex attempted:\n"
+                        msg += f"{for_arch_re.pattern}\n"
+                        raise ValueError(msg)
 
                 # get date, status, url and result from the markdown table
                 comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]

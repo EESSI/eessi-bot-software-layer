@@ -590,10 +590,12 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
-        comment_status += "\n|arch|result|date|status|url|"
-        comment_status += "\n|----|------|----|------|---|"
+        comment_status += "\n|on|for|repo|result|date|status|url|"
+        comment_status += "\n|----|----|----|------|----|------|---|"
         for x in range(0, len(status_table['date'])):
-            comment_status += f"\n|{status_table['arch'][x]}|"
+            comment_status += f"\n|{status_table['on arch'][x]}|"
+            comment_status += f"{status_table['for arch'][x]}|"
+            comment_status += f"{status_table['for repo'][x]}|"
             comment_status += f"{status_table['result'][x]}|"
             comment_status += f"{status_table['date'][x]}|"
             comment_status += f"{status_table['status'][x]}|"
@@ -601,7 +603,10 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         self.log(f"Overview of finished builds: comment '{comment_status}'")
         issue_comment = create_comment(repo_name, pr_number, comment_status, ChatLevels.MINIMAL)
-        return issue_comment
+        if issue_comment:
+            return f"\n  - added status comment {issue_comment.html_url}"
+        else:
+            return "\n  - failed to create status comment"
 
     def start(self, app, port=3000):
         """
