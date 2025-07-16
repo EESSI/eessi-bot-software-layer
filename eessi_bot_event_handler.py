@@ -415,7 +415,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         # repositories
         node_map = get_node_types(self.cfg)
 
-        comment = f"Instance `{app_name}` is configured to build for:"
+        comment = f"Instance `{app_name}` is configured to build on:"
         for node in node_map:
             comment += f"\n- Partition `{node}`:"
             current_partition = node_map[node]
