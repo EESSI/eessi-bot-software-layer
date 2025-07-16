@@ -45,8 +45,8 @@ class EESSIBotBuildParams(dict):
         EESSIBotBuildParams constructor
 
         Args:
-            build_params (string): string containing comma separated build parameters
-            Example: "arch:amd/zen4,accel:nvidia/cc90"
+            build_parameters (string): string containing comma separated build parameters
+            Example: "arch=amd/zen4,accel=nvidia/cc90"
 
         Raises:
             EESSIBotBuildParamsNameError: raised if parsing an unknown build parameter
