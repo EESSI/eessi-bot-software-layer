@@ -20,7 +20,6 @@
 # Standard library imports
 from collections import namedtuple
 import configparser
-import codecs
 from datetime import datetime, timezone
 import json
 import os
@@ -1254,13 +1253,10 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             # Then, check that it has at least 4 lines so that we can safely index up to that number
             if instance_repo_match and len(comment_body) >= 4:
                 log(f"{fn}(): found bot build response in issue, processing...")
+
                 # First, extract the repo_id
                 log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
                 status_table['for repo'].append(instance_repo_match.group('repo_id'))
-
-                # TODO: this unconditionally adds the accelerator_fmt, but that's only needed _if an accelerator was used_
-                # We should split these cases. Probably by first doing a match _with_ accelerator (the most specific case)
-                # If that fails to match, we continue to match without accelerator
 
                 # Then, try to match the architecture we build on.
                 # First try this including accelerator, to see if one was defined
@@ -1292,6 +1288,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                         msg += "Second regex attempted:\n"
                         msg += f"{on_arch_re.pattern}\n"
                         raise ValueError(msg)
+
                 # Now, do the same for the architecture we build for. I.e. first, try to match including accelerator
                 for_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
                 for_arch_fmt_with_accel = for_arch_fmt.format_map(PartialFormatDict(for_accelerator=accelerator_fmt))
@@ -1302,7 +1299,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
                         f"with accelerator {for_arch_match.group('accelerator')}")
                     status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`, "
-                                                   f"`{for_arch_match.group('accelerator')}`")
+                                                    f"`{for_arch_match.group('accelerator')}`")
                 else:
                     # Pattern with accelerator did not match, retry without accelerator
                     for_arch_re = template_to_regex(for_arch_fmt)

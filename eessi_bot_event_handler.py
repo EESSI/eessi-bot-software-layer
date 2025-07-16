@@ -417,9 +417,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment = f"Instance `{app_name}` is configured to build for:"
         for node in node_map:
-            # Do not print virtual partition names, a bot admin may not want to share those
-            # Instead, just number them
-            comment += f"\n- Partition {arch}:"
+            comment += f"\n- Partition {node}:"
             current_partition = node_map[node]
             if "os" in current_partition:
                 comment += f"\n  - OS: {current_partition['os']}"
