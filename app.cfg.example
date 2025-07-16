@@ -305,7 +305,7 @@ signing =
 
 
 [architecturetargets]
-# arch_target_map has been replaced by node_typ_map
+# arch_target_map has been replaced by node_type_map
 # arch_target_map = {
 # }
 
