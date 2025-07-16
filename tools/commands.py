@@ -20,6 +20,7 @@ from pyghee.utils import log
 from tools.filter import EESSIBotActionFilter, EESSIBotActionFilterError
 from tools.build_params import EESSIBotBuildParams
 
+
 def contains_any_bot_command(body):
     """
     Checks if argument contains any bot command.
@@ -120,7 +121,7 @@ class EESSIBotCommand:
                 for arg in cmd_as_list[1:]:
                     if arg.startswith('for:'):
                         # Extract everything after the 'for:' suffix and split by comma
-                        filter_content=arg[4:]
+                        filter_content = arg[4:]
                         target_args.extend(filter_content.split(','))
 
             # Join the filter arguments and pass to EESSIBotActionFilter

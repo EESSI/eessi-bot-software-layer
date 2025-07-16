@@ -259,6 +259,7 @@ def test_non_match_repository_context(complex_filter):
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
+
 def test_non_match_instance_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "B"}
     expected = False

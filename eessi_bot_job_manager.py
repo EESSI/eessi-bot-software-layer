@@ -73,6 +73,7 @@ REQUIRED_CONFIG = {
         config.RUNNING_JOB_COMMENTS_SETTING_RUNNING_JOB]              # required
     }
 
+
 class EESSIBotSoftwareLayerJobManager:
     """
     Class for representing the job manager of the build-and-deploy bot. It
