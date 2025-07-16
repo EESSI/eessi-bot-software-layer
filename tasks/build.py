@@ -1248,7 +1248,6 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             instance_repo_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
             instance_repo_re = template_to_regex(instance_repo_fmt)
             comment_body = comment['body'].split('\n')
-            print(f"Matching string {comment_body[0]} with re: {instance_repo_re}")
             instance_repo_match = re.match(instance_repo_re, comment_body[0])
             # Check if this body starts with an initial comment from the bot (first item is always the instance + repo
             # it is building for)
@@ -1256,7 +1255,6 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             if instance_repo_match and len(comment_body) >= 4:
                 log(f"{fn}(): found bot build response in issue, processing...")
                 # First, extract the repo_id
-                print(f"Instance match: {instance_repo_match.groupdict()}")
                 log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
                 status_table['for repo'].append(instance_repo_match.group('repo_id'))
 
@@ -1269,11 +1267,9 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 on_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
                 on_arch_fmt_with_accel = on_arch_fmt.format_map(PartialFormatDict(on_accelerator=accelerator_fmt))
                 on_arch_re_with_accel = template_to_regex(on_arch_fmt_with_accel)
-                print(f"Matching string {comment_body[1]} with re: {on_arch_re_with_accel}")
                 on_arch_match = re.match(on_arch_re_with_accel, comment_body[1])
                 if on_arch_match:
                     # Pattern with accelerator matched, append to status_table
-                    print(f"On arch match: {on_arch_match.groupdict()}")
                     log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}, "
                         f"with accelerator {on_arch_match.group('accelerator')}")
                     status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`, "
@@ -1281,11 +1277,9 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 else:
                     # Pattern with accelerator did not match, retry without accelerator
                     on_arch_re = template_to_regex(on_arch_fmt)
-                    print(f"Matching string {comment_body[1]} with re: {on_arch_re}")
                     on_arch_match = re.match(on_arch_re, comment_body[1])
                     if on_arch_match:
                         # Pattern without accelerator matched, append to status_table
-                        print(f"On arch match: {on_arch_match.groupdict()}")
                         log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}")
                         status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`")
                     else:
@@ -1302,11 +1296,9 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 for_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
                 for_arch_fmt_with_accel = for_arch_fmt.format_map(PartialFormatDict(for_accelerator=accelerator_fmt))
                 for_arch_re_with_accel = template_to_regex(for_arch_fmt_with_accel)
-                print(f"Matching string {comment_body[2]} with re: {for_arch_re_with_accel}")
                 for_arch_match = re.match(for_arch_re_with_accel, comment_body[2])
                 if for_arch_match:
                     # Pattern with accelerator matched, append to status_table
-                    print(f"For arch match: {for_arch_match.groupdict()}")
                     log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
                         f"with accelerator {for_arch_match.group('accelerator')}")
                     status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`, "
@@ -1314,11 +1306,9 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 else:
                     # Pattern with accelerator did not match, retry without accelerator
                     for_arch_re = template_to_regex(for_arch_fmt)
-                    print(f"Matching string {comment_body[1]} with re: {for_arch_re}")
                     for_arch_match = re.match(for_arch_re, comment_body[2])
                     if for_arch_match:
                         # Pattern without accelerator matched, append to status_table
-                        print(f"For arch match: {for_arch_match.groupdict()}")
                         log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}")
                         status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`")
                     else:
