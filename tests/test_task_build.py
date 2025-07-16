@@ -288,7 +288,7 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
-    build_params = EESSIBotBuildParams("arch:amd/zen4,accel:nvidia/cc90")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -319,7 +319,7 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
-    build_params = EESSIBotBuildParams("arch:amd/zen4,accel:nvidia/cc90")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -346,7 +346,7 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
-    build_params = EESSIBotBuildParams("arch:amd/zen4,accel:nvidia/cc90")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -373,7 +373,7 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
-    build_params = EESSIBotBuildParams("arch:amd/zen4,accel:nvidia/cc90")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -401,7 +401,7 @@ def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
-    build_params = EESSIBotBuildParams("arch:amd/zen4,accel:nvidia/cc90")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
