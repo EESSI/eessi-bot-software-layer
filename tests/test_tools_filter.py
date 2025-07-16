@@ -231,21 +231,27 @@ def test_match_empty_context(complex_filter):
     assert expected == actual
 
 
-def test_match_architecture_context(complex_filter):
+# Test if it matches a context that does NOT contain all components
+def test_match_sparse_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake"}
+    expected = False
+    actual = complex_filter.check_filters(context)
+    assert expected == actual
+
+def test_matching_context(complex_filter):
+    context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A"}
     expected = True
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
-
-def test_match_architecture_job_context(complex_filter):
-    context = {"architecture": "x86_64/intel/cascadelake", "job": 1234}
-    expected = True
+def test_non_match_archictecture_context(complex_filter):
+    context = {"architecture": "x86_64/amd/zen4", "repository": "EESSI", "instance": "mybot", "job": 1234}
+    expected = False
     actual = complex_filter.check_filters(context)
     assert expected == actual
 
 
-def test_non_match_architecture_repository_context(complex_filter):
+def test_non_match_repository_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake", "repository": "EESSI"}
     expected = False
     actual = complex_filter.check_filters(context)
