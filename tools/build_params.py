@@ -20,17 +20,20 @@ BUILD_PARAMS = [
     BUILD_PARAM_ARCH
 ]
 
+
 class EESSIBotBuildParamsValueError(Exception):
     """
     Exception to be raised when an inappropriate value is specified for a build parameter
     """
     pass
 
+
 class EESSIBotBuildParamsNameError(Exception):
     """
     Exception to be raised when an unkown build parameter name is specified
     """
     pass
+
 
 class EESSIBotBuildParams(dict):
     """
@@ -65,9 +68,9 @@ class EESSIBotBuildParams(dict):
             for full_param_name in BUILD_PARAMS:
                 # Identify which build param we are matching
                 if full_param_name.startswith(build_param[0]):
-                   param_found = True
-                   # Store the value of the build parameter by it's full name
-                   build_param_dict[full_param_name] = build_param[1]
+                    param_found = True
+                    # Store the value of the build parameter by it's full name
+                    build_param_dict[full_param_name] = build_param[1]
             if not param_found:
                 msg = f"Build parameter {build_param[0]} not found. Known build parameters: {BUILD_PARAMS}"
                 raise EESSIBotBuildParamsNameError(msg)
