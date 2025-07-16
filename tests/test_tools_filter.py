@@ -269,10 +269,12 @@ def test_non_match_instance_context(complex_filter):
 # If additional keys are present in the context for which no filter component is defined
 # it should not prevent a match
 def test_match_additional_context(complex_filter):
-    context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A", "job": 1234}
+    context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A",
+               "job": 1234}
     expected = True
     actual = complex_filter.check_filters(context)
     assert expected == actual
+
 
 @pytest.fixture
 def arch_filter_slash_syntax():
