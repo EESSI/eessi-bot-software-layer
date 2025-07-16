@@ -111,6 +111,7 @@ SECTION_NEW_JOB_COMMENTS = 'new_job_comments'
 NEW_JOB_COMMENTS_SETTING_AWAITS_LAUNCH = 'awaits_launch'
 
 SECTION_REPO_TARGETS = 'repo_targets'
+REPO_TARGETS_SETTING_REPO_TARGET_MAP = 'repo_target_map'
 REPO_TARGETS_SETTING_REPOS_CFG_DIR = 'repos_cfg_dir'
 
 SECTION_RUNNING_JOB_COMMENTS = 'running_job_comments'
@@ -147,6 +148,13 @@ FORBIDDEN_CONFIG = {
             ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP,
             f"Config invalid: '{ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP}' was removed and replaced by "
             f"'{NODE_TYPE_MAP}'. See app.cfg.example for details."
+        )
+    ],
+    SECTION_REPO_TARGETS: [
+        (
+            REPO_TARGETS_SETTING_REPO_TARGET_MAP,
+            f"Config invalid: '{REPO_TARGETS_SETTING_REPO_TARGET_MAP} was removed. Repository targets can now be "
+            f"specified within the '{NODE_TYPE_MAP}' dictionary. See app.cfg.example for details."
         )
     ],
     SECTION_SUBMITTED_JOB_COMMENTS: [

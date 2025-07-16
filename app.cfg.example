@@ -351,6 +351,11 @@ node_type_map = {
     }}
 
 [repo_targets]
+
+# No longer used, repo targets are now specified per node type in the node_type_map
+# repo_target_map = {
+#     "linux/x86_64/amd/zen2" : ["eessi.io-2023.06-software","eessi.io-2025.06-software"] }
+
 # points to definition of repositories (default repository defined by build container)
 repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/repos
 
