@@ -118,6 +118,8 @@ class EESSIBotSoftwareLayerJobManager:
         squeue_cmd = "%s --long --noheader --user=%s" % (self.poll_command, username)
         if self.job_name:
             squeue_cmd += " --name='%s'" % self.job_name
+        # Format the output of SLURM
+        squeue_cmd += " --Format JobId:100@,Cluster:100@,Partition:100@,State:100@,Reason:100"
         squeue_output, squeue_err, squeue_exitcode = run_cmd(
             squeue_cmd,
             "get_current_jobs(): squeue command",
@@ -139,14 +141,18 @@ class EESSIBotSoftwareLayerJobManager:
         # Note, all output lines of squeue are processed because we run it with
         # --noheader.
         for line in lines:
-            job = line.rstrip().split()
-            if len(job) >= 9:
-                job_id = job[0]
-                state = job[4]
+            job = line.rstrip().split('@')
+            print(job)
+            if len(job) == 5:
+                print(job)
+                job_id = job[0].rstrip()
+                state = job[3].rstrip()
                 current_jobs[job_id] = {
                     "jobid": job_id,
+                    "cluster": job[1].rstrip(),
+                    "partition": job[2].rstrip(),
                     "state": state,
-                    "reason": job[8],
+                    "reason": job[4].rstrip(),
                 }
                 if state in bad_state_messages:
                     log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
@@ -296,6 +302,14 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_id = new_job["jobid"]
 
+        # check if their is a placeholder value in the scontrol_command
+        if bool(re.search(r'%\([^)]+\)s', self.scontrol_command)):
+            placeholders = re.findall(r'%\(([^)]+)\)s', self.scontrol_command)
+            for placeholder in placeholders:
+                if placeholder == 'new_job["cluster"]':
+                    self.scontrol_command = self.scontrol_command % {placeholder: new_job["cluster"]}
+        print(new_job['cluster'])
+        print(self.scontrol_command)
         scontrol_cmd = "%s --oneliner show jobid %s" % (
             self.scontrol_command,
             job_id,
