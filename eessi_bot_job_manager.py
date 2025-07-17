@@ -142,9 +142,7 @@ class EESSIBotSoftwareLayerJobManager:
         # --noheader.
         for line in lines:
             job = line.rstrip().split('@')
-            print(job)
             if len(job) == 5:
-                print(job)
                 job_id = job[0].rstrip()
                 state = job[3].rstrip()
                 current_jobs[job_id] = {
@@ -308,8 +306,6 @@ class EESSIBotSoftwareLayerJobManager:
             for placeholder in placeholders:
                 if placeholder == 'new_job["cluster"]':
                     self.scontrol_command = self.scontrol_command % {placeholder: new_job["cluster"]}
-        print(new_job['cluster'])
-        print(self.scontrol_command)
         scontrol_cmd = "%s --oneliner show jobid %s" % (
             self.scontrol_command,
             job_id,
