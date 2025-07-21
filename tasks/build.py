@@ -201,28 +201,6 @@ def get_node_types(cfg):
     log(f"{fn}(): node type map '{json.dumps(node_type_map)}'")
     return node_type_map
 
-# Replaced by get_node_types
-# def get_architecture_targets(cfg):
-#     """
-#     Obtain mappings of architecture targets to Slurm parameters
-#
-#     Args:
-#         cfg (ConfigParser): ConfigParser instance holding full configuration
-#             (typically read from 'app.cfg')
-#
-#     Returns:
-#         (dict): dictionary mapping architecture targets (format
-#             OS/SOFTWARE_SUBDIR) to architecture specific Slurm job submission
-#             parameters
-#     """
-#     fn = sys._getframe().f_code.co_name
-#
-#     architecture_targets = cfg[config.SECTION_ARCHITECTURETARGETS]
-#
-#     arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
-#     log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
-#     return arch_target_map
-
 
 def get_allowed_exportvars(cfg):
     """
@@ -868,7 +846,7 @@ def submit_job(job, cfg):
     # instances run on the same system
     job_name = cfg[config.SECTION_BUILDENV].get(config.BUILDENV_SETTING_JOB_NAME)
 
-    # add a default time limit of 24h to the job submit comnand if no other time
+    # add a default time limit of 24h to the job submit command if no other time
     # limit is specified already
     all_opts_str = " ".join([build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS], job.slurm_opts])
     all_opts_list = all_opts_str.split(" ")
@@ -1003,15 +981,10 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     # construct initial job comment
     buildenv = config.read_config()[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
-    # NO LONGER NEEDED now that we have cut up the sentence into different config items
-    # raw_comment_template = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
     new_job_instance_repo = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
     build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
     build_for_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
     jobdir = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR]
-    # NO LONGER NEEDED now that we have cut up the sentence into different config items
-    # Support using escape chars in the INITIAL_COMMENT, that means \n should be interpreted as unicode
-    # initial_comment_template = codecs.decode(raw_comment_template, 'unicode_escape')
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
