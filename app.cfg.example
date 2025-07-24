@@ -309,18 +309,21 @@ signing =
 # arch_target_map = {
 # }
 
-# Each entry in node_type_map describes a node type: os, what CPU architecture it has (cpu_subdir) the SLURM parameters
-# that need to be passed to submit to it, which repository targets (repo_targets) can be build for on this node type
-# and (optionally) which accelerators ('accel')
-# All are strings, except repo_targets, which is a list of strings
+# Each entry in the node_type_map dictionary describes a build node type. The key is a (descriptive) name for this build node, and its value is a dictionary containing the following build node properties as key-value pairs:
+  - os: its operating system (os)
+  - cpu_subdir: its CPU architecture
+  - slurm_params: the SLURM parameters that need to be passed to submit jobs to it
+  - repo_targets: supported repository targets for this node type
+  - accel (optional): which accelerators this node has
+# All are strings, except repo_targets, which is a list of strings.
 # Note that the Slurm parameters should typically be chosen such that a single type of node (with one specific type of
 # CPU and one specific type of GPU) should be allocated.
 # Below is an example configuration for a system that contains 4 types of nodes: zen2 CPU nodes, zen4 CPU nodes,
-# GPU nodes with an icelake CPU and A100 GPU, GPu nodes with a zen4 CPU and an H100 GPU
-# The 'on:' argument to the bot build command determines which node type will be allocated for the build job
-# E.g. 'bot:build on:arch=zen4,accel=nvidia/cc90 for:...' will match the gpu_h100 node type below
-# If no 'on:' argument is passed to the build command, the 'for:' argument is used instead
-# E.g. 'bot:build for:arch=icelake,accel=nvidia/cc80' will match the gpu_a100 node type below
+# GPU nodes with an icelake CPU and A100 GPU, GPU nodes with a zen4 CPU and an H100 GPU.
+# The 'on:' argument to the bot build command determines which node type will be allocated for the build job,
+# e.g. 'bot:build on:arch=zen4,accel=nvidia/cc90 for:...' will match the gpu_h100 node type below.
+# If no 'on:' argument is passed to the build command, the 'for:' argument is used instead,
+# e.g. 'bot:build for:arch=icelake,accel=nvidia/cc80' will match the gpu_a100 node type below.
 node_type_map = {
     "cpu_zen2": {
         "os": "linux",
