@@ -417,7 +417,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment = f"Instance `{app_name}` is configured to build on:"
         for node in node_map:
-            comment += f"\n- Partition `{node}`:"
+            comment += f"\n- Node type `{node}`:"
             current_partition = node_map[node]
             if "os" in current_partition:
                 comment += f"\n  - OS: `{current_partition['os']}`"
@@ -578,8 +578,8 @@ class EESSIBotSoftwareLayer(PyGHee):
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
-            github.IssueComment.IssueComment (note, github refers to
-                 PyGithub, not the github from the internal connections module)
+            (string): list item with a link to the issue comment that was created
+                containing the status overview
         """
         self.log("processing bot command 'status'")
         repo_name = event_info['raw_request_body']['repository']['full_name']
