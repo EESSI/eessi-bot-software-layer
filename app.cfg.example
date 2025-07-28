@@ -396,7 +396,8 @@ scontrol_command = /usr/bin/scontrol
 #         are removed, the output (in PR comments) will lack important
 #         information.
 [submitted_job_comments]
-awaits_release = job id `{job_id}` awaits release by job manager
+# awaits_release is no longer used since bot release v0.7.0
+# awaits_release = job id `{job_id}` awaits release by job manager
 awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
 awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
 new_job_instance_repo = New job on instance `{app_name}` for repository `{repo_id}`
