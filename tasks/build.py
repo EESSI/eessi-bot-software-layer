@@ -612,19 +612,9 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             return []
 
     jobs = []
-    # This loop assumes the following structure for arch_target_map
-    # Note that 'accel' is a list, to easily allow a single CPU partition to be used for cross compilation
-    # for a lot of accelerator targets
-    # arch_target_map = {
-    #     'node_type_name': {
-    #         'os': 'linux',
-    #         'cpu_subdir': 'x86_64/amd/zen4',
-    #         'accel': ['nvidia/cc90'],
-    #         'slurm_params': '-p genoa <etc>',
-    #         'repo_targets': ["eessi.io-2023.06-compat","eessi.io-2023.06-software"],
-    #      },
-    #     'node_type_name2': {
-    # ... etc
+    # Looping over all node types in the node_map to create a context for each node type and repository
+    # configured there. Then, check the action filters against these configs to find matching ones.
+    # If there is a match, prepare the job dir and create the Job object
     for node_type_name, partition_info in node_map.items():
         log(f"{fn}(): node_type_name is {node_type_name}, partition_info is {partition_info}")
         # Unpack for convenience
@@ -661,20 +651,13 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
                 # Optionally add accelerator to the context
                 if 'accel' in partition_info:
                     context['accelerator'] = partition_info['accel']
-                    log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                    if not action_filter.check_filters(context):
-                        log(f"{fn}(): context does NOT satisfy filter(s), skipping")
-                        continue
-                    # check = check | action_filter.check_filters(context)
-                    else:
-                        log(f"{fn}(): context DOES satisfy filter(s), going on with job")
-                else:
-                    log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-                    if not action_filter.check_filters(context):
-                        log(f"{fn}(): context does NOT satisfy filter(s), skipping")
-                        continue
-                    else:
-                        log(f"{fn}(): context DOES satisfy filter(s), going on with job")
+
+               log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
+               if not action_filter.check_filters(context):
+                   log(f"{fn}(): context does NOT satisfy filter(s), skipping")
+                   continue
+               else:
+                   log(f"{fn}(): context DOES satisfy filter(s), going on with job")
             # we reached this point when the filter matched (otherwise we
             # 'continue' with the next repository)
             # We create a specific job directory for the architecture that is going to be build 'for:'
@@ -1139,6 +1122,16 @@ def template_to_regex(format_str, with_eol=True):
     character. This is a requirement if it has to succesfully match a formatting string that ends with a formatting
     field.
 
+    Example: if one function creates a formatted string
+    value = "my_field_value"
+    format_str = f"This is my string, with a custom field: {my_field}\n"
+    formatted_string = format_str.format(my_field=value)
+    Another function can then grab the original value of my_field by doing:
+    my_re = template_to_regex(format_str)
+    match_object = re.match(my_re, formatted_string)
+    match_object['my_field'] then contains "my_field_value"
+    This is useful when e.g. one function posts a GitHub comment, and another wants to extract information from that
+
     Args:
         format_str (string): a formatting string, with template placeholders.
         with_eol (bool, optional): a boolean, indicating if the formatting string is expected to be followed by
@@ -1160,8 +1153,10 @@ def template_to_regex(format_str, with_eol=True):
         # We use re.escape to escape any special characters in the literal_text, as we want to match those literally
         regex_parts.append(re.escape(literal_text))
         if field_name is not None:
-            # Create a non-greedy, named capture group. Note that the name itself as an f-string
+            # Create a non-greedy, named capture group. Note that the {field_name} itself is a format specifier
             # So we get the actual field name as the name of the capture group
+            # In other words, if our format_str is "My string with {a_field}" then the named capture group will be
+            # called 'a_field'
             # We match any character, but in a non-greedy way. Thus, as soon as it can match the next
             # literal text section, it will - thus assuming that that's the end of the field
             # We use .* to allow for empty fields (such as the optional accelerator fields)
@@ -1171,7 +1166,12 @@ def template_to_regex(format_str, with_eol=True):
     # strategy. Otherwise, a formatting string that ends with a formatting item would only match the first letter
     # of the field, because it doesn't find anything to match after (and it is non-greedy). With the $, it has
     # something to match after the field, thus making sure it matches the whole field
-    # This does assume that
+    # This does assume that the format_str in the string to be matched is indeed followed by and end-of-line character
+    # I.e. if a function that creates the formatted string does
+    # my_string = f"{format_str}\n"
+    # (i.e. has an end-of-line after the format specifier) it can be matched by another function that does
+    # my_re = template_to_regex(format_str)
+    # re.match(my_re, my_string)
     full_pattern = ''.join(regex_parts)
     if with_eol:
         full_pattern += "$"
