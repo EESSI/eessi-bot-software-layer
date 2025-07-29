@@ -115,7 +115,7 @@ class EESSIBotCommand:
 
             # If no 'on:' is found in the argument list, everything that follows the 'for:' argument
             # (until the next space) is considered the argument list for the action filters
-            # Essentially, this represents a native build, i.e. the hardware we build on should be the
+            # Essentially, this represents a native build, i.e. the hardware we build for should be the
             # hardware we build on
             if not on_found:
                 for arg in cmd_as_list[1:]:

@@ -418,15 +418,15 @@ class EESSIBotSoftwareLayer(PyGHee):
         comment = f"Instance `{app_name}` is configured to build on:"
         for node in node_map:
             comment += f"\n- Node type `{node}`:"
-            current_partition = node_map[node]
-            if "os" in current_partition:
-                comment += f"\n  - OS: `{current_partition['os']}`"
-            if "cpu_subdir" in current_partition:
-                comment += f"\n  - CPU architecture: `{current_partition['cpu_subdir']}`"
-            if "repo_targets" in current_partition:
-                comment += f"\n  - Repositories: `{current_partition['repo_targets']}`"
-            if "accel" in current_partition:
-                comment += f"\n  - Accelerators: `{current_partition['accel']}`"
+            current_node_type = node_map[node]
+            if "os" in current_node_type:
+                comment += f"\n  - OS: `{current_node_type['os']}`"
+            if "cpu_subdir" in current_node_type:
+                comment += f"\n  - CPU architecture: `{current_node_type['cpu_subdir']}`"
+            if "repo_targets" in current_node_type:
+                comment += f"\n  - Repositories: `{current_node_type['repo_targets']}`"
+            if "accel" in current_node_type:
+                comment += f"\n  - Accelerators: `{current_node_type['accel']}`"
             comment += "\n"
 
         self.log(f"PR opened: comment '{comment}'")

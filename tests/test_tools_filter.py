@@ -246,7 +246,7 @@ def test_matching_context(complex_filter):
     assert expected == actual
 
 
-def test_non_match_archictecture_context(complex_filter):
+def test_non_match_architecture_context(complex_filter):
     context = {"architecture": "x86_64/amd/zen4", "repository": "EESSI", "instance": "mybot", "job": 1234}
     expected = False
     actual = complex_filter.check_filters(context)
