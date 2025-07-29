@@ -651,13 +651,13 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
                 # Optionally add accelerator to the context
                 if 'accel' in partition_info:
                     context['accelerator'] = partition_info['accel']
+                log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
 
-               log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-               if not action_filter.check_filters(context):
-                   log(f"{fn}(): context does NOT satisfy filter(s), skipping")
-                   continue
-               else:
-                   log(f"{fn}(): context DOES satisfy filter(s), going on with job")
+                if not action_filter.check_filters(context):
+                    log(f"{fn}(): context does NOT satisfy filter(s), skipping")
+                    continue
+                else:
+                    log(f"{fn}(): context DOES satisfy filter(s), going on with job")
             # we reached this point when the filter matched (otherwise we
             # 'continue' with the next repository)
             # We create a specific job directory for the architecture that is going to be build 'for:'
