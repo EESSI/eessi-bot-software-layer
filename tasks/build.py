@@ -1166,7 +1166,7 @@ def template_to_regex(format_str, with_eol=True):
     # strategy. Otherwise, a formatting string that ends with a formatting item would only match the first letter
     # of the field, because it doesn't find anything to match after (and it is non-greedy). With the $, it has
     # something to match after the field, thus making sure it matches the whole field
-    # This does assume that the format_str in the string to be matched is indeed followed by and end-of-line character
+    # This does assume that the format_str in the string to be matched is indeed followed by an end-of-line character
     # I.e. if a function that creates the formatted string does
     # my_string = f"{format_str}\n"
     # (i.e. has an end-of-line after the format specifier) it can be matched by another function that does
