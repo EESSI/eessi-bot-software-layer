@@ -303,9 +303,15 @@ class EESSIBotSoftwareLayerJobManager:
         job_id = new_job["jobid"]
 
         # if placeholder "cluster" is used in scontrol command
-        self.scontrol_command = self.scontrol_command % {
-            'new_job["cluster"]': new_job["cluster"]
-        }
+        try:
+            placeholder = 'new_job["cluster"]'
+            self.scontrol_command = self.scontrol_command % {
+                placeholder: new_job["cluster"]
+            }
+        except KeyError:
+            log(f"Failed to process placeholder in scontrol_command. Expected {placeholder} or nothing.")
+            raise
+
         scontrol_cmd = "%s --oneliner show jobid %s" % (
             self.scontrol_command,
             job_id,
