@@ -803,7 +803,11 @@ All values are strings, except repo_targets, which is a list of strings. Reposit
 
 Note that the Slurm parameters should typically be chosen such that a single type of node (with one specific type of CPU and one specific type of GPU) should be allocated.
 
-To command the bot to build on the `cpu_zen2` node type above, one would give the command `bot:build on:arch=zen2 ...`. To command the bot to build on the `gpu_h100` node type, one would give the command `bot:build on:arch=zen4,accel=nvidia/cc90 ...`
+To command the bot to build on the `cpu_zen2` node type above, one would give the command `bot:build on:arch=zen2 ...`. To command the bot to build on the `gpu_h100` node type, one would give the command `bot:build on:arch=zen4,accel=nvidia/cc90 ...`.
+
+For a native build (i.e. building for `zen2` on a `zen2` node), one can pass `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2`, or use the short-hand `bot:build for:arch=x86_64/amd/zen2` (i.e. omitting the `on` argument implies a native build). This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture.
+
+For cross-compiling GPU code for Nvidia Compute Capabiltiy 8.0 (and a `zen2` CPU architecture), one would instruct the bot with `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2,accel=nvidia/cc80`. This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture with an `nvidia/cc80` GPU architecture.
 
 
 #### `[repo_targets]` section
