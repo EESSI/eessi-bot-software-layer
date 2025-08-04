@@ -142,9 +142,7 @@ class EESSIBotSoftwareLayerJobManager:
         # --noheader.
         for line in lines:
             job = line.rstrip().split('@')
-            print(job)
             if len(job) == 5:
-                print(job)
                 job_id = job[0].rstrip()
                 state = job[3].rstrip()
                 current_jobs[job_id] = {
