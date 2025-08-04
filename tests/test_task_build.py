@@ -29,6 +29,7 @@ import pytest
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from tasks.build import Job, create_pr_comment
 from tools import run_cmd, run_subprocess
+from tools.build_params import EESSIBotBuildParams
 from tools.job_metadata import create_metadata_file, read_metadata_file
 from tools.pr_comments import PRComment, get_submitted_job_comment
 
@@ -287,6 +288,7 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -295,7 +297,7 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink)
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
     assert comment.id == 1
     # check if created comment includes jobid?
     print("VERIFYING PR COMMENT")
@@ -317,6 +319,7 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -325,7 +328,7 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink)
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
     assert comment is None
 
 
@@ -343,6 +346,7 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -351,7 +355,7 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink)
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
     assert comment.id == 1
     assert pr.create_call_count == 2
 
@@ -369,6 +373,7 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -378,7 +383,7 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
     with pytest.raises(Exception) as err:
-        create_pr_comment(job, job_id, app_name, pr, symlink)
+        create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
     assert err.type == CreateIssueCommentException
     assert pr.create_call_count == 3
 
@@ -396,6 +401,7 @@ def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
     job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
     app_name = "pytest"
@@ -405,7 +411,7 @@ def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
     pr = repo.get_pull(pr_number)
     symlink = "/symlink"
     with pytest.raises(Exception) as err:
-        create_pr_comment(job, job_id, app_name, pr, symlink)
+        create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
     assert err.type == CreateIssueCommentException
     assert pr.create_call_count == 3
 

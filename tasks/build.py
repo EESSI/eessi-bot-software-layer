@@ -23,7 +23,9 @@ import configparser
 from datetime import datetime, timezone
 import json
 import os
+import re
 import shutil
+import string
 import sys
 
 # Third party imports (anything installed into the local Python environment)
@@ -33,7 +35,7 @@ from pyghee.utils import error, log
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
 from tools.pr_comments import ChatLevels, create_comment
-
+from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
 
 # defaults (used if not specified via, eg, 'app.cfg')
 DEFAULT_JOB_TIME_LIMIT = "24:00:00"
@@ -179,26 +181,25 @@ def get_build_env_cfg(cfg):
     return config_data
 
 
-def get_architecture_targets(cfg):
-    """
-    Obtain mappings of architecture targets to Slurm parameters
+def get_node_types(cfg):
+    """Obtain mappings of node types to Slurm parameters
 
     Args:
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
 
     Returns:
-        (dict): dictionary mapping architecture targets (format
-            OS/SOFTWARE_SUBDIR) to architecture specific Slurm job submission
-            parameters
+        (dict): Dictionary mapping node types names (arbitrary text) node properties
+        such as the OS, CPU software subdir, supported repositories, accelerator (optionally)
+        as well as the slurm parameters to allocate such a type of node
     """
     fn = sys._getframe().f_code.co_name
 
-    architecture_targets = cfg[config.SECTION_ARCHITECTURETARGETS]
+    node_types = cfg[config.SECTION_ARCHITECTURETARGETS]
 
-    arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
-    log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
-    return arch_target_map
+    node_type_map = json.loads(node_types.get(config.NODE_TYPE_MAP))
+    log(f"{fn}(): node type map '{json.dumps(node_type_map)}'")
+    return node_type_map
 
 
 def get_allowed_exportvars(cfg):
@@ -241,8 +242,6 @@ def get_repo_cfg(cfg):
     Returns:
         (dict): dictionary containing repository settings as follows
            - {config.REPO_TARGETS_SETTING_REPOS_CFG_DIR: path to repository config directory as defined in 'app.cfg'}
-           - {config.REPO_TARGETS_SETTING_REPO_TARGET_MAP: json of
-               config.REPO_TARGETS_SETTING_REPO_TARGET_MAP value as defined in 'app.cfg'}
            - for all sections [repo_id] defined in config.REPO_TARGETS_SETTING_REPOS_CFG_DIR/repos.cfg add a
              mapping {repo_id: dictionary containing settings of that section}
     """
@@ -258,21 +257,6 @@ def get_repo_cfg(cfg):
     repo_cfg = {}
     settings_repos_cfg_dir = config.REPO_TARGETS_SETTING_REPOS_CFG_DIR
     repo_cfg[settings_repos_cfg_dir] = repo_cfg_org.get(settings_repos_cfg_dir, None)
-
-    repo_map = {}
-    try:
-        repo_map_str = repo_cfg_org.get(config.REPO_TARGETS_SETTING_REPO_TARGET_MAP)
-        log(f"{fn}(): repo_map '{repo_map_str}'")
-
-        if repo_map_str is not None:
-            repo_map = json.loads(repo_map_str)
-
-        log(f"{fn}(): repo_map '{json.dumps(repo_map)}'")
-    except json.JSONDecodeError as err:
-        print(err)
-        error(f"{fn}(): Value for repo_map ({repo_map_str}) could not be decoded.")
-
-    repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP] = repo_map
 
     if repo_cfg[config.REPO_TARGETS_SETTING_REPOS_CFG_DIR] is None:
         return repo_cfg
@@ -568,7 +552,7 @@ def prepare_export_vars_file(job_dir, exportvars):
     log(f"{fn}(): created exported variables file {export_vars_path}")
 
 
-def prepare_jobs(pr, cfg, event_info, action_filter):
+def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     """
     Prepare all jobs whose context matches the given filter. Preparation includes
     creating a working directory for a job, downloading the pull request into
@@ -579,6 +563,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
         cfg (ConfigParser): instance holding full configuration (typically read from 'app.cfg')
         event_info (dict): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         (list): list of the prepared jobs
@@ -587,7 +572,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
 
     app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
     build_env_cfg = get_build_env_cfg(cfg)
-    arch_map = get_architecture_targets(cfg)
+    node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
     allowed_exportvars = get_allowed_exportvars(cfg)
 
@@ -627,13 +612,25 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             return []
 
     jobs = []
-    for arch, slurm_opt in arch_map.items():
-        arch_dir = arch.replace('/', '_')
-        # check if repo_target_map contains an entry for {arch}
-        if arch not in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP]:
-            log(f"{fn}(): skipping arch {arch} because repo target map does not define repositories to build for")
+    # Looping over all node types in the node_map to create a context for each node type and repository
+    # configured there. Then, check the action filters against these configs to find matching ones.
+    # If there is a match, prepare the job dir and create the Job object
+    for node_type_name, partition_info in node_map.items():
+        log(f"{fn}(): node_type_name is {node_type_name}, partition_info is {partition_info}")
+        # Unpack for convenience
+        arch_dir = build_params[BUILD_PARAM_ARCH]
+        if BUILD_PARAM_ACCEL in build_params:
+            arch_dir += f"/{build_params[BUILD_PARAM_ACCEL]}"
+            build_for_accel = build_params[BUILD_PARAM_ACCEL]
+        else:
+            build_for_accel = ''
+        arch_dir.replace('/', '_')
+        # check if repo_targets is defined for this virtual partition
+        if 'repo_targets' not in partition_info:
+            log(f"{fn}(): skipping arch {node_type_name}, "
+                "because no repo_targets were defined for this (virtual) partition")
             continue
-        for repo_id in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP][arch]:
+        for repo_id in partition_info['repo_targets']:
             # ensure repocfg contains information about the repository repo_id if repo_id != EESSI
             # Note, EESSI is a bad/misleading name, it should be more like AS_IN_CONTAINER
             if (repo_id != "EESSI" and repo_id != "EESSI-pilot") and repo_id not in repocfg:
@@ -646,8 +643,16 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             #   false --> log & continue to next iteration of for loop
             if action_filter:
                 log(f"{fn}(): checking filter {action_filter.to_string()}")
-                context = {"architecture": arch, "repository": repo_id, "instance": app_name}
+                context = {
+                    "architecture": partition_info['cpu_subdir'],
+                    "repository": repo_id,
+                    "instance": app_name
+                }
+                # Optionally add accelerator to the context
+                if 'accel' in partition_info:
+                    context['accelerator'] = partition_info['accel']
                 log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
+
                 if not action_filter.check_filters(context):
                     log(f"{fn}(): context does NOT satisfy filter(s), skipping")
                     continue
@@ -655,13 +660,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                     log(f"{fn}(): context DOES satisfy filter(s), going on with job")
             # we reached this point when the filter matched (otherwise we
             # 'continue' with the next repository)
-            # for each match of the filter we create a specific job directory
-            #   however, matching CPU architectures works differently to handling
-            #   accelerators; multiple CPU architectures defined in arch_target_map
-            #   can match the (CPU) architecture component of a filter; in
-            #   contrast, the value of the accelerator filter is just passed down
-            #   to scripts in bot/ directory of the pull request (see function
-            #   prepare_job_cfg and creation of Job tuple below)
+            # We create a specific job directory for the architecture that is going to be build 'for:'
             job_dir = os.path.join(run_dir, arch_dir, repo_id)
             os.makedirs(job_dir, exist_ok=True)
             log(f"{fn}(): job_dir '{job_dir}'")
@@ -673,19 +672,24 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                 )
             comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
-            cpu_target = '/'.join(arch.split('/')[1:])
-            os_type = arch.split('/')[0]
+            msg = f"{fn}(): node type = '{node_type_name}' => "
+            msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
+            msg += f"build cpu_target = '{build_params[BUILD_PARAM_ARCH]}', "
+            msg += f"configured os = '{partition_info['os']}', "
+            if 'accel' in partition_info:
+                msg += f"requested accelerator(s) = '{partition_info['accel']}, "
+            msg += f"build accelerator = '{build_for_accel}'"
+            log(msg)
 
-            log(f"{fn}(): arch = '{arch}' => cpu_target = '{cpu_target}' , os_type = '{os_type}'"
-                f", accelerator = '{accelerator}'")
-
-            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, cpu_target, os_type, accelerator)
+            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
+                            partition_info['os'], build_for_accel, node_type_name)
 
             if exportvars:
                 prepare_export_vars_file(job_dir, exportvars)
 
             # enlist jobs to proceed
-            job = Job(job_dir, arch, repo_id, slurm_opt, year_month, pr_id, accelerator)
+            job = Job(job_dir, partition_info['cpu_subdir'], repo_id, partition_info['slurm_params'], year_month,
+                      pr_id, accelerator)
             jobs.append(job)
 
     log(f"{fn}(): {len(jobs)} jobs to proceed after applying white list")
@@ -695,7 +699,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     return jobs
 
 
-def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator):
+def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator, node_type_name):
     """
     Set up job configuration file 'job.cfg' in directory <job_dir>/cfg
 
@@ -707,6 +711,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         software_subdir (string): software subdirectory to build for (e.g., 'x86_64/generic')
         os_type (string): type of the os (e.g., 'linux')
         accelerator (string): defines accelerator to build for (e.g., 'nvidia/cc80')
+        node_type_name (string): the node type name, as configured in app.cfg
 
     Returns:
         None (implicitly)
@@ -777,6 +782,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
 
     job_cfg_arch_section = job_metadata.JOB_CFG_ARCHITECTURE_SECTION
     job_cfg[job_cfg_arch_section] = {}
+    job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_NODE_TYPE] = node_type_name
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_SOFTWARE_SUBDIR] = software_subdir
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_OS_TYPE] = os_type
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_ACCELERATOR] = accelerator if accelerator else ''
@@ -915,7 +921,7 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, symlink):
+def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     """
     Create a comment to the pull request for a newly submitted job
 
@@ -925,6 +931,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         app_name (string): name of the app
         pr (github.PullRequest.PullRequest): instance representing the pull request
         symlink (string): symlink from main pr_<ID> dir to job dir
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         github.IssueComment.IssueComment instance or None (note, github refers to
@@ -932,16 +939,24 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
     """
     fn = sys._getframe().f_code.co_name
 
-    # obtain arch from job.arch_target which has the format OS/ARCH
-    arch_name = '-'.join(job.arch_target.split('/')[1:])
+    # Obtain the architecture on which we are building from job.arch_target, which has the format OS/ARCH
+    on_arch = '-'.join(job.arch_target.split('/')[1:])
+
+    # Obtain the architecture to build for
+    for_arch = build_params[BUILD_PARAM_ARCH]
 
     submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
 
-    # set string for accelerator if job.accelerator is defined/set (e.g., not None)
-    accelerator_spec_str = ''
+    # Set string for accelerator to build on
+    accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
+    on_accelerator_str = ''
     if job.accelerator:
-        accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
-        accelerator_spec_str = accelerator_spec.format(accelerator=job.accelerator)
+        on_accelerator_str = accelerator_spec.format(accelerator=job.accelerator)
+
+    # Set string for accelerator to build for
+    for_accelerator_str = ''
+    if BUILD_PARAM_ACCEL in build_params:
+        for_accelerator_str = accelerator_spec.format(accelerator=build_params[BUILD_PARAM_ACCEL])
 
     # get current date and time
     dt = datetime.now(timezone.utc)
@@ -949,6 +964,10 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
     # construct initial job comment
     buildenv = config.read_config()[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+    new_job_instance_repo = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
+    build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
+    build_for_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
+    jobdir = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR]
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
@@ -957,34 +976,44 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
-        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                       f"\n|date|job status|comment|\n"
+        job_comment = (f"{new_job_instance_repo}\n"
+                       f"{build_on_arch}\n"
+                       f"{build_for_arch}\n"
+                       f"{jobdir}\n"
+                       f"|date|job status|comment|\n"
                        f"|----------|----------|------------------------|\n"
                        f"|{dt.strftime('%b %d %X %Z %Y')}|"
                        f"submitted|"
                        f"{release_comment_template}|").format(
                            app_name=app_name,
-                           arch_name=arch_name,
+                           on_arch=on_arch,
+                           for_arch=for_arch,
                            symlink=symlink,
                            repo_id=job.repo_id,
                            job_id=job_id,
                            delay_seconds=eligible_in_seconds,
-                           accelerator_spec=accelerator_spec_str)
+                           on_accelerator=on_accelerator_str,
+                           for_accelerator=for_accelerator_str)
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
-        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                       f"\n|date|job status|comment|\n"
+        job_comment = (f"{new_job_instance_repo}\n"
+                       f"{build_on_arch}\n"
+                       f"{build_for_arch}\n"
+                       f"{jobdir}\n"
+                       f"|date|job status|comment|\n"
                        f"|----------|----------|------------------------|\n"
                        f"|{dt.strftime('%b %d %X %Z %Y')}|"
                        f"submitted|"
                        f"{release_comment_template}|").format(
                            app_name=app_name,
-                           arch_name=arch_name,
+                           on_arch=on_arch,
+                           for_arch=for_arch,
                            symlink=symlink,
                            repo_id=job.repo_id,
                            job_id=job_id,
-                           accelerator_spec=accelerator_spec_str)
+                           on_accelerator=on_accelerator_str,
+                           for_accelerator=for_accelerator_str)
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
@@ -997,7 +1026,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         return None
 
 
-def submit_build_jobs(pr, event_info, action_filter):
+def submit_build_jobs(pr, event_info, action_filter, build_params):
     """
     Create build jobs for a pull request by preparing jobs which match the given
     filters, submitting them, adding comments to the pull request on GitHub and
@@ -1007,6 +1036,7 @@ def submit_build_jobs(pr, event_info, action_filter):
         pr (github.PullRequest.PullRequest): instance representing the pull request
         event_info (dict): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         (dict): dictionary mapping a job id to a github.IssueComment.IssueComment
@@ -1019,7 +1049,7 @@ def submit_build_jobs(pr, event_info, action_filter):
     app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
-    jobs = prepare_jobs(pr, cfg, event_info, action_filter)
+    jobs = prepare_jobs(pr, cfg, event_info, action_filter, build_params)
 
     # return if there are no jobs to be submitted
     if not jobs:
@@ -1034,7 +1064,7 @@ def submit_build_jobs(pr, event_info, action_filter):
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink)
+        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
         pr_comment = pr_comments.PRComment(pr.base.repo.full_name, pr.number, pr_comment.id)
@@ -1085,11 +1115,83 @@ def check_build_permission(pr, event_info):
         return True
 
 
+def template_to_regex(format_str, with_eol=True):
+    """
+    Converts a formatting string into a regex that can extract all the formatted
+    parts of the string. If with_eol is True, it assumes the formatted string is followed by an end-of-line
+    character. This is a requirement if it has to succesfully match a formatting string that ends with a formatting
+    field.
+
+    Example: if one function creates a formatted string
+    value = "my_field_value"
+    format_str = f"This is my string, with a custom field: {my_field}\n"
+    formatted_string = format_str.format(my_field=value)
+    Another function can then grab the original value of my_field by doing:
+    my_re = template_to_regex(format_str)
+    match_object = re.match(my_re, formatted_string)
+    match_object['my_field'] then contains "my_field_value"
+    This is useful when e.g. one function posts a GitHub comment, and another wants to extract information from that
+
+    Args:
+        format_str (string): a formatting string, with template placeholders.
+        with_eol (bool, optional): a boolean, indicating if the formatting string is expected to be followed by
+                                   an end of line character
+
+    """
+
+    # string.Formatter returns a 4-tuple of literal text, field name, format spec, and conversion
+    # E.g if format_str = "This is my {app} it is currently {status}"
+    # formatter = [
+    #    ("This is my", "app", "", None),
+    #    ("it is currently", "status", "", None),
+    #    ("", None, None, None),
+    # ]
+    formatter = string.Formatter()
+    regex_parts = []
+
+    for literal_text, field_name, _, _ in formatter.parse(format_str):
+        # We use re.escape to escape any special characters in the literal_text, as we want to match those literally
+        regex_parts.append(re.escape(literal_text))
+        if field_name is not None:
+            # Create a non-greedy, named capture group. Note that the {field_name} itself is a format specifier
+            # So we get the actual field name as the name of the capture group
+            # In other words, if our format_str is "My string with {a_field}" then the named capture group will be
+            # called 'a_field'
+            # We match any character, but in a non-greedy way. Thus, as soon as it can match the next
+            # literal text section, it will - thus assuming that that's the end of the field
+            # We use .* to allow for empty fields (such as the optional accelerator fields)
+            regex_parts.append(f"(?P<{field_name}>.*?)")
+
+    # Finally, make sure we append a $ to the regex. This is necessary because of our non-greedy matching
+    # strategy. Otherwise, a formatting string that ends with a formatting item would only match the first letter
+    # of the field, because it doesn't find anything to match after (and it is non-greedy). With the $, it has
+    # something to match after the field, thus making sure it matches the whole field
+    # This does assume that the format_str in the string to be matched is indeed followed by an end-of-line character
+    # I.e. if a function that creates the formatted string does
+    # my_string = f"{format_str}\n"
+    # (i.e. has an end-of-line after the format specifier) it can be matched by another function that does
+    # my_re = template_to_regex(format_str)
+    # re.match(my_re, my_string)
+    full_pattern = ''.join(regex_parts)
+    if with_eol:
+        full_pattern += "$"
+    return re.compile(full_pattern)
+
+
+class PartialFormatDict(dict):
+    """
+    A dictionary class that allows for missing keys - and will just return {key} in that case.
+    This can be used to partially format some, but not all placeholders in a formatting string.
+    """
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
 def request_bot_build_issue_comments(repo_name, pr_number):
     """
     Query the github API for the issue_comments in a pr.
 
-    Archs:
+    Args:
         repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
         pr_number (int): number og the pr
 
@@ -1099,7 +1201,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
     """
     fn = sys._getframe().f_code.co_name
 
-    status_table = {'arch': [], 'date': [], 'status': [], 'url': [], 'result': []}
+    status_table = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []}
     cfg = config.read_config()
 
     # for loop because github has max 100 items per request.
@@ -1114,19 +1216,81 @@ def request_bot_build_issue_comments(repo_name, pr_number):
         for comment in comments:
             # iterate through the comments to find the one where the status of the build was in
             submitted_job_comments_section = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
-            initial_comment_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
-            if initial_comment_fmt[:20] in comment['body']:
+            accelerator_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]
+            instance_repo_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
+            instance_repo_re = template_to_regex(instance_repo_fmt)
+            comment_body = comment['body'].split('\n')
+            instance_repo_match = re.match(instance_repo_re, comment_body[0])
+            # Check if this body starts with an initial comment from the bot (first item is always the instance + repo
+            # it is building for)
+            # Then, check that it has at least 4 lines so that we can safely index up to that number
+            if instance_repo_match and len(comment_body) >= 4:
+                log(f"{fn}(): found bot build response in issue, processing...")
 
-                # get archictecture from comment['body']
-                first_line = comment['body'].split('\n')[0]
-                arch_map = get_architecture_targets(cfg)
-                for arch in arch_map.keys():
-                    # drop the first element in arch (which names the OS type) and join the remaining items with '-'
-                    target_arch = '-'.join(arch.split('/')[1:])
-                    if target_arch in first_line:
-                        status_table['arch'].append(target_arch)
+                # First, extract the repo_id
+                log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
+                status_table['for repo'].append(instance_repo_match.group('repo_id'))
+
+                # Then, try to match the architecture we build on.
+                # First try this including accelerator, to see if one was defined
+                on_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
+                on_arch_fmt_with_accel = on_arch_fmt.format_map(PartialFormatDict(on_accelerator=accelerator_fmt))
+                on_arch_re_with_accel = template_to_regex(on_arch_fmt_with_accel)
+                on_arch_match = re.match(on_arch_re_with_accel, comment_body[1])
+                if on_arch_match:
+                    # Pattern with accelerator matched, append to status_table
+                    log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}, "
+                        f"with accelerator {on_arch_match.group('accelerator')}")
+                    status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`, "
+                                                   f"`{on_arch_match.group('accelerator')}`")
+                else:
+                    # Pattern with accelerator did not match, retry without accelerator
+                    on_arch_re = template_to_regex(on_arch_fmt)
+                    on_arch_match = re.match(on_arch_re, comment_body[1])
+                    if on_arch_match:
+                        # Pattern without accelerator matched, append to status_table
+                        log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}")
+                        status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`")
                     else:
-                        log(f"{fn}(): target_arch '{target_arch}' not found in first line '{first_line}'")
+                        # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
+                        msg = "Could not match regular expression for extracting the architecture to build on.\n"
+                        msg += "String to be matched:\n"
+                        msg += f"{comment_body[1]}\n"
+                        msg += "First regex attempted:\n"
+                        msg += f"{on_arch_re_with_accel.pattern}\n"
+                        msg += "Second regex attempted:\n"
+                        msg += f"{on_arch_re.pattern}\n"
+                        raise ValueError(msg)
+
+                # Now, do the same for the architecture we build for. I.e. first, try to match including accelerator
+                for_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
+                for_arch_fmt_with_accel = for_arch_fmt.format_map(PartialFormatDict(for_accelerator=accelerator_fmt))
+                for_arch_re_with_accel = template_to_regex(for_arch_fmt_with_accel)
+                for_arch_match = re.match(for_arch_re_with_accel, comment_body[2])
+                if for_arch_match:
+                    # Pattern with accelerator matched, append to status_table
+                    log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
+                        f"with accelerator {for_arch_match.group('accelerator')}")
+                    status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`, "
+                                                    f"`{for_arch_match.group('accelerator')}`")
+                else:
+                    # Pattern with accelerator did not match, retry without accelerator
+                    for_arch_re = template_to_regex(for_arch_fmt)
+                    for_arch_match = re.match(for_arch_re, comment_body[2])
+                    if for_arch_match:
+                        # Pattern without accelerator matched, append to status_table
+                        log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}")
+                        status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`")
+                    else:
+                        # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
+                        msg = "Could not match regular expression for extracting the architecture to build for.\n"
+                        msg += "String to be matched:\n"
+                        msg += f"{comment_body[2]}\n"
+                        msg += "First regex attempted:\n"
+                        msg += f"{for_arch_re_with_accel.pattern}\n"
+                        msg += "Second regex attempted:\n"
+                        msg += f"{for_arch_re.pattern}\n"
+                        raise ValueError(msg)
 
                 # get date, status, url and result from the markdown table
                 comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]
