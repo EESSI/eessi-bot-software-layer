@@ -303,9 +303,9 @@ class EESSIBotSoftwareLayerJobManager:
         job_id = new_job["jobid"]
 
         # if placeholder "cluster" is used in scontrol command
-        self.scontrol_command = self.scontrol_command  % {
+        self.scontrol_command = self.scontrol_command % {
             'new_job["cluster"]': new_job["cluster"]
-        } 
+        }
         scontrol_cmd = "%s --oneliner show jobid %s" % (
             self.scontrol_command,
             job_id,
