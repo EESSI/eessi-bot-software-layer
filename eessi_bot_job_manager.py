@@ -156,6 +156,8 @@ class EESSIBotSoftwareLayerJobManager:
                 }
                 if state in bad_state_messages:
                     log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
+            else:
+                raise Exception(f"The output of {squeue_cmd} does not have 5 job parameters")
 
         return current_jobs
 
@@ -302,14 +304,10 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_id = new_job["jobid"]
 
-        # check if their is a placeholder value in the scontrol_command
-        if bool(re.search(r'%\([^)]+\)s', self.scontrol_command)):
-            placeholders = re.findall(r'%\(([^)]+)\)s', self.scontrol_command)
-            for placeholder in placeholders:
-                if placeholder == 'new_job["cluster"]':
-                    self.scontrol_command = self.scontrol_command % {placeholder: new_job["cluster"]}
-        print(new_job['cluster'])
-        print(self.scontrol_command)
+        # if placeholder "cluster" is used in scontrol command
+        self.scontrol_command = self.scontrol_command  % {
+            'new_job["cluster"]': new_job["cluster"]
+        } 
         scontrol_cmd = "%s --oneliner show jobid %s" % (
             self.scontrol_command,
             job_id,
