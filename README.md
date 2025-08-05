@@ -820,7 +820,7 @@ repo_target_map = { "linux/x86_64/amd/zen2": ["eessi.io-2023.06-compat","eessi.i
 
 #### `[repo_targets]` section
 
-The `[repo_targets]` section defines where the configuration for the repository targets defined in the `node_type_map` can be found
+The `[repo_targets]` section defines where the configuration for the repository targets defined in the `node_type_map` can be found.
 
 The repository IDs are defined in a separate file, say `repos.cfg` which is
 stored in the directory defined via `repos_cfg_dir`:
