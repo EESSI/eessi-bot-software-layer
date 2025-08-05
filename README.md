@@ -794,11 +794,13 @@ node_type_map = {
 ```
 
 Each entry in the `node_type_map` dictionary describes a build node type. The key is a (descriptive) name for this build node, and its value is a dictionary containing the following build node properties as key-value pairs:
-  - `os`: its operating system (os)
-  - `cpu_subdir`: its CPU architecture
-  - `slurm_params`: the SLURM parameters that need to be passed to submit jobs to it
-  - `repo_targets`: supported repository targets for this node type
-  - `accel` (optional): which accelerators this node has
+
+- `os`: its operating system (os)
+- `cpu_subdir`: its CPU architecture
+- `slurm_params`: the SLURM parameters that need to be passed to submit jobs to it
+- `repo_targets`: supported repository targets for this node type
+- `accel` (optional): which accelerators this node has
+
 All values are strings, except repo_targets, which is a list of strings. Repository targets listed in `repo_target` should correspond to the repository IDs as defined in the `repos.cfg` file in the `repos_cfg_dir` (see below).
 
 Note that the Slurm parameters should typically be chosen such that a single type of node (with one specific type of CPU and one specific type of GPU) should be allocated.
@@ -944,7 +946,6 @@ jobdir = Job dir: `{symlink}`
 ```
 
 `jobdir` is used as the fourth line in a comment to a PR when a new job has been created.
-
 
 ```ini
 with_accelerator = &nbsp;and accelerator `{accelerator}`
