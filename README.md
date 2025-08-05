@@ -811,7 +811,7 @@ For a native build (i.e. building for `zen2` on a `zen2` node), one can pass `bo
 
 For cross-compiling GPU code for NVIDIA Compute Capabiltiy 8.0 (and a `zen2` CPU architecture), one would instruct the bot with `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2,accel=nvidia/cc80`. This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture with an `nvidia/cc80` GPU architecture.
 
-Note that the `arch_target_map` and `repo_target_map` (used in version <=0.8.0) configuration option was replaced by `node_type_map`. The `arch_target_map` and `repo_target_map` that would be equivalent to the `node_type_map` above was
+Note that the `arch_target_map` and `repo_target_map` (used in version <=0.8.0) configuration options were replaced by `node_type_map`. The `arch_target_map` and `repo_target_map` that would be equivalent to the `node_type_map` above are:
 
 ```ini
 arch_target_map = { "linux/x86_64/amd/zen2": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1", "linux/x86_64/amd/zen4": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1" }
