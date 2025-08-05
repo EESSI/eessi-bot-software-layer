@@ -777,37 +777,50 @@ for signing. The bot calls the script with the two arguments:
 The section `[architecturetargets]` defines for which targets (OS/SUBDIR), (for example `linux/x86_64/amd/zen2`) the EESSI bot should submit jobs, and which additional `sbatch` parameters will be used for requesting a compute node with the CPU microarchitecture needed to build the software stack.
 
 ```ini
-arch_target_map = {
-    "linux/x86_64/generic": "--partition x86-64-generic-node",
-    "linux/x86_64/amd/zen2": "--partition x86-64-amd-zen2-node" }
+node_type_map = {
+    "cpu_zen2": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen2",
+        "slurm_params": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    "gpu_h100": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen4",
+        "accel": "nvidia/cc90",
+        "slurm_params": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    }}
 ```
 
-The map has one-to-many entries of the format `OS/SUBDIR:
-ADDITIONAL_SBATCH_PARAMETERS`. For your cluster, you will have to figure out
-which microarchitectures (`SUBDIR`) are available (as `OS` only `linux` is
-currently supported) and how to instruct Slurm to allocate nodes with that
-architecture to a job (`ADDITIONAL_SBATCH_PARAMETERS`).
+Each entry in the `node_type_map` dictionary describes a build node type. The key is a (descriptive) name for this build node, and its value is a dictionary containing the following build node properties as key-value pairs:
 
-Note, if you do not have to specify additional parameters to `sbatch` to request a compute node with a specific microarchitecture, you can just write something like:
+- `os`: its operating system (os)
+- `cpu_subdir`: its CPU architecture
+- `slurm_params`: the SLURM parameters that need to be passed to submit jobs to it
+- `repo_targets`: supported repository targets for this node type
+- `accel` (optional): which accelerators this node has
+
+All values are strings, except repo_targets, which is a list of strings. Repository targets listed in `repo_target` should correspond to the repository IDs as defined in the `repos.cfg` file in the `repos_cfg_dir` (see below).
+
+Note that the Slurm parameters should typically be chosen such that a single type of node (with one specific type of CPU and one specific type of GPU) should be allocated.
+
+To command the bot to build on the `cpu_zen2` node type above, one would give the command `bot:build on:arch=zen2 for:...`. To command the bot to build on the `gpu_h100` node type, one would give the command `bot:build on:arch=zen4,accel=nvidia/cc90 for:...`.
+
+For a native build (i.e. building for `zen2` on a `zen2` node), one can pass `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2`, or use the short-hand `bot:build for:arch=x86_64/amd/zen2` (i.e. omitting the `on` argument implies a native build; note that the reverse, omitting the `for` argument, does not work). This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture.
+
+For cross-compiling GPU code for NVIDIA Compute Capabiltiy 8.0 (and a `zen2` CPU architecture), one would instruct the bot with `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2,accel=nvidia/cc80`. This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture with an `nvidia/cc80` GPU architecture.
+
+Note that the `arch_target_map` and `repo_target_map` (used in version <=0.8.0) configuration options were replaced by `node_type_map`. The `arch_target_map` and `repo_target_map` that would be equivalent to the `node_type_map` above are:
 
 ```ini
-arch_target_map = { "linux/x86_64/generic": "" }
+arch_target_map = { "linux/x86_64/amd/zen2": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1", "linux/x86_64/amd/zen4": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1" }
+repo_target_map = { "linux/x86_64/amd/zen2": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"], "linux/x86_64/amd/zen4": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"] }
 ```
 
 #### `[repo_targets]` section
 
-The `[repo_targets]` section defines for which repositories and architectures the bot can run a job.
-Repositories are referenced by IDs (or `repo_id`). Architectures are identified
-by `OS/SUBDIR` which correspond to settings in the `arch_target_map`.
-
-```ini
-repo_target_map = {
-    "OS_SUBDIR_1": ["REPO_ID_1_1","REPO_ID_1_2"],
-    "OS_SUBDIR_2": ["REPO_ID_2_1","REPO_ID_2_2"] }
-```
-
-For each `OS/SUBDIR` combination a list of available repository IDs can be
-provided.
+The `[repo_targets]` section defines where the configuration for the repository targets defined in the `node_type_map` can be found.
 
 The repository IDs are defined in a separate file, say `repos.cfg` which is
 stored in the directory defined via `repos_cfg_dir`:
@@ -911,19 +924,35 @@ event handler will throw an exception when formatting the update of the PR
 comment corresponding to the job.
 
 ```ini
-initial_comment = New job on instance `{app_name}` for architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
+new_job_instance_repo = New job on instance `{app_name}` for repository `{repo_id}`
 ```
 
-`initial_comment` is used to create a comment to a PR when a new job has been
-created. Note, the part '{accelerator_spec}' is only filled-in by the bot if the
-argument 'accelerator' to the `bot: build` command has been used.
+`new_job_instance_repo` is used as the first line in a comment to a PR when a new job has been created.
+
+```ini
+build_on_arch = Building on: `{on_arch}`{on_accelerator}
+```
+
+`build_on_arch` is used as the second line in a comment to a PR when a new job has been created. Note that the `on_accelerator` spec is only filled-in by the bot if the `on:...,accel=...` has been passed to the bot.
+
+```ini
+build_for_arch = Building for: `{for_arch}`{for_accelerator}
+```
+
+`build_for_arch` is used as the third line in a comment to a PR when a new job has been created. Note that the `for_accelerator` spec is only filled-in by the bot if the `for:...,accel=...` has been passed to the bot.
+
+```ini
+jobdir = Job dir: `{symlink}`
+```
+
+`jobdir` is used as the fourth line in a comment to a PR when a new job has been created.
 
 ```ini
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 ```
 
 `with_accelerator` is used to provide information about the accelerator the job
-should build for if and only if the argument `accelerator:X/Y` has been provided.
+should build for if and only if the argument `on:...,accel=...` or `for:...,accel=...` has been provided.
 
 #### `[new_job_comments]` section
 

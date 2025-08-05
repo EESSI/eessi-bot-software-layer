@@ -30,7 +30,8 @@ from .logging import error
 #   sectionname_SETTING_settingname for any setting with name settingname in
 #     section sectionname
 SECTION_ARCHITECTURETARGETS = 'architecturetargets'
-ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP = 'arch_target_map'
+ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP = 'arch_target_map'  # Obsolete, replaced by NODE_TYPE_MAP
+NODE_TYPE_MAP = 'node_type_map'
 
 SECTION_BOT_CONTROL = 'bot_control'
 BOT_CONTROL_SETTING_COMMAND_PERMISSION = 'command_permission'
@@ -121,6 +122,10 @@ SECTION_SUBMITTED_JOB_COMMENTS = 'submitted_job_comments'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE = 'awaits_release'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG = 'awaits_release_delayed_begin_msg'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG = 'awaits_release_hold_release_msg'
+SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO = 'new_job_instance_repo'
+SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH = 'build_on_arch'
+SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH = 'build_for_arch'
+SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR = 'jobdir'
 SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT = 'initial_comment'
 SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR = 'with_accelerator'
 
@@ -134,6 +139,33 @@ JOB_HANDOVER_PROTOCOL_HOLD_RELEASE = 'hold_release'
 JOB_HANDOVER_PROTOCOLS_SET = {
     JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN,
     JOB_HANDOVER_PROTOCOL_HOLD_RELEASE
+}
+
+# Allows us to error on config items that were removed
+FORBIDDEN_CONFIG = {
+    SECTION_ARCHITECTURETARGETS: [
+        (
+            ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP,
+            f"Config invalid: '{ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP}' was removed and replaced by "
+            f"'{NODE_TYPE_MAP}'. See app.cfg.example for details."
+        )
+    ],
+    SECTION_REPO_TARGETS: [
+        (
+            REPO_TARGETS_SETTING_REPO_TARGET_MAP,
+            f"Config invalid: '{REPO_TARGETS_SETTING_REPO_TARGET_MAP} was removed. Repository targets can now be "
+            f"specified within the '{NODE_TYPE_MAP}' dictionary. See app.cfg.example for details."
+        )
+    ],
+    SECTION_SUBMITTED_JOB_COMMENTS: [
+        (
+            SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,
+            f"Config invalid: '{SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT}' was removed and replaced by "
+            f"'{SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO}', '{SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH}', "
+            f"'{SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH}' and '{SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR}'. "
+            "See app.cfg.example for details."
+        )
+    ]
 }
 
 
@@ -159,10 +191,10 @@ def read_config(path='app.cfg'):
     return config
 
 
-def check_required_cfg_settings(req_settings, path="app.cfg"):
+def check_cfg_settings(req_settings, path="app.cfg"):
     """
-    Reads the config file, checks if it contains the required settings,
-    if not logs an error message and exits.
+    Reads the config file, checks if it contains the required settings, and if it does not contain forbidden
+    (i.e. removed) settings. If the check fails, logs an error message and exits.
 
     Args:
         req_settings (dict (str, list)): required settings
@@ -182,4 +214,14 @@ def check_required_cfg_settings(req_settings, path="app.cfg"):
         for item in req_settings[section]:
             if item not in cfg[section]:
                 error(f'Missing configuration item "{item}" in section "{section}" of configuration file {path}.')
+
+    # Check for forbidden arguments
+    for section in FORBIDDEN_CONFIG:
+        if section in cfg:
+            for item in FORBIDDEN_CONFIG[section]:
+                # First element of the tuple is the forbidden config item, check if its in the section
+                if item[0] in cfg[section]:
+                    # Item 1 contains a specific error message
+                    error(item[1])
+
     return True

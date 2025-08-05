@@ -29,8 +29,8 @@ import waitress
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
-from tasks.build import check_build_permission, get_architecture_targets, get_repo_cfg, \
-    request_bot_build_issue_comments, submit_build_jobs
+from tasks.build import check_build_permission, get_node_types, request_bot_build_issue_comments, \
+    submit_build_jobs
 from tasks.deploy import deploy_built_artefacts, determine_job_dirs
 from tasks.clean_up import move_to_trash_bin
 from tools import config
@@ -43,7 +43,7 @@ from tools.pr_comments import ChatLevels, create_comment
 
 REQUIRED_CONFIG = {
     config.SECTION_ARCHITECTURETARGETS: [
-        config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP],       # required
+        config.NODE_TYPE_MAP],       # required
     config.SECTION_BOT_CONTROL: [
         # config.BOT_CONTROL_SETTING_CHATLEVEL,                      # optional
         config.BOT_CONTROL_SETTING_COMMAND_PERMISSION,             # required
@@ -104,10 +104,12 @@ REQUIRED_CONFIG = {
     config.SECTION_JOB_MANAGER: [
         config.JOB_MANAGER_SETTING_POLL_INTERVAL],                 # required
     config.SECTION_REPO_TARGETS: [
-        config.REPO_TARGETS_SETTING_REPO_TARGET_MAP,               # required
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required
     config.SECTION_SUBMITTED_JOB_COMMENTS: [
-        config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,     # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO,       # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH,       # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH,      # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR,              # required
         # config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE,      # optional
         config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG,  # required
         config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG,   # required
@@ -411,23 +413,21 @@ class EESSIBotSoftwareLayer(PyGHee):
         app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
         # TODO check if PR already has a comment with arch targets and
         # repositories
-        arch_map = get_architecture_targets(self.cfg)
-        repo_cfg = get_repo_cfg(self.cfg)
+        node_map = get_node_types(self.cfg)
 
-        comment = f"Instance `{app_name}` is configured to build for:"
-        architectures = ['/'.join(arch.split('/')[1:]) for arch in arch_map.keys()]
-        comment += "\n- architectures: "
-        if len(architectures) > 0:
-            comment += f"{', '.join([f'`{arch}`' for arch in architectures])}"
-        else:
-            comment += "none"
-        repositories = list(set([repo_id for repo_ids in repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP].values()
-                            for repo_id in repo_ids]))
-        comment += "\n- repositories: "
-        if len(repositories) > 0:
-            comment += f"{', '.join([f'`{repo_id}`' for repo_id in repositories])}"
-        else:
-            comment += "none"
+        comment = f"Instance `{app_name}` is configured to build on:"
+        for node in node_map:
+            comment += f"\n- Node type `{node}`:"
+            current_node_type = node_map[node]
+            if "os" in current_node_type:
+                comment += f"\n  - OS: `{current_node_type['os']}`"
+            if "cpu_subdir" in current_node_type:
+                comment += f"\n  - CPU architecture: `{current_node_type['cpu_subdir']}`"
+            if "repo_targets" in current_node_type:
+                comment += f"\n  - Repositories: `{current_node_type['repo_targets']}`"
+            if "accel" in current_node_type:
+                comment += f"\n  - Accelerators: `{current_node_type['accel']}`"
+            comment += "\n"
 
         self.log(f"PR opened: comment '{comment}'")
 
@@ -532,7 +532,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         build_msg = ''
         if check_build_permission(pr, event_info):
             # use filter from command
-            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters)
+            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters, bot_command.build_params)
             if submitted_jobs is None or len(submitted_jobs) == 0:
                 build_msg = "\n  - no jobs were submitted"
             else:
@@ -578,8 +578,8 @@ class EESSIBotSoftwareLayer(PyGHee):
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
-            github.IssueComment.IssueComment (note, github refers to
-                 PyGithub, not the github from the internal connections module)
+            (string): list item with a link to the issue comment that was created
+                containing the status overview
         """
         self.log("processing bot command 'status'")
         repo_name = event_info['raw_request_body']['repository']['full_name']
@@ -588,10 +588,12 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
-        comment_status += "\n|arch|result|date|status|url|"
-        comment_status += "\n|----|------|----|------|---|"
+        comment_status += "\n|on|for|repo|result|date|status|url|"
+        comment_status += "\n|----|----|----|------|----|------|---|"
         for x in range(0, len(status_table['date'])):
-            comment_status += f"\n|{status_table['arch'][x]}|"
+            comment_status += f"\n|{status_table['on arch'][x]}|"
+            comment_status += f"{status_table['for arch'][x]}|"
+            comment_status += f"{status_table['for repo'][x]}|"
             comment_status += f"{status_table['result'][x]}|"
             comment_status += f"{status_table['date'][x]}|"
             comment_status += f"{status_table['status'][x]}|"
@@ -599,7 +601,10 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         self.log(f"Overview of finished builds: comment '{comment_status}'")
         issue_comment = create_comment(repo_name, pr_number, comment_status, ChatLevels.MINIMAL)
-        return issue_comment
+        if issue_comment:
+            return f"\n  - added status comment {issue_comment.html_url}"
+        else:
+            return "\n  - failed to create status comment"
 
     def start(self, app, port=3000):
         """
@@ -692,7 +697,7 @@ def main():
     opts = event_handler_parse()
 
     # config is read and checked for settings to raise an exception early when the event_handler starts.
-    if config.check_required_cfg_settings(REQUIRED_CONFIG):
+    if config.check_cfg_settings(REQUIRED_CONFIG):
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")
