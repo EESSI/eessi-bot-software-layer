@@ -805,14 +805,20 @@ Note that the Slurm parameters should typically be chosen such that a single typ
 
 To command the bot to build on the `cpu_zen2` node type above, one would give the command `bot:build on:arch=zen2 ...`. To command the bot to build on the `gpu_h100` node type, one would give the command `bot:build on:arch=zen4,accel=nvidia/cc90 ...`.
 
-For a native build (i.e. building for `zen2` on a `zen2` node), one can pass `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2`, or use the short-hand `bot:build for:arch=x86_64/amd/zen2` (i.e. omitting the `on` argument implies a native build). This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture.
+For a native build (i.e. building for `zen2` on a `zen2` node), one can pass `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2`, or use the short-hand `bot:build for:arch=x86_64/amd/zen2` (i.e. omitting the `on` argument implies a native build; note that the reverse, omitting the `for` argument, does not work). This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture.
 
-For cross-compiling GPU code for Nvidia Compute Capabiltiy 8.0 (and a `zen2` CPU architecture), one would instruct the bot with `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2,accel=nvidia/cc80`. This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture with an `nvidia/cc80` GPU architecture.
+For cross-compiling GPU code for NVIDIA Compute Capabiltiy 8.0 (and a `zen2` CPU architecture), one would instruct the bot with `bot:build on:arch=zen2 for:arch=x86_64/amd/zen2,accel=nvidia/cc80`. This will trigger a build on the `cpu_zen2` node type (as configured above) and prepare a configuration file in the job directory that instructs to build for a `zen2` CPU architecture with an `nvidia/cc80` GPU architecture.
 
+Note that the `arch_target_map` and `repo_target_map` (used in version <=0.8.0) configuration option was replaced by `node_type_map`. The `arch_target_map` and `repo_target_map` that would be equivalent to the `node_type_map` above was
+
+```ini
+arch_target_map = { "linux/x86_64/amd/zen2": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1", "linux/x86_64/amd/zen4": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1" }
+repo_target_map = { "linux/x86_64/amd/zen2": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"], "linux/x86_64/amd/zen4": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"] }
+```
 
 #### `[repo_targets]` section
 
-The `[repo_targets]` section defines for which repositories and architectures the bot can run a job.
+The `[repo_targets]` section defines where the configuration for the repository targets defined in the `node_type_map` can be found
 
 The repository IDs are defined in a separate file, say `repos.cfg` which is
 stored in the directory defined via `repos_cfg_dir`:
