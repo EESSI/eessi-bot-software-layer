@@ -117,7 +117,7 @@ class EESSIBotSoftwareLayerJobManager:
 
         squeue_cmd = "%s --long --noheader --user=%s" % (self.poll_command, username)
         if self.job_name:
-            squeue_cmd += " --name=%s" % self.job_name
+            squeue_cmd += " --name='%s'" % self.job_name
         # Format the output of SLURM
         squeue_cmd += " --Format JobId:100@,Cluster:100@,Partition:100@,State:100@,Reason:100"
         squeue_output, squeue_err, squeue_exitcode = run_cmd(
