@@ -303,7 +303,7 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_id = new_job["jobid"]
 
-        # if placeholder is used in scontrol command
+        # processing placeholders in scontrol command which is defined in the bot's app.cfg (setting `scontrol_command`)
         try:
             self.scontrol_command = self.scontrol_command % new_job
         except KeyError:
