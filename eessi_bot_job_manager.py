@@ -117,7 +117,7 @@ class EESSIBotSoftwareLayerJobManager:
 
         squeue_cmd = "%s --long --noheader --user=%s" % (self.poll_command, username)
         if self.job_name:
-            squeue_cmd += " --name='%s'" % self.job_name
+            squeue_cmd += " --name=%s" % self.job_name
         # Format the output of SLURM
         squeue_cmd += " --Format JobId:100@,Cluster:100@,Partition:100@,State:100@,Reason:100"
         squeue_output, squeue_err, squeue_exitcode = run_cmd(
@@ -140,22 +140,23 @@ class EESSIBotSoftwareLayerJobManager:
         # get job info, logging any Slurm issues
         # Note, all output lines of squeue are processed because we run it with
         # --noheader.
-        for line in lines:
-            job = line.rstrip().split('@')
-            if len(job) == 5:
-                job_id = job[0].rstrip()
-                state = job[3].rstrip()
-                current_jobs[job_id] = {
-                    "jobid": job_id,
-                    "cluster": job[1].rstrip(),
-                    "partition": job[2].rstrip(),
-                    "state": state,
-                    "reason": job[4].rstrip(),
-                }
-                if state in bad_state_messages:
-                    log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
-            else:
-                raise Exception(f"The output of {squeue_cmd} does not have 5 job parameters")
+        if lines != ['']:
+            for line in lines:
+                job = line.rstrip().split('@')
+                if len(job) == 5:
+                    job_id = job[0].rstrip()
+                    state = job[3].rstrip()
+                    current_jobs[job_id] = {
+                        "jobid": job_id,
+                        "cluster": job[1].rstrip(),
+                        "partition": job[2].rstrip(),
+                        "state": state,
+                        "reason": job[4].rstrip(),
+                    }
+                    if state in bad_state_messages:
+                        log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
+                else:
+                    raise Exception(f"The output of {squeue_cmd} does not have 5 job parameters")
 
         return current_jobs
 
@@ -302,14 +303,12 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_id = new_job["jobid"]
 
-        # if placeholder "cluster" is used in scontrol command
+        # if placeholder is used in scontrol command
         try:
-            placeholder = 'new_job["cluster"]'
-            self.scontrol_command = self.scontrol_command % {
-                placeholder: new_job["cluster"]
-            }
+            self.scontrol_command = self.scontrol_command % new_job
         except KeyError:
-            log(f"Failed to process placeholder in scontrol_command. Expected {placeholder} or nothing.")
+            log(f"Failed to process {self.scontrol_command}.")
+            log(f"Information on placeholder is not collected in new_job: {new_job}.")
             raise
 
         scontrol_cmd = "%s --oneliner show jobid %s" % (
