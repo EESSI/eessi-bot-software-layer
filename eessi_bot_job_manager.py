@@ -142,16 +142,16 @@ class EESSIBotSoftwareLayerJobManager:
         # --noheader.
         if lines != ['']:
             for line in lines:
-                job = line.rstrip().split('@')
+                job = [x.rstrip() for x in line.rstrip().split('@')]
                 if len(job) == 5:
-                    job_id = job[0].rstrip()
-                    state = job[3].rstrip()
+                    job_id = job[0]
+                    state = job[3]
                     current_jobs[job_id] = {
                         "jobid": job_id,
-                        "cluster": job[1].rstrip(),
-                        "partition": job[2].rstrip(),
+                        "cluster": job[1],
+                        "partition": job[2],
                         "state": state,
-                        "reason": job[4].rstrip(),
+                        "reason": job[4],
                     }
                     if state in bad_state_messages:
                         log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
