@@ -891,6 +891,8 @@ scontrol_command = /usr/bin/scontrol
 ```
 
 `scontrol_command` is the full path to the Slurm command used for manipulating existing jobs. You may want to verify if `scontrol` is provided at that path or determine its actual location (via `which scontrol`).
+It is also possible to add placeholder values to the scontrol_command. This might be necessary on systems where the name of the clusters needs to be passed in order to manage the jobs. For example: `/usr/bin/scontrol --clusters=%%(cluster)s`.
+Only placeholders defined in `current_jobs` can be included in the scontrol_command this is currently jobid, cluster, partition, state and reason.
 
 #### `[submitted_job_comments]` section
 
