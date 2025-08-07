@@ -532,7 +532,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         build_msg = ''
         # Require that build_params is defined, it is required. Otherwise, return early
         if bot_command.build_params is None:
-            build_msg = "No 'for:' argument was passed to the bot:build command. This argumen is required, so "
+            build_msg = "No 'for:' argument was passed to the bot:build command. This argument is required, so "
             build_msg += "not submitting build jobs"
             return build_msg
 
