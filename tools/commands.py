@@ -87,6 +87,7 @@ class EESSIBotCommand:
         # TODO add function name to log messages
         cmd_as_list = cmd_str.split()
         self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
+        self.build_params = None
 
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
         if len(cmd_as_list) > 1:

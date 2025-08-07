@@ -530,6 +530,12 @@ class EESSIBotSoftwareLayer(PyGHee):
         pr_number = event_info['raw_request_body']['issue']['number']
         pr = gh.get_repo(repo_name).get_pull(pr_number)
         build_msg = ''
+        # Require that build_params is defined, it is required. Otherwise, return early
+        if bot_command.build_params is None:
+            build_msg = "No 'for:' argument was passed to the bot:build command. This argumen is required, so "
+            build_msg += "not submitting build jobs"
+            return build_msg
+
         if check_build_permission(pr, event_info):
             # use filter from command
             submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters, bot_command.build_params)
