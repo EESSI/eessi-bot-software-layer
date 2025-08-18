@@ -586,6 +586,34 @@ class EESSIBotSoftwareLayer(PyGHee):
         pr_number = event_info['raw_request_body']['issue']['number']
         status_table = request_bot_build_issue_comments(repo_name, pr_number)
 
+
+        # TODO: make the block until 'status_table = status_table_last' conditional on the bot command
+        # If the bot command is something like 'bot:status=last', then we should execute this sorting block
+        # First, add a timestamp for the date, so that we can use it for sorting
+        dates = status_table['date']
+        timestamps = []
+        for date in dates:
+            date_object = datetime.datetime.strptime(date, "%b %d %X %Z %Y")
+            timestamps.append(int(date_object.timestamp()))
+        status_table['timestamp'] = timestamps
+
+        # Figure out the sorting indices, so that things are sorted first by the 'for arch', and then by 'date'
+        sorted_indices = sorted(range(len(status_table['for arch'])), key=lambda x: (status_table['for arch'[x], status_table['timestamp'][x]))
+        # Reverse, so that the newest builds are first
+        sorted_indices.reverse()
+        # Apply the sorted indices to get a sorted table
+        sorted_table = {key: [status_table[key][i] for i in sorted_indices] for key in status_table}
+
+        # Keep only the first entry for each 'for arch', as that is now the newest
+        status_table_last = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []}
+        for x in range(0, len(status_table['date'])):
+            if status_table['for arch'][x] not in status_table_last['for arch']:
+                for key in status_table_last:
+                    status_table_last[key].append(status_table[key][x])
+
+        # overwrite the original status_table
+        status_table = status_table_last
+
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
         comment_status += "\n|on|for|repo|result|date|status|url|"
