@@ -604,7 +604,8 @@ class EESSIBotSoftwareLayer(PyGHee):
             status_table['timestamp'] = timestamps
 
             # Figure out the sorting indices, so that things are sorted first by the 'for arch', and then by 'date'
-            sorted_indices = sorted(range(len(status_table['for arch'])), key=lambda x: (status_table['for arch'][x], status_table['timestamp'][x]))
+            key_func = lambda x: (status_table['for arch'][x], status_table['timestamp'][x])
+            sorted_indices = sorted(range(len(status_table['for arch'])), key=key_func)
             # Reverse, so that the newest builds are first
             sorted_indices.reverse()
             # Apply the sorted indices to get a sorted table
@@ -612,7 +613,9 @@ class EESSIBotSoftwareLayer(PyGHee):
             self.log(f"Sorted status table: {sorted_table}")
 
             # Keep only the first entry for each 'for arch', as that is now the newest
-            status_table_last = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []}
+            status_table_last = {
+                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []
+            }
             for x in range(0, len(sorted_table['date'])):
                 if sorted_table['for arch'][x] not in status_table_last['for arch']:
                     self.log(f"arch: {sorted_table['for arch'][x]} not yet in status_table_last")
@@ -621,7 +624,8 @@ class EESSIBotSoftwareLayer(PyGHee):
                         status_table_last[key].append(sorted_table[key][x])
 
             # Re-sort, now only on 'for arch', for nicer viewing
-            sorted_indices = sorted(range(len(status_table_last['for arch'])), key=lambda x: status_table_last['for arch'][x])
+            key_func = lambda x: status_table_last['for arch'][x]
+            sorted_indices = sorted(range(len(status_table_last['for arch'])), key=key_func)
             sorted_table_last = {key: [status_table_last[key][i] for i in sorted_indices] for key in status_table_last}
 
             # overwrite the original status_table
