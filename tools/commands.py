@@ -87,6 +87,7 @@ class EESSIBotCommand:
         # TODO add function name to log messages
         cmd_as_list = cmd_str.split()
         self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
+        self.general_args = []
 
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
         if len(cmd_as_list) > 1:
@@ -109,9 +110,14 @@ class EESSIBotCommand:
                     # according to the expected argument format for 'for:'
                     self.build_params = EESSIBotBuildParams(build_params)
                 else:
-                    # Anything that is not 'on:' or 'for:' should just be passed on as normal
-                    # No further parsing of the value is needed
-                    other_filter_args.extend([arg])
+                    # Anything that is not 'on:' or 'for:'
+                    # Check if it's a filter argument, if so, pass it on to other_filter_args witout further parsing
+                    # If it's not a filter argument, it is a general argument - just store it so any other function
+                    # can read it
+                    if ':' in arg:
+                        other_filter_args.extend([arg])
+                    else:
+                        self.general_args.append(arg)
 
             # If no 'on:' is found in the argument list, everything that follows the 'for:' argument
             # (until the next space) is considered the argument list for the action filters
