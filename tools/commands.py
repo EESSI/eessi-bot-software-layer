@@ -89,6 +89,7 @@ class EESSIBotCommand:
         self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
         self.general_args = []
         self.action_filters = None
+        self.build_params = None
 
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
         if len(cmd_as_list) > 1:

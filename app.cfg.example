@@ -384,6 +384,11 @@ poll_command = /usr/bin/squeue
 poll_interval = 60
 
 # full path to the command for manipulating existing jobs
+# It is also possible to add placeholder values to the scontrol_command.
+# An example where this may be useful is in a setup where multiple clusters are managed by the same SLURM instance, 
+# and the `scontrol_command` for that instance needs to get the correct cluster name passed. 
+# This can be achieved by defining `scontrol_command = /usr/bin/scontrol --clusters=%%(cluster)s`. 
+# Valid placeholder names are currently: `jobid`, `cluster`, `partition`, `state`, and `reason`.
 scontrol_command = /usr/bin/scontrol
 
 
