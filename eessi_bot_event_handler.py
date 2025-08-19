@@ -604,7 +604,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             status_table['timestamp'] = timestamps
 
             # Figure out the sorting indices, so that things are sorted first by the 'for arch', and then by 'date'
-            sorted_indices = sorted(range(len(status_table['for arch'])), key=lambda x: (status_table['for arch'[x], status_table['timestamp'][x]))
+            sorted_indices = sorted(range(len(status_table['for arch'])), key=lambda x: (status_table['for arch'][x], status_table['timestamp'][x]))
             # Reverse, so that the newest builds are first
             sorted_indices.reverse()
             # Apply the sorted indices to get a sorted table
