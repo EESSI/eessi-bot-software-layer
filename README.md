@@ -891,7 +891,7 @@ scontrol_command = /usr/bin/scontrol
 ```
 
 `scontrol_command` is the full path to the Slurm command used for manipulating existing jobs. You may want to verify if `scontrol` is provided at that path or determine its actual location (via `which scontrol`).
-It is also possible to add placeholder values to the scontrol_command. These placeholders can capture output from the `squeue` command that the bot runs internally, and pass it back to the `scontrol_command`. An example where this is in a setup where multiple clusters are managed by the same SLURM instance, and the `scontrol_command` for that instance needs to get the correct cluster name passed. This can be achieved by defining `scontrol_command = /usr/bin/scontrol --clusters=%%(cluster)s`. Valid placeholder names are currently: `jobid`, `cluster`, `partition`, `state`, and `reason`.
+It is also possible to add placeholder values to the scontrol_command. These placeholders can capture output from the `squeue` command that the bot runs internally, and pass it back to the `scontrol_command`. An example where this may be useful is in a setup where multiple clusters are managed by the same SLURM instance, and the `scontrol_command` for that instance needs to get the correct cluster name passed. This can be achieved by defining `scontrol_command = /usr/bin/scontrol --clusters=%%(cluster)s`. Valid placeholder names are currently: `jobid`, `cluster`, `partition`, `state`, and `reason`.
 
 #### `[submitted_job_comments]` section
 
