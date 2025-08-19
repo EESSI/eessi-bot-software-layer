@@ -88,6 +88,7 @@ class EESSIBotCommand:
         cmd_as_list = cmd_str.split()
         self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
         self.general_args = []
+        self.action_filters = None
 
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
         if len(cmd_as_list) > 1:
@@ -145,6 +146,7 @@ class EESSIBotCommand:
             # so no special parsing needed there
             log(f"Extracted filter arguments related to hardware target: {normalized_filters}")
             log(f"Other extracted filter arguments: {other_filter_args}")
+            log(f"Other general arguments: {self.general_args}")
             normalized_filters += other_filter_args
 
             # Finally, change into a space-separated string, as expected by EESSIBotActionFilter
@@ -175,5 +177,8 @@ class EESSIBotCommand:
         Returns:
             string: the string representation created by the method
         """
-        action_filters_str = self.action_filters.to_string()
-        return f"{' '.join([self.command, action_filters_str]).rstrip()}"
+        if self.action_filters is None:
+            return ""
+        else:
+            action_filters_str = self.action_filters.to_string()
+            return f"{' '.join([self.command, action_filters_str]).rstrip()}"
