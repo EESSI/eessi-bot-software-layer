@@ -305,23 +305,23 @@ class EESSIBotSoftwareLayerJobManager:
 
         # processing placeholders in scontrol command which is defined in the bot's app.cfg (setting `scontrol_command`)
         try:
-            self.scontrol_command = self.scontrol_command % new_job
+            templated_scontrol_command = self.scontrol_command % new_job
         except KeyError:
             log(f"Failed to process {self.scontrol_command}.")
             log(f"Information on placeholder is not collected in new_job: {new_job}.")
             raise
 
-        scontrol_cmd = "%s --oneliner show jobid %s" % (
-            self.scontrol_command,
+        cmd = "%s --oneliner show jobid %s" % (
+            templated_scontrol_command,
             job_id,
         )
         scontrol_output, scontrol_err, scontrol_exitcode = run_cmd(
-            scontrol_cmd,
+            cmd,
             "process_new_job(): scontrol command",
             log_file=self.logfile,
         )
 
-        # parse output of 'scontrol_cmd'
+        # parse output of scontrol command that fetches job info
         job_info = self.parse_scontrol_show_job_output(str(scontrol_output))
 
         # check if job_info contains 'WorkDir', if not we cannot process the job
@@ -366,7 +366,7 @@ class EESSIBotSoftwareLayerJobManager:
             extra_info = ''
             if self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
                 release_cmd = "%s release %s" % (
-                    self.scontrol_command,
+                    templated_scontrol_command,
                     job_id,
                 )
 
