@@ -18,14 +18,20 @@ Improvements:
 * add support for cloning target repository via ssh (#300)
 * major refactoring of the definition of build targets and breaking change of
   the user interface to trigger build (#312, #329, #331)
+  * `arch_target_map` is replaced by `node_type_map` which provides a more
+     comprehensive/flexible approach to define architectures that are available
+     for build jobs
   * `bot:build` filters `architecture:` and `accel:` are replaced by `on:` and
     `for:` (for details see documentation at https://www.eessi.io/docs/bot/#building)
 * add CI to build and publish smee-client container image (#321, #322)
 * make space before bot command optional (#324)
 * support template values in the `scontrol` command (#327)
-* support additional parameter for `bot:status` command (#335)
+* support additional parameter for `bot:status` command (#334)
 
 Changes to 'app.cfg' settings (see README.md and app.cfg.example for details):
+* REMOVED (required) 'arch_target_map' in section '[buildenv]', replaced by
+  'node_type_map'
+* NEW (required) 'node_type_map' in section '[buildenv]'
 * NEW (optional) 'clone_git_repo_via' in section '[buildenv]'
 * NEW (required) 'pr_diff_failure' in section '[download_pr_comments]'
 * NEW (required) 'pr_diff_tip' in section '[download_pr_comments]'
