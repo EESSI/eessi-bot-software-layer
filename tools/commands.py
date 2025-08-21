@@ -87,6 +87,8 @@ class EESSIBotCommand:
         # TODO add function name to log messages
         cmd_as_list = cmd_str.split()
         self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
+        self.general_args = []
+        self.action_filters = None
         self.build_params = None
 
         # TODO always init self.action_filters with empty EESSIBotActionFilter?
@@ -110,9 +112,14 @@ class EESSIBotCommand:
                     # according to the expected argument format for 'for:'
                     self.build_params = EESSIBotBuildParams(build_params)
                 else:
-                    # Anything that is not 'on:' or 'for:' should just be passed on as normal
-                    # No further parsing of the value is needed
-                    other_filter_args.extend([arg])
+                    # Anything that is not 'on:' or 'for:'
+                    # Check if it's a filter argument, if so, pass it on to other_filter_args witout further parsing
+                    # If it's not a filter argument, it is a general argument - just store it so any other function
+                    # can read it
+                    if ':' in arg:
+                        other_filter_args.extend([arg])
+                    else:
+                        self.general_args.append(arg)
 
             # If no 'on:' is found in the argument list, everything that follows the 'for:' argument
             # (until the next space) is considered the argument list for the action filters
@@ -140,6 +147,7 @@ class EESSIBotCommand:
             # so no special parsing needed there
             log(f"Extracted filter arguments related to hardware target: {normalized_filters}")
             log(f"Other extracted filter arguments: {other_filter_args}")
+            log(f"Other general arguments: {self.general_args}")
             normalized_filters += other_filter_args
 
             # Finally, change into a space-separated string, as expected by EESSIBotActionFilter
@@ -170,5 +178,8 @@ class EESSIBotCommand:
         Returns:
             string: the string representation created by the method
         """
-        action_filters_str = self.action_filters.to_string()
-        return f"{' '.join([self.command, action_filters_str]).rstrip()}"
+        if self.action_filters is None:
+            return ""
+        else:
+            action_filters_str = self.action_filters.to_string()
+            return f"{' '.join([self.command, action_filters_str]).rstrip()}"

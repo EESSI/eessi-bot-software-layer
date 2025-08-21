@@ -592,6 +592,55 @@ class EESSIBotSoftwareLayer(PyGHee):
         pr_number = event_info['raw_request_body']['issue']['number']
         status_table = request_bot_build_issue_comments(repo_name, pr_number)
 
+        if 'last_build' in bot_command.general_args:
+            # If the bot command is something like 'bot:status =last_build', then only retain the last build for each
+            # architecture in the status_table
+            # To do this, we first insert a timestamp to facilitate sorting by time
+            # Then, we obtain sorting indices that first sort by architecture, then by build time
+            # Then, we reverse the sorting, so that the last build (highest timestamp) for each archictecture occurs
+            # first.
+            # Finally, we copy the table, but each time we encounter an entry for an architecture that we've already
+            # copied, we ignore it, since - as a result of the sorting - the second entry is always older than the
+            # first
+            dates = status_table['date']
+            timestamps = []
+            for date in dates:
+                date_object = datetime.strptime(date, "%b %d %X %Z %Y")
+                timestamps.append(int(date_object.timestamp()))
+            status_table['timestamp'] = timestamps
+
+            # Figure out the sorting indices, so that things are sorted first by the 'for arch', and then by 'date'
+            sorted_indices = sorted(
+                range(len(status_table['for arch'])),
+                key=lambda x: (status_table['for arch'][x], status_table['timestamp'][x])
+            )
+            # Reverse, so that the newest builds are first
+            sorted_indices.reverse()
+            # Apply the sorted indices to get a sorted table
+            sorted_table = {key: [status_table[key][i] for i in sorted_indices] for key in status_table}
+            self.log(f"Sorted status table: {sorted_table}")
+
+            # Keep only the first entry for each 'for arch', as that is now the newest
+            status_table_last = {
+                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []
+            }
+            for x in range(0, len(sorted_table['date'])):
+                if sorted_table['for arch'][x] not in status_table_last['for arch']:
+                    self.log(f"arch: {sorted_table['for arch'][x]} not yet in status_table_last")
+                    for key in status_table_last:
+                        self.log(f"Adding to '{key}' and the value {sorted_table[key][x]}")
+                        status_table_last[key].append(sorted_table[key][x])
+
+            # Re-sort, now only on 'for arch', for nicer viewing
+            sorted_indices = sorted(
+                range(len(status_table_last['for arch'])),
+                key=lambda x: status_table_last['for arch'][x]
+            )
+            sorted_table_last = {key: [status_table_last[key][i] for i in sorted_indices] for key in status_table_last}
+
+            # overwrite the original status_table
+            status_table = sorted_table_last
+
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
         comment_status += "\n|on|for|repo|result|date|status|url|"
