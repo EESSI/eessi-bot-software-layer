@@ -17,7 +17,7 @@ Bug fixes:
 Improvements:
 * add support for cloning target repository via ssh (#300)
 * major refactoring of the definition of build targets and breaking change of
-  the user interface to trigger build (#312, #329, #331)
+  the user interface to trigger build (#312, #329, #331, #337)
   * `arch_target_map` is replaced by `node_type_map` which provides a more
      comprehensive/flexible approach to define architectures that are available
      for build jobs
