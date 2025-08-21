@@ -1081,7 +1081,7 @@ moved and where.
 
 # Step 6: Creating a ReFrame configuration file for the test step (only needed when building for the [EESSI software layer](https://github.com/EESSI/software-layer))
 
-Part of the test step of the EESSI software layer is running the EESSI test suite. This requires putting a ReFrame configuration file in place that describes the partitions in the `arch_target_map` of the bot config.
+Part of the test step of the EESSI software layer is running the EESSI test suite. This requires putting a ReFrame configuration file in place that describes the partitions in the `node_type_map` of the bot config.
 
 You can find general documentation on how to write a ReFrame config file in the [EESSI documentation](https://www.eessi.io/docs/test-suite/ReFrame-configuration-file/). However, some specifics apply when setting things up for the test step:
 
@@ -1196,7 +1196,7 @@ site_configuration = {
 
 ## Approach 2: describing a virtual node
 
-In this approach, we describe a virtual node configuration for which the size matches exactly what is allocated by the bot (through the `slurm_params` and `arch_target_map`). In this example, we'll assume that this node has 4 GPUs and 72 cores, distributed over 2 sockets each consisting of 1 NUMA domain. We also assume our bot is configured with `slurm_params = --hold --nodes=1 --export=None --time=0:30:0` and `arch_target_map = {"linux/x86_64/intel/skylake_avx512" : "--partition=gpu --cpus-per-task=18 --gpus-per-node 1"}`, i.e. it effectively allocates a quarter node. We describe a virtual partition for ReFrame as if this quarter node is a full node, i.e. we pretend it is a partition with 18 cores and 1 GPU per node, with 1 socket.
+In this approach, we describe a virtual node configuration for which the size matches exactly what is allocated by the bot (through the `slurm_params` and `node_type_map`). In this example, we'll assume that this node has 4 GPUs and 72 cores, distributed over 2 sockets each consisting of 1 NUMA domain. We also assume our bot is configured with `slurm_params = --hold --nodes=1 --export=None --time=0:30:0` and `node_type_map = {"linux/x86_64/intel/skylake_avx512" : "--partition=gpu --cpus-per-task=18 --gpus-per-node 1"}`, i.e. it effectively allocates a quarter node. We describe a virtual partition for ReFrame as if this quarter node is a full node, i.e. we pretend it is a partition with 18 cores and 1 GPU per node, with 1 socket.
 
 We would first have to hardcode the CPU configuration.
 
@@ -1246,7 +1246,7 @@ For the GPU configuration, we simply put:
 }
 ```
 
-To match the fact that we allocate 1 GPU in the `arch_target_map`.
+To match the fact that we allocate 1 GPU in the `node_type_map`.
 
 ### Complete example config
 
