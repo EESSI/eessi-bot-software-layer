@@ -1,6 +1,36 @@
 This file contains a description of the major changes to the EESSI
 build-and-deploy bot. For more detailed information, please see the git log.
 
+v0.9.0 (21 August 2025)
+--------------------------
+
+This is a minor release of the EESSI build-and-deploy bot.
+
+Note! Though it is a minor release it includes breaking changes of the user
+interface for triggering build jobs. For details see below and documentation at
+https://www.eessi.io/docs/bot/#building
+
+Bug fixes:
+* revised and updated app.cfg.example and README.md (#325)
+* do not overwrite config value for scontrol command (#335)
+
+Improvements:
+* add support for cloning target repository via ssh (#300)
+* major refactoring of the definition of build targets and breaking change of
+  the user interface to trigger build (#312, #329, #331)
+  * `bot:build` filters `architecture:` and `accel:` are replaced by `on:` and
+    `for:` (for details see documentation at https://www.eessi.io/docs/bot/#building)
+* add CI to build and publish smee-client container image (#321, #322)
+* make space before bot command optional (#324)
+* support template values in the `scontrol` command (#327)
+* support additional parameter for `bot:status` command (#335)
+
+Changes to 'app.cfg' settings (see README.md and app.cfg.example for details):
+* NEW (optional) 'clone_git_repo_via' in section '[buildenv]'
+* NEW (required) 'pr_diff_failure' in section '[download_pr_comments]'
+* NEW (required) 'pr_diff_tip' in section '[download_pr_comments]'
+
+
 v0.8.0 (23 May 2025)
 --------------------------
 
