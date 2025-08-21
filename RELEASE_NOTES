@@ -6,9 +6,9 @@ v0.9.0 (21 August 2025)
 
 This is a minor release of the EESSI build-and-deploy bot.
 
-Note! Though it is a minor release it includes breaking changes of the user
-interface for triggering build jobs. For details see below and documentation at
-https://www.eessi.io/docs/bot/#building
+Note! Though it is a minor release it includes breaking changes of the bot
+configuration and the user interface for triggering build jobs. For details
+see below and documentation at https://www.eessi.io/docs/bot/#building
 
 Bug fixes:
 * revised and updated app.cfg.example and README.md (#325)
@@ -20,18 +20,22 @@ Improvements:
   the user interface to trigger build (#312, #329, #331, #337)
   * `arch_target_map` is replaced by `node_type_map` which provides a more
      comprehensive/flexible approach to define architectures that are available
-     for build jobs
+     for build jobs; for details, see https://github.com/EESSI/eessi-bot-software-layer?tab=readme-ov-file#architecturetargets-section
+  * the `repo_target_map` setting is removed because the information is now
+    included in the `node_type_map` setting
   * `bot:build` filters `architecture:` and `accel:` are replaced by `on:` and
     `for:` (for details see documentation at https://www.eessi.io/docs/bot/#building)
 * add CI to build and publish smee-client container image (#321, #322)
 * make space before bot command optional (#324)
-* support template values in the `scontrol` command (#327)
-* support additional parameter for `bot:status` command (#334)
+* support template values in the `scontrol` command (#327, #335)
+* support additional parameter (`last_build`) for `bot:status` command (#334)
 
 Changes to 'app.cfg' settings (see README.md and app.cfg.example for details):
-* REMOVED (required) 'arch_target_map' in section '[buildenv]', replaced by
+* REMOVED (required) 'arch_target_map' in section '[architecturetargets]', replaced by
   'node_type_map'
-* NEW (required) 'node_type_map' in section '[buildenv]'
+* REMOVED (required) 'repo_target_map' in section '[repo_targets]', replaced by
+  'node_type_map'
+* NEW (required) 'node_type_map' in section '[architecturetargets]'
 * NEW (optional) 'clone_git_repo_via' in section '[buildenv]'
 * NEW (required) 'pr_diff_failure' in section '[download_pr_comments]'
 * NEW (required) 'pr_diff_tip' in section '[download_pr_comments]'
