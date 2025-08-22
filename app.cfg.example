@@ -61,15 +61,20 @@ command_response_fmt =
     {comment_result}
     </details>
 
-# chattiness level of the bot in terms of writing comments into PRs (minimal, basic, or chatty)
+# chattiness level of the bot in terms of writing comments into PRs
+# (incognito - no comments, minimal - respond with single comment on bot
+# commands `help`, `show_config`, `status` and `build` and update job
+# progress, basic - minimal + report failures, or chatty - comments on
+# any event being processed)
 chatlevel = basic
 
 [buildenv]
-# name of the job script used for building an EESSI stack
+# name of the job script that is submitted by the event handler (e.g.,
+# used for building an EESSI stack)
 build_job_script = PATH_TO_EESSI_BOT/scripts/bot-build.slurm
 
-# path to directory on shared filesystem that can be used for sharing data across build jobs
-# (for example source tarballs used by EasyBuild)
+# path to a directory on a shared filesystem that can be used for sharing
+# data across build jobs (for example source tarballs used by EasyBuild)
 shared_fs_path = PATH_TO_SHARED_DIRECTORY
 
 # Path (directory) to which build logs for (only) failing builds should be copied by bot/build.sh script
@@ -90,6 +95,10 @@ container_cachedir = PATH_TO_SHARED_DIRECTORY
 # http_proxy = http://PROXY_DNS:3128/
 # https_proxy = http://PROXY_DNS:3128/
 
+# Used to give all jobs of a bot instance the same name. Can be used to allow
+# multiple bot instances running on the same Slurm cluster.
+job_name = prod
+
 # The job_delay_begin_factor setting defines how many times the poll_interval a
 # job's begin (EligibleTime) from now should be delayed if the handover protocol
 # is set to `delayed_begin` (see setting `job_handover_protocol`). That is, if
@@ -108,10 +117,6 @@ job_delay_begin_factor = 2
 #    also, the status update in the PR comment of the job is extended by noting
 #    the 'EligibleTime'
 job_handover_protocol = hold_release
-
-# Used to give all jobs of a bot instance the same name. Can be used to allow
-# multiple bot instances running on the same Slurm cluster.
-job_name = prod
 
 # directory under which the bot prepares directories per job
 #   structure created is as follows: YYYY.MM/pr_PR_NUMBER/event_EVENT_ID/run_RUN_NUMBER/OS+SUBDIR
@@ -150,16 +155,17 @@ slurm_params = --hold
 # full path to the job submission command
 submit_command = /usr/bin/sbatch
 
-# which GH account has the permission to trigger the build (by setting
-# the label 'bot:build' (apparently this cannot be restricted on GitHub)
-# if value is left/empty everyone can trigger the build
-# value can be a space delimited list of GH accounts
-build_permission =
+# defines which GitHub accounts have the permission to trigger
+# build jobs, i.e., for which accounts the bot acts on `bot: build ...`
+# commands. If the value is left empty, everyone can trigger build jobs.
+build_permission = -NOT_ALLOWED_GH_ACCOUNT_NAME-
 
 # template for comment when user who set a label has no permission to trigger build jobs
 no_build_permission_comment = Label `bot:build` has been set by user `{build_labeler}`, but this person does not have permission to trigger builds
 
 # whether or not to allow updating the submit options via custom module det_submit_opts
+# Should only be enabled (true) with care because this will result in code from the target
+# repository being executed by the event handler process, that is, not in a compute job.
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
@@ -174,7 +180,29 @@ allow_update_submit_opts = false
 # 'exportvariable:SKIP_TESTS=yes' as a filter, the key-value pair would be
 # "SKIP_TESTS=yes".
 # allowed_exportvars = ["NAME1=value_1a", "NAME1=value_1b", "NAME2=value_2"]
+#
+# It's safe to use the following line as default setting:
+allowed_exportvars = []
 
+# mechanisn to use to clone Git repository
+# 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)
+# In case of using 'ssh', one may need additional steps to ensure that the bot
+# uses the right ssh key and does not ask for a passphrase (if the key used is
+# protected with one). Here are a few things to consider:
+#  - if the ssh key to be used does not have a standard name (e.g., 'id_rsa'),
+#    add the following entry to '~/.ssh/config' in the bot's account
+#
+#    Host github.com
+#      User git
+#      IdentityFile ~/.ssh/NAME_OF_PRIVATE_KEY_FILE
+#
+#  - if the key is protected by a passphrase (**highly recommended**), run an
+#    SSH agent and add the key to it (with the following two commands)
+#
+#    eval $(ssh-agent -s)
+#    ssh-add ~/.ssh/NAME_OF_PRIVATE_KEY_FILE
+
+clone_git_repo_via = https
 
 [deploycfg]
 # script for uploading built software packages
@@ -191,36 +219,15 @@ artefact_upload_script = PATH_TO_EESSI_BOT/scripts/eessi-upload-to-staging
 endpoint_url = URL_TO_S3_SERVER
 
 # bucket name:
-# can be a string value, to always use same bucket regardless of target repo,
-# or can be a mapping of target repo id (see also repo_target_map) to bucket name
-# like: bucket_name = {"eessi-pilot-2023.06": "eessi-staging-pilot-2023.06", "eessi.io-2023.06": "software.eessi.io-2023.06"}
+# the value can be a simple string, to always use same bucket regardless of
+# the target repo, or can be a mapping of a target repo id (see also
+# setting repo_target_map) to a bucket name as in
+# bucket_name = {
+#   "eessi.io-2023.06-software": "eessi.io-staging-2023.06",
+#   "eessi.io-2025.06-software": "software.eessi.io-2023.06"
+# }
 bucket_name = eessi-staging
 
-# settings for signing artefacts with JSON-like format
-#   REPO_ID: { "script": PATH_TO_SIGN_SCRIPT, "key": PATH_TO_KEY_FILE, "container_runtime": PATH_TO_CONTAINER_RUNTIME }
-#  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
-#  checked out pull request of the target repository (e.g.,
-#  EESSI/software-layer).
-#  The bot calls the script with the two arguments:
-#   1. private key (as provided by the attribute 'key')
-#   2. path to the file to be signed (the upload script will determine that)
-# NOTE (on "container_runtime"), signing requires a recent installation of OpenSSH
-#   (8.2 or newer). If the frontend where the event handler runs does not have that
-#   version installed, you can specify a container runtime via the 'container_runtime'
-#   attribute below. Currently, only Singularity or Apptainer are supported.
-# NOTE (on the key), make sure the file permissions are restricted to `0600` (only
-#   readable+writable by the file owner, or the signing will likely fail.
-# Note (on json format), make sure no trailing commas are used after any elements
-#   or parsing/loading the json will likely fail. Also, the whole value should start
-#   at a new line and be indented as shown below.
-signing =
-    {
-        "eessi.io-2023.06-software: {
-            "script": PATH_TO_SIGN_SCRIPT,
-            "key": PATH_TO_EESSI_BOT/config/user-site-system.key,
-            "container_runtime": PATH_TO_CONTAINER_RUNTIME
-        }
-    }
 # upload policy: defines what policy is used for uploading built artefacts
 #                to an S3 bucket
 # 'all' ..: upload all artefacts (mulitple uploads of the same artefact possible)
@@ -230,9 +237,9 @@ signing =
 # 'none'  : do not upload any built artefacts
 upload_policy = once
 
-# which GH account has the permission to trigger the deployment (by setting
+# which GH account has the permission to trigger the deployment by setting
 # the label 'bot:deploy' (apparently this cannot be restricted on GitHub)
-# if value is left/empty everyone can trigger the deployment
+# if value is left/empty _no one_ can trigger the deployment
 # value can be a space delimited list of GH accounts
 deploy_permission =
 
@@ -261,21 +268,99 @@ no_deploy_permission_comment = Label `bot:deploy` has been set by user `{deploy_
 metadata_prefix =
 artefact_prefix =
 
+# settings for signing artefacts with JSON-like format
+#
+#    "REPO_ID": { "script": "PATH_TO_SIGN_SCRIPT", "key": "PATH_TO_KEY_FILE", "container_runtime": "PATH_TO_CONTAINER_RUNTIME" }
+#
+#  REPO_ID is the repository ID. Repository IDs are defined in a file `repos.cfg`
+#  and _must_ match it (see setting `repos_cfg_dir`).
+#
+#  If PATH_TO_SIGN_SCRIPT is a relative path, the script must reside in the
+#  checked out pull request of the target repository (e.g.,
+#  EESSI/software-layer).
+#
+#  The bot calls the script with the two arguments:
+#   1. private key (as provided by the attribute 'key')
+#   2. path to the file to be signed (the upload script will determine that)
+#
+# NOTE (on "container_runtime"), signing requires a recent installation of OpenSSH
+#   (8.2 or newer). If the frontend where the event handler runs does not have that
+#   version installed, you can specify a container runtime via the 'container_runtime'
+#   attribute below. Currently, only Singularity or Apptainer are supported.
+# NOTE (on the private key file), make sure the file permissions are restricted to `0600`
+#   (only readable+writable by the file owner) or the signing will likely fail.
+# NOTE (on the JSON-like format), make sure commas are only used for separating elements
+#   or parsing/loading the json will likely fail. Also, the whole value should start
+#   at a new line and be indented as shown below.
+# NOTE (on double quotes), as shown in the example below, use double quotes for all keys
+#   and values.
+signing =
+    {
+        "eessi.io-2023.06-software": {
+            "script": "PATH_TO_SIGN_SCRIPT",
+            "key": "PATH_TO_EESSI_BOT/config/user-site-system.key",
+            "container_runtime": "PATH_TO_CONTAINER_RUNTIME"
+        }
+    }
+
 
 [architecturetargets]
-# defines both for which architectures the bot will build
-#   and what submission parameters shall be used
-arch_target_map = { "linux/x86_64/generic" : "--constraint shape=c4.2xlarge", "linux/x86_64/amd/zen2": "--constraint shape=c5a.2xlarge" }
+# arch_target_map has been replaced by node_type_map
+# arch_target_map = {
+# }
 
+# Each entry in the node_type_map dictionary describes a build node type. The key is a (descriptive) name for this build node, and its value is a dictionary containing the following build node properties as key-value pairs:
+  - os: its operating system (os)
+  - cpu_subdir: its CPU architecture
+  - slurm_params: the SLURM parameters that need to be passed to submit jobs to it
+  - repo_targets: supported repository targets for this node type
+  - accel (optional): which accelerators this node has
+# All are strings, except repo_targets, which is a list of strings.
+# Note that the Slurm parameters should typically be chosen such that a single type of node (with one specific type of
+# CPU and one specific type of GPU) should be allocated.
+# Below is an example configuration for a system that contains 4 types of nodes: zen2 CPU nodes, zen4 CPU nodes,
+# GPU nodes with an icelake CPU and A100 GPU, GPU nodes with a zen4 CPU and an H100 GPU.
+# The 'on:' argument to the bot build command determines which node type will be allocated for the build job,
+# e.g. 'bot:build on:arch=zen4,accel=nvidia/cc90 for:...' will match the gpu_h100 node type below.
+# If no 'on:' argument is passed to the build command, the 'for:' argument is used instead,
+# e.g. 'bot:build for:arch=icelake,accel=nvidia/cc80' will match the gpu_a100 node type below.
+node_type_map = {
+    "cpu_zen2": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen2",
+        "slurm_params": "-p rome --nodes 1 --ntasks-per-node 16 --cpus-per-task 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    "cpu_zen4": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen4",
+        "accel": "None",
+        "slurm_params": "-p genoa --nodes 1 --ntasks-per-node 24 --cpus-per-task 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    "gpu_a100": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/intel/icelake",
+        "accel": "nvidia/cc80",
+        "slurm_params": "-p gpu_a100 --nodes 1 --tasks-per-node 18 --cpus-per-task 1 --gpus-per-node 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    },
+    "gpu_h100": {
+        "os": "linux",
+        "cpu_subdir": "x86_64/amd/zen4",
+        "accel": "nvidia/cc90",
+        "slurm_params": "-p gpu_h100 --nodes 1 --tasks-per-node 16 --cpus-per-task 1 --gpus-per-node 1",
+        "repo_targets": ["eessi.io-2023.06-compat","eessi.io-2023.06-software"]
+    }}
 
 [repo_targets]
-# defines for which repository a arch_target should be build for
-#
-# EESSI/2021.12 and NESSI/2022.11
-repo_target_map = { "linux/x86_64/amd/zen2" : ["eessi-2021.12","nessi.no-2022.11"] }
+
+# No longer used, repo targets are now specified per node type in the node_type_map
+# repo_target_map = {
+#     "linux/x86_64/amd/zen2" : ["eessi.io-2023.06-software","eessi.io-2025.06-software"] }
 
 # points to definition of repositories (default repository defined by build container)
-repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/cfg_bundles
+repos_cfg_dir = PATH_TO_SHARED_DIRECTORY/repos
 
 
 # configuration for event handler which receives events from a GitHub repository.
@@ -299,6 +384,11 @@ poll_command = /usr/bin/squeue
 poll_interval = 60
 
 # full path to the command for manipulating existing jobs
+# It is also possible to add placeholder values to the scontrol_command.
+# An example where this may be useful is in a setup where multiple clusters are managed by the same SLURM instance, 
+# and the `scontrol_command` for that instance needs to get the correct cluster name passed. 
+# This can be achieved by defining `scontrol_command = /usr/bin/scontrol --clusters=%%(cluster)s`. 
+# Valid placeholder names are currently: `jobid`, `cluster`, `partition`, `state`, and `reason`.
 scontrol_command = /usr/bin/scontrol
 
 
@@ -311,15 +401,21 @@ scontrol_command = /usr/bin/scontrol
 #         are removed, the output (in PR comments) will lack important
 #         information.
 [submitted_job_comments]
-awaits_release = job id `{job_id}` awaits release by job manager
+# awaits_release is no longer used since bot release v0.7.0
+# awaits_release = job id `{job_id}` awaits release by job manager
 awaits_release_delayed_begin_msg = job id `{job_id}` will be eligible to start in about {delay_seconds} seconds
 awaits_release_hold_release_msg = job id `{job_id}` awaits release by job manager
-initial_comment = New job on instance `{app_name}` for CPU micro-architecture `{arch_name}`{accelerator_spec} for repository `{repo_id}` in job dir `{symlink}`
+new_job_instance_repo = New job on instance `{app_name}` for repository `{repo_id}`
+build_on_arch = Building on: `{on_arch}`{on_accelerator}
+build_for_arch = Building for: `{for_arch}`{for_accelerator}
+jobdir = Job dir: `{symlink}`
 with_accelerator = &nbsp;and accelerator `{accelerator}`
+# initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`  # no longer used
 
 
 [new_job_comments]
 awaits_launch = job awaits launch by Slurm scheduler{extra_info} 
+
 
 [running_job_comments]
 running_job = job `{job_id}` is running
@@ -328,6 +424,7 @@ running_job = job `{job_id}` is running
 [finished_job_comments]
 job_result_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job results file `{filename}` does not exist in job directory, or parsing it failed.</li><li>No artefacts were found/reported.</li></ul></details>
 job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for detailed information)_</summary><ul><li>Job test file `{filename}` does not exist in job directory, or parsing it failed.</li></ul></details>
+
 
 [download_pr_comments]
 git_clone_failure = Unable to clone the target repository. 
@@ -338,6 +435,9 @@ curl_failure = Unable to download the `.diff` file.
 curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
+pr_diff_failure = Unable to obtain PR diff.
+pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+
 
 [clean_up]
 trash_bin_dir = $HOME/trash_bin

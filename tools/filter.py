@@ -303,4 +303,18 @@ class EESSIBotActionFilter:
                 else:
                     check = False
                     break
+            # Action filter wasn't found in the context, we won't allow this
+            else:
+                check = False
+                break
+
+        # If the context declares an accelerator, enforce that a filter is defined for this component as well
+        # I.e. this enforces that a context with accelerator will only be used if an accelerator is explicitely
+        # requested in the build command, thus preventing CPU-only builds on GPU nodes (unless explicitely intended)
+        if (
+            FILTER_COMPONENT_ACCEL in context and not
+            any(af.component == FILTER_COMPONENT_ACCEL for af in self.action_filters)
+        ):
+            check = False
+
         return check
