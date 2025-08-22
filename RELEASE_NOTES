@@ -12,7 +12,6 @@ see below and documentation at https://www.eessi.io/docs/bot/#building
 
 Bug fixes:
 * revised and updated app.cfg.example and README.md (#325)
-* do not overwrite config value for scontrol command (#335)
 
 Improvements:
 * add support for cloning target repository via ssh (#300)
