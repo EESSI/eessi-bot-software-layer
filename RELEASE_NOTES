@@ -22,6 +22,10 @@ Improvements:
      for build jobs; for details, see https://github.com/EESSI/eessi-bot-software-layer?tab=readme-ov-file#architecturetargets-section
   * the `repo_target_map` setting is removed because the information is now
     included in the `node_type_map` setting
+  * the `initial_comment` setting in the `[submitted_job_comments]` section of the bot configuration
+    has been replaced with separate settings: `new_job_instance_repo`, `build_on_arch`, `build_for_arch`, `jobdir`;
+    for details, see https://github.com/EESSI/eessi-bot-software-layer/blob/develop/README.md#submitted_job_comments-section
+    and the example bot configuration `app.cfg.example`;
   * `bot:build` filters `architecture:` and `accel:` are replaced by `on:` and
     `for:` (for details see documentation at https://www.eessi.io/docs/bot/#building)
 * add CI to build and publish smee-client container image (#321, #322)
