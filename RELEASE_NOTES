@@ -16,8 +16,8 @@ Bug fixes:
 
 Improvements:
 * add support for cloning target repository via ssh (#300)
-* major refactoring of the definition of build targets and breaking change of
-  the user interface to trigger build (#312, #329, #331, #337)
+* major refactoring of the definition of build targets and breaking change in
+  bot configuration and of the user interface to trigger builds (#312, #329, #331, #337)
   * `arch_target_map` is replaced by `node_type_map` which provides a more
      comprehensive/flexible approach to define architectures that are available
      for build jobs; for details, see https://github.com/EESSI/eessi-bot-software-layer?tab=readme-ov-file#architecturetargets-section
