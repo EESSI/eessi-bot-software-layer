@@ -628,7 +628,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             for x in range(0, len(sorted_table['date'])):
                 # Check if the current 'for arch' AND repo are already in the status_table_last. If not, add it
                 already_present = False
-                for y in range(0, len(status_table_last['for arch']):
+                for y in range(0, len(status_table_last['for arch'])):
                     if (
                         sorted_table['for arch'][x] == status_table_last['for arch'][y]
                         and sorted_table['for repo'][x] == status_table_last['for repo'][y]
