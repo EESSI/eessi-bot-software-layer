@@ -603,10 +603,17 @@ class EESSIBotSoftwareLayer(PyGHee):
             # copied, we ignore it, since - as a result of the sorting - the second entry is always older than the
             # first
             dates = status_table['date']
+            status = status_table['status']
             timestamps = []
-            for date in dates:
-                date_object = datetime.strptime(date, "%b %d %X %Z %Y")
-                timestamps.append(int(date_object.timestamp()))
+            for date, state in zip(dates, status):
+                if state == 'finished':
+                    date_object = datetime.strptime(date, "%b %d %X %Z %Y")
+                    timestamps.append(int(date_object.timestamp()))
+                else:
+                    # Add the oldest date possible, so that ongoing builds only show up if there was no other
+                    # completed build yet
+                    timestamps.append(0)
+
             status_table['timestamp'] = timestamps
 
             # Figure out the sorting indices, so that things are sorted first by the 'for arch', and then by 'date'

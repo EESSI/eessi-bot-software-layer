@@ -1225,11 +1225,20 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             # it is building for)
             # Then, check that it has at least 4 lines so that we can safely index up to that number
             if instance_repo_match and len(comment_body) >= 4:
+                # Set some defaults
+                repo_id = ""
+                on_arch = ""
+                for_arch = ""
+                date = ""
+                status = ""
+                url = ""
+                result = ""
+
                 log(f"{fn}(): found bot build response in issue, processing...")
 
                 # First, extract the repo_id
-                log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
-                status_table['for repo'].append(instance_repo_match.group('repo_id'))
+                log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")i
+                repo_id = instance_repo_match.group('repo_id')
 
                 # Then, try to match the architecture we build on.
                 # First try this including accelerator, to see if one was defined
@@ -1241,8 +1250,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     # Pattern with accelerator matched, append to status_table
                     log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}, "
                         f"with accelerator {on_arch_match.group('accelerator')}")
-                    status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`, "
-                                                   f"`{on_arch_match.group('accelerator')}`")
+                    on_arch = f"`{on_arch_match.group('on_arch')}`, `{on_arch_match.group('accelerator')}`"
                 else:
                     # Pattern with accelerator did not match, retry without accelerator
                     on_arch_re = template_to_regex(on_arch_fmt)
@@ -1250,7 +1258,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     if on_arch_match:
                         # Pattern without accelerator matched, append to status_table
                         log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}")
-                        status_table['on arch'].append(f"`{on_arch_match.group('on_arch')}`")
+                        on_arch = f"`{on_arch_match.group('on_arch')}`"
                     else:
                         # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
                         msg = "Could not match regular expression for extracting the architecture to build on.\n"
@@ -1271,8 +1279,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     # Pattern with accelerator matched, append to status_table
                     log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
                         f"with accelerator {for_arch_match.group('accelerator')}")
-                    status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`, "
-                                                    f"`{for_arch_match.group('accelerator')}`")
+                    for_arch = "`{for_arch_match.group('for_arch')}`, `{for_arch_match.group('accelerator')}`"
                 else:
                     # Pattern with accelerator did not match, retry without accelerator
                     for_arch_re = template_to_regex(for_arch_fmt)
@@ -1280,7 +1287,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     if for_arch_match:
                         # Pattern without accelerator matched, append to status_table
                         log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}")
-                        status_table['for arch'].append(f"`{for_arch_match.group('for_arch')}`")
+                        for_arch = f"`{for_arch_match.group('for_arch')}`"
                     else:
                         # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
                         msg = "Could not match regular expression for extracting the architecture to build for.\n"
@@ -1315,17 +1322,35 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 # add date, status, url to  status_table if
                 for row in rows:
                     if row['job status'] == 'finished':
-                        status_table['date'].append(row['date'])
-                        status_table['status'].append(row['job status'])
-                        status_table['url'].append(comment['html_url'])
+                        date = row['date']
+                        status = row['job status']
+                        url = comment['html_url']
                         if 'FAILURE' in row['comment']:
-                            status_table['result'].append(':cry: FAILURE')
+                            result = ':cry: FAILURE'
                         elif 'SUCCESS' in row['comment']:
-                            status_table['result'].append(':grin: SUCCESS')
+                            result = ':grin: SUCCESS'
                         elif 'UNKNOWN' in row['comment']:
-                            status_table['result'].append(':shrug: UNKNOWN')
+                            result = ':shrug: UNKNOWN'
                         else:
-                            status_table['result'].append(row['comment'])
+                            result = row['comment']
+                    else:
+                        # Make sure that if the job is not finished yet, we also put something useful in these fields
+                        # It is useful to know a job is submitted, running, etc
+                        date = row['date']
+                        status = row['job status']
+                        url = comment['html_url']
+                        result = row['comment']
+
+                # Add all entries to status_table. We do this at the end of this loop so that the operation is
+                # more or less 'atomic', i.e. all vectors in the status_table dict have the same length
+                status_table['for repo'].append(repo_id)
+                status_table['on arch'].append(on_arch)
+                status_table['for arch'].append(for_arch)
+                status_table['date'].append(date)
+                status_table['status'].append(status)
+                status_table['url'].append(url)
+                status_table['result'].append(result)
+
         if len(comments) != 100:
             break
     return status_table
