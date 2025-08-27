@@ -1279,7 +1279,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     # Pattern with accelerator matched, append to status_table
                     log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
                         f"with accelerator {for_arch_match.group('accelerator')}")
-                    for_arch = "`{for_arch_match.group('for_arch')}`, `{for_arch_match.group('accelerator')}`"
+                    for_arch = f"`{for_arch_match.group('for_arch')}`, `{for_arch_match.group('accelerator')}`"
                 else:
                     # Pattern with accelerator did not match, retry without accelerator
                     for_arch_re = template_to_regex(for_arch_fmt)
