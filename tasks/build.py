@@ -1333,7 +1333,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                             result = ':shrug: UNKNOWN'
                         else:
                             result = row['comment']
-                    elif row['job_status'] == 'submitted' or row['job_status'] == 'received' or row['job_status'] == 'running':
+                    elif row['job status'] == 'submitted' or row['job status'] == 'received' or row['job status'] == 'running':
                         # Make sure that if the job is not finished yet, we also put something useful in these fields
                         # It is useful to know a job is submitted, running, etc
                         date = row['date']
