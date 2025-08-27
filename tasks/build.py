@@ -1333,13 +1333,17 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                             result = ':shrug: UNKNOWN'
                         else:
                             result = row['comment']
-                    else:
+                    elif row['job_status'] == 'submitted' or row['job_status'] == 'received' or row['job_status'] == 'running':
                         # Make sure that if the job is not finished yet, we also put something useful in these fields
                         # It is useful to know a job is submitted, running, etc
                         date = row['date']
                         status = row['job status']
                         url = comment['html_url']
                         result = row['comment']
+                    else:
+                        # Don't do anything for the test line for now - we might add an extra entry to the status
+                        # table later to reflect the test result
+                        continue
 
                 # Add all entries to status_table. We do this at the end of this loop so that the operation is
                 # more or less 'atomic', i.e. all vectors in the status_table dict have the same length
