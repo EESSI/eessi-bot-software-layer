@@ -1237,7 +1237,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 log(f"{fn}(): found bot build response in issue, processing...")
 
                 # First, extract the repo_id
-                log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")i
+                log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
                 repo_id = instance_repo_match.group('repo_id')
 
                 # Then, try to match the architecture we build on.
