@@ -18,7 +18,6 @@
 import filecmp
 import os
 import re
-import shutil
 from unittest.mock import patch
 
 # Third party imports (anything installed into the local Python environment)
@@ -282,7 +281,6 @@ def mocked_github(request):
 def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
@@ -313,7 +311,6 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
 def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
@@ -340,7 +337,6 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
 def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
@@ -367,7 +363,6 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
 def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
@@ -395,7 +390,6 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
 def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')

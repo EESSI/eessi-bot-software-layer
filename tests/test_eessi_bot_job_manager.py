@@ -12,15 +12,11 @@
 # license: GPLv2
 #
 
-import shutil
 
 from eessi_bot_job_manager import EESSIBotSoftwareLayerJobManager
 
 
 def test_determine_running_jobs():
-    # copy needed app.cfg from tests directory
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
-
     job_manager = EESSIBotSoftwareLayerJobManager()
 
     assert job_manager.determine_running_jobs({}) == []

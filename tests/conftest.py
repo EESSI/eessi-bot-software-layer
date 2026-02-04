@@ -9,6 +9,9 @@
 # license: GPLv2
 #
 
+import os
+import shutil
+
 
 def pytest_configure(config):
     # register custom markers
@@ -24,3 +27,18 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "create_fails(bool): let function create_issue_comment return None"
     )
+
+
+def pytest_sessionstart():
+    # Back up app.cfg if it exists
+    if os.path.exists("app.cfg"):
+        shutil.copyfile("app.cfg", "appbackup.cfg")
+
+    # Copy needed app.cfg from tests directory
+    shutil.copyfile("tests/test_app.cfg", "app.cfg")
+
+
+def pytest_sessionfinish():
+    # Restore backup if it exists
+    if os.path.exists("appbackup.cfg"):
+        shutil.copyfile("appbackup.cfg", "app.cfg")
