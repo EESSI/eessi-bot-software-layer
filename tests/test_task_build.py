@@ -45,6 +45,7 @@ def test_run_cmd(tmpdir):
     assert output == "hello\n"
     assert err == ""
 
+    # Command fails and raise_on_error=True
     with pytest.raises(Exception):
         output, err, exit_code = run_cmd("ls -l /does_not_exists.txt", 'fail test', tmpdir, log_file=log_file)
 
@@ -52,6 +53,7 @@ def test_run_cmd(tmpdir):
         assert output == ""
         assert "No such file or directory" in err
 
+    # Command fails and raise_on_error=False
     output, err, exit_code = run_cmd("ls -l /does_not_exists.txt",
                                      'fail test',
                                      tmpdir,
@@ -62,6 +64,7 @@ def test_run_cmd(tmpdir):
     assert output == ""
     assert "No such file or directory" in err
 
+    # Command does not exists and raise_on_error=True
     with pytest.raises(Exception):
         output, err, exit_code = run_cmd("this_command_does_not_exist", 'fail test', tmpdir, log_file=log_file)
 
@@ -70,6 +73,7 @@ def test_run_cmd(tmpdir):
         assert ("this_command_does_not_exist: command not found" in err or
                 "this_command_does_not_exist: not found" in err)
 
+    # Command does not exists and raise_on_error=False
     output, err, exit_code = run_cmd("this_command_does_not_exist",
                                      'fail test',
                                      tmpdir,
@@ -81,6 +85,7 @@ def test_run_cmd(tmpdir):
     assert ("this_command_does_not_exist: command not found" in err or
             "this_command_does_not_exist: not found" in err)
 
+    # Check that log_msg is written to log_file
     output, err, exit_code = run_cmd("echo hello", "test in file", tmpdir, log_file=log_file)
     with open(log_file, "r") as fp:
         assert "test in file" in fp.read()
@@ -95,18 +100,53 @@ def test_run_subprocess(tmpdir):
     assert output == "hello\n"
     assert err == ""
 
+    # log_msg=""
+    output, err, exit_code = run_subprocess("echo hello", "", tmpdir, log_file=log_file)
+
+    assert exit_code == 0
+    assert output == "hello\n"
+    assert err == ""
+    with open(log_file, "r") as fp:
+        # TODO: Better way to do this?
+        assert "run_subprocess(): Running" in fp.read()
+
+    # working_dir=tmpdir
+    output, err, exit_code = run_subprocess("pwd", "test", tmpdir, log_file=log_file)
+
+    assert exit_code == 0
+    assert tmpdir.strpath+"\n" == output
+    assert err == ""
+
+    # working_dir=None
+    wd = os.getcwd()
+    output, err, exit_code = run_subprocess("pwd", "test", None, log_file=log_file)
+
+    assert exit_code == 0
+    assert wd in output
+    assert err == ""
+
+    # env is not None
+    output, err, exit_code = run_subprocess("env", "test", tmpdir, log_file=log_file, env={"DUMMY": "123"})
+
+    assert exit_code == 0
+    assert "DUMMY=123" in output
+    assert err == ""
+
+    # Command fails
     output, err, exit_code = run_subprocess("ls -l /does_not_exists.txt", 'fail test', tmpdir, log_file=log_file)
 
     assert exit_code != 0
     assert output == ""
     assert "No such file or directory" in err
 
+    # Command does not exist
     output, err, exit_code = run_subprocess("this_command_does_not_exist", 'fail test', tmpdir, log_file=log_file)
 
     assert exit_code != 0
     assert output == ""
     assert ("this_command_does_not_exist: command not found" in err or "this_command_does_not_exist: not found" in err)
 
+    # Check that log_msg is written to log_file
     output, err, exit_code = run_subprocess("echo hello", "test in file", tmpdir, log_file=log_file)
     with open(log_file, "r") as fp:
         assert "test in file" in fp.read()

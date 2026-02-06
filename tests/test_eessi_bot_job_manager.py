@@ -12,7 +12,6 @@
 # license: GPLv2
 #
 
-
 from eessi_bot_job_manager import EESSIBotSoftwareLayerJobManager
 
 
