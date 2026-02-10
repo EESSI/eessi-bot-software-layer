@@ -11,6 +11,8 @@
 
 # Standard library imports
 from contextlib import nullcontext
+
+# Third party imports (anything installed into the local Python environment)
 import pytest
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
