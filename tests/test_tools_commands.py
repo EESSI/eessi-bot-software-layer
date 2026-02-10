@@ -49,8 +49,8 @@ def test_get_bot_command():
 
 # Helper classes for EESSIBotCommand test
 class MockActionFilter():
-    def __init__(self, action_filters=[]):
-        self.action_filters = action_filters
+    def __init__(self, action_filters=None):
+        self.action_filters = action_filters or []
 
     def __eq__(self, other):
         return self.action_filters == other.action_filters
@@ -60,9 +60,9 @@ class MockActionFilter():
 
 
 class MockCommand():
-    def __init__(self, command, general_args=[], action_filters=MockActionFilter(), build_params=None):
+    def __init__(self, command, general_args=None, action_filters=None, build_params=None):
         self.command = command
-        self.general_args = general_args
+        self.general_args = general_args or []
         self.action_filters = action_filters
         self.build_params = build_params
 
@@ -87,10 +87,10 @@ class MockCommand():
     ("build for:arch=", pytest.raises(commands.EESSIBotCommandError)),
 
     # Test 'help' command
-    ("help", nullcontext(MockCommand("help"))),
+    ("help", nullcontext(MockCommand("help", action_filters=MockActionFilter()))),
 
     # Test 'status' command with last_build arg
-    ("status last_build", nullcontext(MockCommand("status", general_args=["last_build"], action_filters=None))),
+    ("status last_build", nullcontext(MockCommand("status", general_args=["last_build"]))),
 
     # Test 'build' command
     ("build on:arch=icelake for:arch=x86_64/intel/icelake,accel=nvidia/cc90 repo:eessi.io-2025.06-software",
