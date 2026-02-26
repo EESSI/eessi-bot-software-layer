@@ -272,6 +272,9 @@ class EESSIBotSoftwareLayerJobManager:
         """
         The output of 'scontrol --oneliner show job' is a list of key=value pairs
         separated by whitespaces.
+        Note that with newer Slurm versions, some values can also contain whitespaces
+        (e.g. for SubmitLine), making it complex to distinguish between keys and values.
+        To solve this, we assume that all Slurm keys start with an uppercase letter.
 
         Args:
             output (string): the output of the scontrol command
