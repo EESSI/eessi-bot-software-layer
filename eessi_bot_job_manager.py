@@ -272,6 +272,9 @@ class EESSIBotSoftwareLayerJobManager:
         """
         The output of 'scontrol --oneliner show job' is a list of key=value pairs
         separated by whitespaces.
+        Note that with newer Slurm versions (25.11), some values can also contain whitespaces
+        (e.g. for SubmitLine), making it complex to distinguish between keys and values.
+        To solve this, we assume that all Slurm keys start with an uppercase letter.
 
         Args:
             output (string): the output of the scontrol command
@@ -281,8 +284,20 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_info = {}
         stripped_output = output.strip()
-        for pair in stripped_output.split():
-            key, value = pair.split('=', 1)
+
+        # Match keys that start with uppercase and continue until '='
+        key_pattern = re.compile(r'([A-Z][A-Za-z0-9:/_]*)=')
+
+        keys_matches = list(key_pattern.finditer(stripped_output))
+
+        for idx, key_match in enumerate(keys_matches):
+            # The key is what actually got matched by the regex
+            key = key_match.group(1)
+            # The value starts where the key ends...
+            value_start = key_match.end()
+            # and it ends where the next key starts (or, if it's the last one, where the string ends)
+            value_end = keys_matches[idx+1].start() if (idx + 1) < len(keys_matches) else len(stripped_output)
+            value = stripped_output[value_start:value_end].strip()
             job_info[key] = value
 
         return job_info
