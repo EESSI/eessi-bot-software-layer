@@ -290,13 +290,13 @@ class EESSIBotSoftwareLayerJobManager:
 
         keys_matches = list(key_pattern.finditer(stripped_output))
 
-        for i, key_match in enumerate(keys_matches):
+        for idx, key_match in enumerate(keys_matches):
             # The key is what actually got matched by the regex
             key = key_match.group(1)
             # The value starts where the key ends...
             value_start = key_match.end()
             # and it ends where the next key starts (or, if it's the last one, where the string ends)
-            value_end = keys_matches[i+1].start() if (i + 1) < len(keys_matches) else len(stripped_output)
+            value_end = keys_matches[idx+1].start() if (idx + 1) < len(keys_matches) else len(stripped_output)
             value = stripped_output[value_start:value_end].strip()
             job_info[key] = value
 
