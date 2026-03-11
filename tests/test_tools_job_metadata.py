@@ -34,7 +34,7 @@ def test_get_section_from_file(tmp_path):
     assert get_section_from_file(path, JOB_PR_SECTION, logfile) is None
 
     # Reading an empty file should return an empty dictionary
-    with open(path, 'w') as fp:
+    with open(path, 'w') as _:
         pass
     metadata_pr = get_section_from_file(path, JOB_PR_SECTION, logfile)
     assert metadata_pr == {}
