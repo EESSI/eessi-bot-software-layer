@@ -5,6 +5,7 @@
 # EESSI software layer, see https://github.com/EESSI/software-layer
 #
 # author: Thomas Roeblitz (@trz42)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
