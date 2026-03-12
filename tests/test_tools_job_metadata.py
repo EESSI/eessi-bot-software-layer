@@ -47,11 +47,13 @@ def test_get_section_from_file(tmp_path):
 
     # Write a valid metadata file
     with open(path, 'w') as fp:
-        fp.write('''[PR]
-        repo=test
-        pr_number=12345
-        pr_comment_id=23456
-        job_owner=user01''')
+        fp.write("""
+[PR]
+repo=test
+pr_number=12345
+pr_comment_id=23456
+job_owner=user01
+""")
 
     # Verify that the metadata file is read correctly
     metadata_pr = get_section_from_file(path, JOB_PR_SECTION, logfile)
