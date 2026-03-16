@@ -19,21 +19,50 @@ import pytest
 from tools import commands
 
 
-def test_contains_any_bot_command():
-    # Test without command
-    body = "\n".join([
-        "not a command",
-        "also not a command"
-    ])
-    assert commands.contains_any_bot_command(body) is False
+# Test contains_any_bot_command() with both single-line and multi-line comments
+@pytest.mark.parametrize("body,expected", [
+    # Test single-line comments
+    # Existing command, no space after ':'
+    ("bot:help", True),
+    # Existing command, space after ':'
+    ("bot: help", True),
 
-    # Test with command
-    body = "\n".join([
-        "not a command",
-        "bot: help",
-        "also not a command"
-    ])
-    assert commands.contains_any_bot_command(body) is True
+    # Command does not exist, no space after ':'
+    ("bot:nohelp", True),
+    # Command does not exist, space after ':'
+    ("bot: nohelp", True),
+
+    # Leading whitespace, no space after ':'
+    ("  bot:help", False),
+    # Leading whitespace, space after ':'
+    ("  bot: help", False),
+
+    # Test multi-line comments
+    # Valid command in first line, no space after ':'
+    ("\n".join(["bot:help", "not a command", "also not a command"]), True),
+    # Valid command in first line, space after ':'
+    ("\n".join(["bot: help", "not a command", "also not a command"]), True),
+
+    # Valid command after first line, no space after ':'
+    ("\n".join(["not a command", "bot:help", "also not a command"]), True),
+    # Valid command after first line, space after ':'
+    ("\n".join(["not a command", "bot: help", "also not a command"]), True),
+
+    # Multiple valid commands, no space after ':'
+    ("\n".join(["bot:help", "bot:nohelp", "also not a command"]), True),
+    # Multiple valid commands, space after ':'
+    ("\n".join(["bot: help", "bot: nohelp", "also not a command"]), True),
+
+    # No commands
+    ("\n".join(["not a command", "also not a command"]), False),
+
+    # Command with leading whitespace after second line, no space after ':'
+    ("\n".join(["not a command", "  bot:help", "also not a command"]), False),
+    # Command with leading whitespace after second line, space after ':'
+    ("\n".join(["not a command", "  bot: help", "also not a command"]), False),
+])
+def test_contains_any_bot_command(body, expected):
+    assert commands.contains_any_bot_command(body) is expected
 
 
 def test_get_bot_command():
