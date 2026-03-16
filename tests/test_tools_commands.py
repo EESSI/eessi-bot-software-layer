@@ -70,10 +70,31 @@ def test_get_bot_command():
     no_cmd = commands.get_bot_command("not a command")
     assert no_cmd is None
 
-    # Test command
-    test_cmd = "help"
-    cmd = commands.get_bot_command(f"bot: {test_cmd}")
-    assert cmd == test_cmd
+    # Test different commands with varying formatting
+    test_cmds = [
+        # All existing commands
+        "build", "cancel", "help", "show_config", "status",
+        # Build command with filters
+        "build on:arch=icelake for:arch=x86_64/intel/icelake,accel=nvidia/cc90 repo:eessi.io-2025.06-software",
+        # Non-existant command
+        "this_command_does_not_exist",
+    ]
+    for test_cmd in test_cmds:
+        # Valid formatting, with and without space after ':'
+        cmd = commands.get_bot_command(f"bot:{test_cmd}")
+        assert cmd == test_cmd
+        cmd = commands.get_bot_command(f"bot: {test_cmd}")
+        assert cmd == test_cmd
+
+        # Leading whitespace, with and without space after ':' - should return None
+        cmd = commands.get_bot_command(f"  bot:{test_cmd}")
+        assert cmd is None
+        cmd = commands.get_bot_command(f"  bot: {test_cmd}")
+        assert cmd is None
+
+        # Without ':' - should return None
+        cmd = commands.get_bot_command(f"bot {test_cmd}")
+        assert cmd is None
 
 
 # Helper classes for EESSIBotCommand test
