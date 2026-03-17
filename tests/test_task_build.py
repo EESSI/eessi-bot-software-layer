@@ -18,7 +18,6 @@
 import filecmp
 import os
 import re
-import shutil
 from unittest.mock import patch
 
 # Third party imports (anything installed into the local Python environment)
@@ -37,25 +36,27 @@ from tools.pr_comments import PRComment, get_submitted_job_comment
 from tests.test_tools_pr_comments import MockIssueComment
 
 
-def test_run_cmd(tmpdir):
+def test_run_cmd(tmp_path):
     """Tests for run_cmd function."""
-    log_file = os.path.join(tmpdir, "log.txt")
-    output, err, exit_code = run_cmd("echo hello", 'test', tmpdir, log_file=log_file)
+    log_file = os.path.join(tmp_path, "log.txt")
+    output, err, exit_code = run_cmd("echo hello", 'test', tmp_path, log_file=log_file)
 
     assert exit_code == 0
     assert output == "hello\n"
     assert err == ""
 
+    # Command fails and raise_on_error=True
     with pytest.raises(Exception):
-        output, err, exit_code = run_cmd("ls -l /does_not_exists.txt", 'fail test', tmpdir, log_file=log_file)
+        output, err, exit_code = run_cmd("ls -l /does_not_exists.txt", 'fail test', tmp_path, log_file=log_file)
 
         assert exit_code != 0
         assert output == ""
         assert "No such file or directory" in err
 
+    # Command fails and raise_on_error=False
     output, err, exit_code = run_cmd("ls -l /does_not_exists.txt",
                                      'fail test',
-                                     tmpdir,
+                                     tmp_path,
                                      log_file=log_file,
                                      raise_on_error=False)
 
@@ -63,17 +64,19 @@ def test_run_cmd(tmpdir):
     assert output == ""
     assert "No such file or directory" in err
 
+    # Command does not exists and raise_on_error=True
     with pytest.raises(Exception):
-        output, err, exit_code = run_cmd("this_command_does_not_exist", 'fail test', tmpdir, log_file=log_file)
+        output, err, exit_code = run_cmd("this_command_does_not_exist", 'fail test', tmp_path, log_file=log_file)
 
         assert exit_code != 0
         assert output == ""
         assert ("this_command_does_not_exist: command not found" in err or
                 "this_command_does_not_exist: not found" in err)
 
+    # Command does not exists and raise_on_error=False
     output, err, exit_code = run_cmd("this_command_does_not_exist",
                                      'fail test',
-                                     tmpdir,
+                                     tmp_path,
                                      log_file=log_file,
                                      raise_on_error=False)
 
@@ -82,33 +85,69 @@ def test_run_cmd(tmpdir):
     assert ("this_command_does_not_exist: command not found" in err or
             "this_command_does_not_exist: not found" in err)
 
-    output, err, exit_code = run_cmd("echo hello", "test in file", tmpdir, log_file=log_file)
+    # Check that log_msg is written to log_file
+    output, err, exit_code = run_cmd("echo hello", "test in file", tmp_path, log_file=log_file)
     with open(log_file, "r") as fp:
         assert "test in file" in fp.read()
 
 
-def test_run_subprocess(tmpdir):
+def test_run_subprocess(tmp_path):
     """Tests for run_subprocess function."""
-    log_file = os.path.join(tmpdir, "log.txt")
-    output, err, exit_code = run_subprocess("echo hello", 'test', tmpdir, log_file=log_file)
+    log_file = os.path.join(tmp_path, "log.txt")
+    output, err, exit_code = run_subprocess("echo hello", 'test', tmp_path, log_file=log_file)
 
     assert exit_code == 0
     assert output == "hello\n"
     assert err == ""
 
-    output, err, exit_code = run_subprocess("ls -l /does_not_exists.txt", 'fail test', tmpdir, log_file=log_file)
+    # log_msg=""
+    output, err, exit_code = run_subprocess("echo hello", "", tmp_path, log_file=log_file)
+
+    assert exit_code == 0
+    assert output == "hello\n"
+    assert err == ""
+    with open(log_file, "r") as fp:
+        # TODO: Better way to do this?
+        assert "run_subprocess(): Running" in fp.read()
+
+    # working_dir=tmp_path
+    output, err, exit_code = run_subprocess("pwd", "test", tmp_path, log_file=log_file)
+
+    assert exit_code == 0
+    assert f"{tmp_path}\n" == output
+    assert err == ""
+
+    # working_dir=None
+    wd = os.getcwd()
+    output, err, exit_code = run_subprocess("pwd", "test", None, log_file=log_file)
+
+    assert exit_code == 0
+    assert wd in output
+    assert err == ""
+
+    # env is not None
+    output, err, exit_code = run_subprocess("env", "test", tmp_path, log_file=log_file, env={"DUMMY": "123"})
+
+    assert exit_code == 0
+    assert "DUMMY=123" in output
+    assert err == ""
+
+    # Command fails
+    output, err, exit_code = run_subprocess("ls -l /does_not_exists.txt", 'fail test', tmp_path, log_file=log_file)
 
     assert exit_code != 0
     assert output == ""
     assert "No such file or directory" in err
 
-    output, err, exit_code = run_subprocess("this_command_does_not_exist", 'fail test', tmpdir, log_file=log_file)
+    # Command does not exist
+    output, err, exit_code = run_subprocess("this_command_does_not_exist", 'fail test', tmp_path, log_file=log_file)
 
     assert exit_code != 0
     assert output == ""
     assert ("this_command_does_not_exist: command not found" in err or "this_command_does_not_exist: not found" in err)
 
-    output, err, exit_code = run_subprocess("echo hello", "test in file", tmpdir, log_file=log_file)
+    # Check that log_msg is written to log_file
+    output, err, exit_code = run_subprocess("echo hello", "test in file", tmp_path, log_file=log_file)
     with open(log_file, "r") as fp:
         assert "test in file" in fp.read()
 
@@ -279,15 +318,14 @@ def mocked_github(request):
 #         returns !None --> create_pr_comment returns comment (with id == 1)
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
-def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
+def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -310,15 +348,14 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_fails(True)
-def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
+def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -337,15 +374,14 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("1")
-def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, tmpdir):
+def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -364,15 +400,14 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("always_raise")
-def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
+def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -392,15 +427,14 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmpdir):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("3")
-def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
+def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
-    shutil.copyfile("tests/test_app.cfg", "app.cfg")
     # creating a PR comment
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -418,12 +452,12 @@ def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmpdir):
 
 @pytest.mark.repo_name("test_repo")
 @pytest.mark.pr_number(999)
-def test_create_read_metadata_file(mocked_github, tmpdir):
+def test_create_read_metadata_file(mocked_github, tmp_path):
     """Tests for function create_metadata_file."""
     # create some test data
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 999
-    job = Job(tmpdir, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic", "user01")
 
     job_id = "123"
 
@@ -432,7 +466,7 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
     create_metadata_file(job, job_id, pr_comment)
 
     expected_file = f"_bot_job{job_id}.metadata"
-    expected_file_path = os.path.join(tmpdir, expected_file)
+    expected_file_path = os.path.join(tmp_path, expected_file)
     # assert expected_file exists
     assert os.path.exists(expected_file_path)
 
@@ -455,7 +489,7 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
     assert sorted(metadata["PR"].keys()) == ["job_owner", "pr_comment_id", "pr_number", "repo"]
 
     # use directory that does not exist
-    dir_does_not_exist = os.path.join(tmpdir, "dir_does_not_exist")
+    dir_does_not_exist = os.path.join(tmp_path, "dir_does_not_exist")
     job2 = Job(dir_does_not_exist, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic",
                "user01")
     job_id2 = "222"
@@ -475,12 +509,12 @@ def test_create_read_metadata_file(mocked_github, tmpdir):
 
     # use undefined values for parameters
     # job_id = None
-    job4 = Job(tmpdir, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic", "user01")
+    job4 = Job(tmp_path, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic", "user01")
     job_id4 = None
     create_metadata_file(job4, job_id4, pr_comment)
 
     expected_file4 = f"_bot_job{job_id}.metadata"
-    expected_file_path4 = os.path.join(tmpdir, expected_file4)
+    expected_file_path4 = os.path.join(tmp_path, expected_file4)
     # assert expected_file exists
     assert os.path.exists(expected_file_path4)
 
