@@ -7,11 +7,13 @@
 # author: Bob Droege (@bedroge)
 # author: Kenneth Hoste (@boegel)
 # author: Thomas Roeblitz (@trz42)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
 PyGithub
+python-gitlab
 Waitress>=3.0.1 # required to fix vulnerabilities detected by scorecards
 cryptography>=44.0.1 # required to fix vulnerabilities detected by scorecards
-PyGHee>=0.0.3
+PyGHee @ git+https://github.com/boegel/PyGHee.git@bd4ab122206c446bd4fe554e1344d26a64b232d3 # Pin commit adding GL support
 retry
