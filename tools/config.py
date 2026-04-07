@@ -23,6 +23,7 @@ import sys
 # (none yet)
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
+from .git import get_hosting_platform, SUPPORTED_HOSTS
 from .logging import error
 
 # define configuration constants
@@ -95,12 +96,20 @@ SECTION_FINISHED_JOB_COMMENTS = 'finished_job_comments'
 FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT = 'job_result_unknown_fmt'
 FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT = 'job_test_unknown_fmt'
 
+SECTION_GIT = 'git'
+GIT_SETTING_HOSTING_PLATFORM = 'hosting_platform'
+
 SECTION_GITHUB = 'github'
 GITHUB_SETTING_API_TIMEOUT = 'api_timeout'
 GITHUB_SETTING_APP_ID = 'app_id'
 GITHUB_SETTING_APP_NAME = 'app_name'
 GITHUB_SETTING_INSTALLATION_ID = 'installation_id'
 GITHUB_SETTING_PRIVATE_KEY = 'private_key'
+
+SECTION_GITLAB = 'gitlab'
+GITLAB_SETTING_API_TIMEOUT = 'api_timeout'
+GITLAB_SETTING_BOT_NAME = 'bot_name'
+GITLAB_SETTING_INSTANCE_URL = 'instance_url'
 
 SECTION_JOB_MANAGER = 'job_manager'
 JOB_MANAGER_SETTING_LOG_PATH = 'log_path'
@@ -207,9 +216,12 @@ def check_cfg_settings(req_settings, path="app.cfg"):
     """
     # TODO argument path is not being used
     cfg = read_config()
+    git_host = get_hosting_platform()
     # iterate over keys in req_settings which correspond to sections ([name])
     # in the configuration file (.ini format)
     for section in req_settings.keys():
+        if git_host and (section in SUPPORTED_HOSTS) and (section != git_host):
+            continue
         if section not in cfg:
             error(f'Missing section "{section}" in configuration file {path}.')
         # iterate over list elements required for the current section
