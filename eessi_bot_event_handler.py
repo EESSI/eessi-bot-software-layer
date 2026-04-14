@@ -37,6 +37,7 @@ from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command
+from tools.git import connect_to_host, get_hosting_platform
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
@@ -95,12 +96,18 @@ REQUIRED_CONFIG = {
         config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP],          # required
     config.SECTION_EVENT_HANDLER: [
         config.EVENT_HANDLER_SETTING_LOG_PATH],                    # required
+    config.SECTION_GIT: [
+        config.GIT_SETTING_HOSTING_PLATFORM],                      # required
     config.SECTION_GITHUB: [
-        config.GITHUB_SETTING_API_TIMEOUT,                         # required
-        config.GITHUB_SETTING_APP_ID,                              # required
-        config.GITHUB_SETTING_APP_NAME,                            # required
-        config.GITHUB_SETTING_INSTALLATION_ID,                     # required
-        config.GITHUB_SETTING_PRIVATE_KEY],                        # required
+        config.GITHUB_SETTING_API_TIMEOUT,                         # required for github
+        config.GITHUB_SETTING_APP_ID,                              # required for github
+        config.GITHUB_SETTING_APP_NAME,                            # required for github
+        config.GITHUB_SETTING_INSTALLATION_ID,                     # required for github
+        config.GITHUB_SETTING_PRIVATE_KEY],                        # required for github
+    config.SECTION_GITLAB: [
+        config.GITLAB_SETTING_API_TIMEOUT,                         # required for gitlab
+        config.GITLAB_SETTING_BOT_NAME,                            # required for gitlab
+        config.GITLAB_SETTING_INSTANCE_URL],                       # required for gitlab
     # the poll interval setting is required for the alternative job handover
     # protocol (delayed_begin)
     config.SECTION_JOB_MANAGER: [
@@ -133,7 +140,8 @@ class EESSIBotSoftwareLayer(PyGHee):
         EESSIBotSoftwareLayer constructor. Calls constructor of PyGHee and
         initializes some configuration settings.
         """
-        super(EESSIBotSoftwareLayer, self).__init__(*args, **kwargs)
+        event_source = get_hosting_platform()
+        super(EESSIBotSoftwareLayer, self).__init__(event_source, *args, **kwargs)
 
         self.cfg = config.read_config()
         event_handler_cfg = self.cfg[config.SECTION_EVENT_HANDLER]
@@ -833,7 +841,9 @@ def main():
     else:
         print("Configuration check: FAILED")
         sys.exit(1)
-    github.connect()
+
+    # Connect to Git hosting platform
+    connect_to_host()
 
     if opts.file:
         app = create_app(klass=EESSIBotSoftwareLayer)

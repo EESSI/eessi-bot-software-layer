@@ -49,3 +49,13 @@ def get_hosting_platform():
         if _git_host not in SUPPORTED_HOSTS:
             logging.error(f"Invalid Git host configured: '{_git_host}'")
     return _git_host
+
+
+def connect_to_host():
+    git_host = get_hosting_platform()
+    if git_host == GITHUB:
+        github.connect()
+    elif git_host == GITLAB:
+        gitlab.connect()
+    else:
+        logging.error(f"Git host not supported: '{git_host}'")
