@@ -54,6 +54,16 @@ def get_hosting_platform(cfg=None):
 
 
 def connect_to_host():
+    """
+    Establish connection to Git hosting platform. Exit if the configured hosting
+    platform is not supported by the bot.
+
+    Args:
+        No arguments
+
+    Returns:
+        None (implicit)
+    """
     git_host = get_hosting_platform()
     if git_host == GITHUB:
         github.connect()
