@@ -31,20 +31,22 @@ SUPPORTED_HOSTS = {
 _git_host = None
 
 
-def get_hosting_platform():
+def get_hosting_platform(cfg=None):
     """
     Read the config and get the Git hosting platform the bot is configured for.
     Exit if the setting is invalid or not set.
 
     Args:
-        No arguments
+        cfg (ConfigParser): Instance of ConfigParser containing the configuration.
+            May be passed by caller to avoid re-reading the configuration file.
 
     Returns:
         (str): The configured Git hosting platform
     """
     global _git_host
     if not _git_host:
-        cfg = config.read_config()
+        if not cfg:
+            cfg = config.read_config()
         _git_host = cfg.get(config.SECTION_GIT, config.GIT_SETTING_HOSTING_PLATFORM, fallback=None)
         if _git_host not in SUPPORTED_HOSTS:
             logging.error(f"Invalid Git host configured: '{_git_host}'")

@@ -216,7 +216,7 @@ def check_cfg_settings(req_settings, path="app.cfg"):
     """
     # TODO argument path is not being used
     cfg = read_config()
-    git_host = get_hosting_platform()
+    git_host = get_hosting_platform(cfg)
     # iterate over keys in req_settings which correspond to sections ([name])
     # in the configuration file (.ini format)
     for section in req_settings.keys():
