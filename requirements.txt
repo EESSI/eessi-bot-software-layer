@@ -15,5 +15,5 @@ PyGithub
 python-gitlab
 Waitress>=3.0.1 # required to fix vulnerabilities detected by scorecards
 cryptography>=44.0.1 # required to fix vulnerabilities detected by scorecards
-PyGHee @ git+https://github.com/boegel/PyGHee.git@bd4ab122206c446bd4fe554e1344d26a64b232d3 # Pin commit adding GL support
+PyGHee @ git+https://github.com/boegel/PyGHee.git@c5e10632a45db5ca94f5cbf87ac7a90a2064e8fd # Pin commit with GL support
 retry
