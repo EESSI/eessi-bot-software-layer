@@ -17,6 +17,10 @@
 
 # Also see documentation at https://github.com/EESSI/eessi-bot-software-layer/blob/main/README.md#step5.5
 
+[git]
+# Name of the Git hosting platform (supported values are 'github' and 'gitlab')
+hosting_platform = github
+
 [github]
 # API timeout, time limit for requests to GitHub's REST API
 api_timeout = 10
@@ -42,6 +46,20 @@ installation_id = 12345678
 
 # path to the private key that was generated when the GitHub App was registered
 private_key = PATH_TO_PRIVATE_KEY
+
+[gitlab]
+# NOTE: Access token required for GitLab:
+# https://docs.gitlab.com/user/project/settings/project_access_tokens/#bot-users-for-projects
+# Must be stored in environment variable 'GITLAB_PROJECT_ACCESS_TOKEN'.
+
+# API timeout, time limit for requests to GitLab's REST API
+api_timeout = 10
+
+# Name used to refer to your bot instance - see comment for github.app_name config
+bot_name = MY-bot
+
+# The base URL of your GitLab instance
+instance_url = https://gitlab.com
 
 
 [bot_control]
