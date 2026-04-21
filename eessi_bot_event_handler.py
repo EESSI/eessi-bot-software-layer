@@ -37,6 +37,7 @@ from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command
+from tools.event_info import create_event_info_instance
 from tools.git import connect_to_host, get_hosting_platform
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
@@ -164,6 +165,21 @@ class EESSIBotSoftwareLayer(PyGHee):
             msg = msg % args
         msg = "[%s]: %s" % (funcname, msg)
         log(msg, log_file=self.logfile)
+
+    def handle_event(self, event_info, log_file=None):
+        """
+        Create EventInfo instance using event_info,
+        then pass that to PyGHee's handle_event method.
+
+        Args:
+            event_info (dict): event received by event_handler
+            log_file (string): path to log messages to
+
+        Returns:
+            None (implicit)
+        """
+        event_info_object = create_event_info_instance(event_info)
+        super().handle_event(event_info_object, log_file)
 
     def handle_issue_comment_event(self, event_info, log_file=None):
         """
