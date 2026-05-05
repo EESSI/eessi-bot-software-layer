@@ -281,7 +281,11 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_info = {}
         stripped_output = output.strip()
-        for pair in stripped_output.split():
+
+        # make spit of output from scontrol command more robust
+        parts = re.split(r' (?=\S+=)', stripped_output)
+
+        for pair in parts:
             key, value = pair.split('=', 1)
             job_info[key] = value
 
