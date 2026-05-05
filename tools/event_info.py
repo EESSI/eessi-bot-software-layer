@@ -17,7 +17,7 @@ from functools import cached_property
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import gitlab
-from tools.git import get_hosting_platform, GITHUB, GITLAB
+from tools.git import get_git_hosting_platform, GITHUB, GITLAB
 
 
 class BaseEventInfo():
@@ -296,7 +296,7 @@ def create_event_info_instance(event_info):
     Returns:
         Instance of BaseEventInfo subclass
     """
-    git_host = get_hosting_platform()
+    git_host = get_git_hosting_platform()
     if git_host == GITHUB:
         new_event_info = GitHubEventInfo(event_info)
     elif git_host == GITLAB:

@@ -38,7 +38,7 @@ from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command
 from tools.event_info import create_event_info_instance
-from tools.git import connect_to_host, get_hosting_platform
+from tools.git import connect_to_git_hosting_platform, get_git_hosting_platform
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
@@ -141,7 +141,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         EESSIBotSoftwareLayer constructor. Calls constructor of PyGHee and
         initializes some configuration settings.
         """
-        event_source = get_hosting_platform()
+        event_source = get_git_hosting_platform()
         super(EESSIBotSoftwareLayer, self).__init__(event_source, *args, **kwargs)
 
         self.cfg = config.read_config()
@@ -858,8 +858,8 @@ def main():
         print("Configuration check: FAILED")
         sys.exit(1)
 
-    # Connect to Git hosting platform
-    connect_to_host()
+    # Verify that the event handler is able to connect to the Git hosting platform
+    connect_to_git_hosting_platform()
 
     if opts.file:
         app = create_app(klass=EESSIBotSoftwareLayer)

@@ -23,7 +23,7 @@ from tools import config, logging
 GITHUB = "github"
 GITLAB = "gitlab"
 
-SUPPORTED_HOSTS = {
+SUPPORTED_GIT_HOSTS = {
     GITHUB,
     GITLAB,
 }
@@ -31,7 +31,7 @@ SUPPORTED_HOSTS = {
 _git_host = None
 
 
-def get_hosting_platform(cfg=None):
+def get_git_hosting_platform(cfg=None):
     """
     Read the config and get the Git hosting platform the bot is configured for.
     Exit if the setting is invalid or not set.
@@ -48,12 +48,12 @@ def get_hosting_platform(cfg=None):
         if not cfg:
             cfg = config.read_config()
         _git_host = cfg.get(config.SECTION_GIT, config.GIT_SETTING_HOSTING_PLATFORM, fallback=None)
-        if _git_host not in SUPPORTED_HOSTS:
+        if _git_host not in SUPPORTED_GIT_HOSTS:
             logging.error(f"Invalid Git host configured: '{_git_host}'")
     return _git_host
 
 
-def connect_to_host():
+def connect_to_git_hosting_platform():
     """
     Establish connection to Git hosting platform. Exit if the configured hosting
     platform is not supported by the bot.
@@ -64,7 +64,7 @@ def connect_to_host():
     Returns:
         None (implicit)
     """
-    git_host = get_hosting_platform()
+    git_host = get_git_hosting_platform()
     if git_host == GITHUB:
         github.connect()
     elif git_host == GITLAB:
