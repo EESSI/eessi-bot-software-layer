@@ -34,6 +34,12 @@ class BaseEventInfo():
             raise NotImplementedError(err_msg)
         self.event_info = event_info
 
+    # Prevents subclasses from overriding __getitem__
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__getitem__" in cls.__dict__:
+            raise Exception(f"{cls.__name__} must not override __getitem__")
+
     # Do not override - implements subscripting for compatibility
     def __getitem__(self, key):
         return self.event_info[key]
