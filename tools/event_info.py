@@ -330,7 +330,7 @@ def create_event_info_instance(event_info):
     """
     git_host = get_git_hosting_platform()
     if git_host == GITHUB:
-        new_event_info = GitHubEventInfo(event_info)
+        return GitHubEventInfo(event_info)
     elif git_host == GITLAB:
-        new_event_info = GitLabEventInfo(event_info)
-    return new_event_info
+        return GitLabEventInfo(event_info)
+    return None
