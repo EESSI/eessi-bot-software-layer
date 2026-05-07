@@ -27,7 +27,7 @@ def verify_connection(gl):
     Verifies connection to GitLab. Exits if verification fails.
 
     Args:
-        Instance of Gitlab
+        Instance of gitlab.Gitlab (from python-gitlab)
 
     Returns:
         None (implicit)
@@ -36,14 +36,14 @@ def verify_connection(gl):
         # auth tests the instance's credentials by retrieving the access token user
         gl.auth()
         if type(gl.user) is not gl._objects.CurrentUser:
-            raise Exception("'user' attribute of Gitlab instance is not of type 'CurrentUser'.")
+            raise Exception("'user' attribute of Gitlab class instance is not of type 'CurrentUser'.")
     except Exception as err:
         logging.error(f"Failed to verify GitLab connection: {err}")
 
 
 def connect():
     """
-    Creates a Gitlab instance, then verifies the connection.
+    Creates a gitlab.Gitlab instance (from python-gitlab), then verifies the connection to GitLab.
 
     Args:
         No arguments
@@ -71,14 +71,14 @@ def connect():
 
 def get_instance():
     """
-    Returns a Gitlab instance. Creates an instance if one does not exist,
+    Returns a gitlab.Gitlab instance. Creates an instance if one does not exist,
     otherwise verifies the existing instance.
 
     Args:
         No arguments
 
     Returns:
-        Instance of Gitlab
+        Instance of gitlab.Gitlab (from python-gitlab)
     """
     if not _gl:
         connect()
