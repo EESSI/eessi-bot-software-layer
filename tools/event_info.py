@@ -61,11 +61,11 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
-    def comment_updated_by(self):
+    def event_id(self):
         raise NotImplementedError()
 
     @cached_property
-    def event_id(self):
+    def event_triggered_by(self):
         raise NotImplementedError()
 
     @cached_property
@@ -126,12 +126,12 @@ class GitHubEventInfo(BaseEventInfo):
         return self._request_body["comment"]["user"]["login"]
 
     @cached_property
-    def comment_updated_by(self):
-        return self._request_body["sender"]["login"]
-
-    @cached_property
     def event_id(self):
         return self.event_info["id"]
+
+    @cached_property
+    def event_triggered_by(self):
+        return self._request_body["sender"]["login"]
 
     @cached_property
     def event_type(self):
@@ -230,12 +230,12 @@ class GitLabEventInfo(BaseEventInfo):
         return created_by
 
     @cached_property
-    def comment_updated_by(self):
-        return self._request_body["user"]["username"]
-
-    @cached_property
     def event_id(self):
         return self.event_info["id"]
+
+    @cached_property
+    def event_triggered_by(self):
+        return self._request_body["user"]["username"]
 
     # Map (relevant) GitLab events to GitHub events
     _EVENT_TYPE_MAP = {
