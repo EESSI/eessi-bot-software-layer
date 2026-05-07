@@ -73,6 +73,14 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
+    def issue_number(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def issue_url(self):
+        raise NotImplementedError()
+
+    @cached_property
     def label_name(self):
         raise NotImplementedError()
 
@@ -130,16 +138,20 @@ class GitHubEventInfo(BaseEventInfo):
         return self.event_info["type"]
 
     @cached_property
+    def issue_number(self):
+        return self._request_body["issue"]["number"]
+
+    @cached_property
+    def issue_url(self):
+        return self._request_body["issue"]["html_url"]
+
+    @cached_property
     def label_name(self):
         return self._request_body["label"]["name"]
 
     @cached_property
     def pr_number(self):
-        if self.event_type == "pull_request":
-            pr_num = self._request_body["pull_request"]["number"]
-        else:
-            pr_num = self._request_body["issue"]["number"]
-        return pr_num
+        return self._request_body["pull_request"]["number"]
 
     @cached_property
     def pr_merged_status(self):
@@ -147,11 +159,7 @@ class GitHubEventInfo(BaseEventInfo):
 
     @cached_property
     def pr_url(self):
-        if self.event_type == "pull_request":
-            url = self._request_body["pull_request"]["html_url"]
-        else:
-            url = self._request_body["issue"]["html_url"]
-        return url
+        return self._request_body["pull_request"]["html_url"]
 
     @cached_property
     def repo_name(self):
@@ -239,6 +247,32 @@ class GitLabEventInfo(BaseEventInfo):
     def event_type(self):
         gl_event_type = self.event_info["type"]
         return self._EVENT_TYPE_MAP.get(gl_event_type, self._UNKNOWN)
+
+    # The bot does not handle issue events, but comment events can come from both issue and MR comments.
+    # We therefore need to check what type of comment it is to get the issue numbers and URLs.
+    @cached_property
+    def issue_number(self):
+        notable_type = self._object_attributes["notable_type"]
+        if notable_type == "MergeRequest":
+            issue_iid = self._request_body["merge_request"]["iid"]
+        elif notable_type == "Issue":
+            issue_iid = self._request_body["issue"]["iid"]
+        else:
+            # Comments may also come from commits etc. - default to -1
+            issue_iid = -1
+        return issue_iid
+
+    @cached_property
+    def issue_url(self):
+        notable_type = self._object_attributes["notable_type"]
+        if notable_type == "MergeRequest":
+            issue_url = self._request_body["merge_request"]["url"]
+        elif notable_type == "Issue":
+            issue_url = self._request_body["issue"]["url"]
+        else:
+            # Comments may also come from commits etc. - default to empty string
+            issue_url = ""
+        return issue_url
 
     @cached_property
     def label_name(self):
