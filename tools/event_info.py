@@ -65,10 +65,6 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
-    def discussion_id(self):
-        raise NotImplementedError()
-
-    @cached_property
     def event_id(self):
         raise NotImplementedError()
 
@@ -124,11 +120,6 @@ class GitHubEventInfo(BaseEventInfo):
     @cached_property
     def comment_updated_by(self):
         return self._request_body["sender"]["login"]
-
-    @cached_property
-    def discussion_id(self):
-        # Not applicable for GitHub
-        return None
 
     @cached_property
     def event_id(self):
@@ -233,10 +224,6 @@ class GitLabEventInfo(BaseEventInfo):
     @cached_property
     def comment_updated_by(self):
         return self._request_body["user"]["username"]
-
-    @cached_property
-    def discussion_id(self):
-        return self._object_attributes["discussion_id"]
 
     @cached_property
     def event_id(self):
