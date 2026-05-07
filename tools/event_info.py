@@ -219,7 +219,9 @@ class GitLabEventInfo(BaseEventInfo):
     def comment_created_by(self):
         created_by_id = self._object_attributes["author_id"]
         triggered_by_id = self._request_body["user"]["id"]
-        # GL events only include the username of the user who triggered the event
+        # GL events only include the username of the user who triggered the event.
+        # E.g., if a comment was updated by someone other than the original author,
+        # we need to retrieve the name of the author from the server.
         if triggered_by_id == created_by_id:
             created_by = self._request_body["user"]["username"]
         else:
@@ -257,6 +259,9 @@ class GitLabEventInfo(BaseEventInfo):
         # Set manually and call handle_pull_request_labeled_event once per label?
         raise NotImplementedError()
 
+    # GL uses the 'object_attributes' field to store data about the event object.
+    # For example, MR events store information about the MR in 'object_attributes', while
+    # events from comments on MRs store information about the MR in the 'merge_request' field.
     @cached_property
     def pr_number(self):
         if self.event_type == "pull_request":

@@ -168,6 +168,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
     def handle_event(self, event_info, log_file=None):
         """
+        Override of PyGHee's handle_event method.
         Create EventInfo instance using event_info,
         then pass that to PyGHee's handle_event method.
 

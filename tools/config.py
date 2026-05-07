@@ -220,6 +220,7 @@ def check_cfg_settings(req_settings, path="app.cfg"):
     # iterate over keys in req_settings which correspond to sections ([name])
     # in the configuration file (.ini format)
     for section in req_settings.keys():
+        # Skip checking the GitLab section if the bot is configured for GitHub and vice versa
         if git_host and (section in SUPPORTED_GIT_HOSTS) and (section != git_host):
             continue
         if section not in cfg:
