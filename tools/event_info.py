@@ -242,9 +242,15 @@ class GitLabEventInfo(BaseEventInfo):
 
     @cached_property
     def label_name(self):
-        # GH sends one event per label while GL sends one event with all label changes
-        # Set manually and call handle_pull_request_labeled_event once per label?
-        raise NotImplementedError()
+        # GL sends a single event containing all previous and current labels.
+        # Since we currently only use one label, 'bot:deploy', we can check just for that.
+        label_changes = self._request_body["changes"]["labels"]
+        # The difference between the sets will yield all newly added labels
+        added_labels = set(label_changes["current"]) - set(label_changes["previous"])
+        if "bot:deploy" in added_labels:
+            return "bot:deploy"
+        else:
+            return None
 
     # GL uses the 'object_attributes' field to store data about the event object.
     # For example, MR events store information about the MR in 'object_attributes', while
