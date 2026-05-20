@@ -252,10 +252,10 @@ class GitLabEventInfo(BaseEventInfo):
     # We therefore need to check what type of comment it is to get the issue numbers and URLs.
     @cached_property
     def issue_number(self):
-        notable_type = self._object_attributes["notable_type"]
-        if notable_type == "MergeRequest":
+        noteable_type = self._object_attributes["noteable_type"]
+        if noteable_type == "MergeRequest":
             issue_iid = self._request_body["merge_request"]["iid"]
-        elif notable_type == "Issue":
+        elif noteable_type == "Issue":
             issue_iid = self._request_body["issue"]["iid"]
         else:
             # Comments may also come from commits etc. - default to -1
@@ -264,10 +264,10 @@ class GitLabEventInfo(BaseEventInfo):
 
     @cached_property
     def issue_url(self):
-        notable_type = self._object_attributes["notable_type"]
-        if notable_type == "MergeRequest":
+        noteable_type = self._object_attributes["noteable_type"]
+        if noteable_type == "MergeRequest":
             issue_url = self._request_body["merge_request"]["url"]
-        elif notable_type == "Issue":
+        elif noteable_type == "Issue":
             issue_url = self._request_body["issue"]["url"]
         else:
             # Comments may also come from commits etc. - default to empty string
