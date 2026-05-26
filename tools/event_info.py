@@ -11,6 +11,7 @@
 
 # Standard library imports
 from functools import cached_property
+from typing import Union
 
 # Third party imports (anything installed into the local Python environment)
 # (none)
@@ -318,6 +319,10 @@ class GitLabEventInfo(BaseEventInfo):
         return self._request_body["project"]["path_with_namespace"]
 
 
+# Type for subclasses of BaseEventInfo
+EventInfo = Union[GitHubEventInfo, GitLabEventInfo]
+
+
 def create_event_info_instance(event_info):
     """
     Creates an EventInfo instance for the configured Git hosting platform.
@@ -326,7 +331,7 @@ def create_event_info_instance(event_info):
         event_info (dict): The event info dictionary created by PyGHee
 
     Returns:
-        Instance of BaseEventInfo subclass
+        EventInfo instance or None
     """
     git_host = get_git_hosting_platform()
     if git_host == GITHUB:
