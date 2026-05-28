@@ -188,7 +188,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         comments for any bot command and execute it if one is found.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             log_file (string): path to log messages to
 
         Returns:
@@ -197,13 +197,12 @@ class EESSIBotSoftwareLayer(PyGHee):
         Raises:
             Exception: raises any exception that is not of type EESSIBotCommandError
         """
-        request_body = event_info['raw_request_body']
-        issue_url = request_body['issue']['url']
-        action = request_body['action']
-        sender = request_body['sender']['login']
-        owner = request_body['comment']['user']['login']
-        repo_name = request_body['repository']['full_name']
-        pr_number = request_body['issue']['number']
+        issue_url = event_info.issue_url
+        action = event_info.action
+        sender = event_info.event_triggered_by
+        owner = event_info.comment_created_by
+        repo_name = event_info.repo_name
+        pr_number = event_info.issue_number
 
         # TODO add request body text (['comment']['body']) to log message when
         #      log level is set to debug
@@ -217,7 +216,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         # only scan for commands in newly created comments
         if action == 'created':
-            comment_received = request_body['comment']['body']
+            comment_received = event_info.comment_body
             self.log(f"comment action '{action}' is handled")
         else:
             # NOTE we do not respond to an updated PR comment with yet another
