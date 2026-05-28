@@ -367,6 +367,9 @@ class EESSIBotSoftwareLayer(PyGHee):
 
             self.log(f"issue_comment event (url {issue_url}) handled!")
 
+    # PyGHee gets the event type by subscripting event_info, i.e., it gets 'note' for GL comment events
+    handle_note_event = handle_issue_comment_event
+
     def handle_installation_event(self, event_info, log_file=None):
         """
         Handle events of type installation. Main action is to log the event.
