@@ -71,3 +71,25 @@ def connect_to_git_hosting_platform():
         gitlab.connect()
     else:
         logging.error(f"Git host not supported: '{git_host}'")
+
+
+# TODO: We might consider merging these settings later, for example as an 'app_name' setting in the 'git' section
+def get_app_name(cfg=None):
+    """
+    Get the configured app/bot name.
+
+    Args:
+        cfg (ConfigParser): Instance of ConfigParser containing the configuration.
+            May be passed by caller to avoid re-reading the configuration file.
+
+    Returns:
+        (str): The configured app/bot name or None
+    """
+    if not cfg:
+        cfg = config.read_config()
+    git_host = get_git_hosting_platform(cfg)
+    if git_host == GITHUB:
+        return cfg.get(config.SECTION_GITHUB, config.GITHUB_SETTING_APP_NAME)
+    elif git_host == GITLAB:
+        return cfg.get(config.SECTION_GITLAB, config.GITLAB_SETTING_BOT_NAME)
+    return None

@@ -38,7 +38,7 @@ from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command
 from tools.event_info import create_event_info_instance
-from tools.git import connect_to_git_hosting_platform, get_git_hosting_platform
+from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
@@ -209,7 +209,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         #      log level is set to debug
         self.log(f"Comment in {issue_url} (owned by @{owner}) {action} by @{sender}")
 
-        app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+        app_name = get_app_name(self.cfg)
         command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
 
         # currently, only commands in new comments are supported
