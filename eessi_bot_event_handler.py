@@ -571,7 +571,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             else:
                 for job_id, issue_comment in submitted_jobs.items():
                     build_msg += f"\n  - submitted job `{job_id}`"
-                    if issue_comment:
+                    if issue_comment and issue_comment.html_url:
                         build_msg += f", for details & status see {issue_comment.html_url}"
         else:
             request_body = event_info['raw_request_body']
