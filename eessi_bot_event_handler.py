@@ -528,17 +528,25 @@ class EESSIBotSoftwareLayer(PyGHee):
         commands.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
             (string): basic information about sending commands to the bot
         """
+        # Create comma-separated lists of supported and unsupported commands
+        supported_commands = get_supported_commands(self.cfg)
+        unsupported_commands = [cmd for cmd in ALL_COMMANDS if cmd not in supported_commands]
+        supported_commands_str = ", ".join([f"`{cmd}`" for cmd in supported_commands])
+        unsupported_commands_str = ", ".join([f"`{cmd}`" for cmd in unsupported_commands])
+
         help_msg = "\n  **How to send commands to bot instances**"
         help_msg += "\n  - Commands must be sent with a **new** comment (edits of existing comments are ignored)."
         help_msg += "\n  - A comment may contain multiple commands, one per line."
         help_msg += "\n  - Every command begins at the start of a line and has the syntax `bot: COMMAND [ARGUMENTS]*`"
-        help_msg += "\n  - Currently supported COMMANDs are: `help`, `build`, `show_config`, `status`, `cancel`"
+        help_msg += "\n  - Currently supported COMMANDs are: " + supported_commands_str
+        if unsupported_commands_str:
+            help_msg += "\n  - The following COMMANDs are not yet supported: " + unsupported_commands_str
         help_msg += "\n"
         help_msg += "\n  For more information, see https://www.eessi.io/docs/bot"
         return help_msg
