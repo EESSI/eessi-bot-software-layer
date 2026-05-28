@@ -19,6 +19,29 @@ from pyghee.utils import log
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from tools.filter import EESSIBotActionFilter, EESSIBotActionFilterError
 from tools.build_params import EESSIBotBuildParams
+from tools.git import get_git_hosting_platform, GITHUB, GITLAB
+
+
+ALL_COMMANDS = ["help", "build", "show_config", "status", "cancel"]
+SUPPORTED_COMMANDS_PER_GIT_HOST = {
+    GITHUB: ["help", "build", "show_config", "status", "cancel"],
+    GITLAB: [],
+}
+
+
+def get_supported_commands(cfg=None):
+    """
+    Returns the supported commands for the configured Git hosting platform.
+
+    Args:
+        cfg (ConfigParser): Instance of ConfigParser containing the configuration.
+            May be passed by caller to avoid re-reading the configuration file.
+
+    Returns:
+        supported_commands (list of strings): The supported commands
+    """
+    git_host = get_git_hosting_platform(cfg)
+    return SUPPORTED_COMMANDS_PER_GIT_HOST[git_host]
 
 
 def contains_any_bot_command(body):

@@ -36,7 +36,7 @@ from tasks.clean_up import move_to_trash_bin
 from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
-    contains_any_bot_command, get_bot_command
+    contains_any_bot_command, get_bot_command, get_supported_commands, ALL_COMMANDS
 from tools.event_info import create_event_info_instance
 from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform
 from tools.permissions import check_command_permission
@@ -496,7 +496,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         specific bot_command given.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
             log_file (string): path to log messages to
 
@@ -511,9 +511,13 @@ class EESSIBotSoftwareLayer(PyGHee):
         cmd = bot_command.command
         handler_name = f"handle_bot_command_{cmd}"
         if hasattr(self, handler_name):
-            handler = getattr(self, handler_name)
-            self.log(f"Handling bot command {cmd}")
-            return handler(event_info, bot_command)
+            if cmd in get_supported_commands(self.cfg):
+                handler = getattr(self, handler_name)
+                self.log(f"Handling bot command {cmd}")
+                return handler(event_info, bot_command)
+            else:
+                self.log(f"Command '{cmd}' is not supported on the configured Git hosting platform.")
+                raise EESSIBotCommandError(f"Unsupported command `{cmd}`; use `bot: help` for usage information")
         else:
             self.log(f"No handler for command '{cmd}'")
             raise EESSIBotCommandError(f"unknown command `{cmd}`; use `bot: help` for usage information")
