@@ -30,7 +30,7 @@ from connections import github
 from tools import config
 
 
-PRComment = namedtuple('PRComment', ('repo_name', 'pr_number', 'pr_comment_id'))
+PRCommentInfo = namedtuple('PRCommentInfo', ('repo_name', 'pr_number', 'pr_comment_id'))
 
 
 class ChatLevels(Enum):
