@@ -276,8 +276,8 @@ class GitHubPRComment(BasePRComment):
         if not self.body:
             raise Exception("'body' must be set to create a comment.")
         if self.id:
-        # Safeguard: id should not be set when body is initialized, but guard
-        # against accidental duplicate comments if id was set after initialization.
+            # Safeguard: id should not be set when body is initialized, but guard
+            # against accidental duplicate comments if id was set after initialization.
             return
         self._comment_obj = retry_call(self._pr_obj.create_issue_comment, fargs=[self.body],
                                        exceptions=Exception, tries=3, delay=1, backoff=2, max_delay=10)
@@ -329,8 +329,8 @@ class GitLabPRComment(BasePRComment):
         if not self.body:
             raise Exception("'body' must be set to create a comment.")
         if self.id:
-        # Safeguard: id should not be set when body is initialized, but guard
-        # against accidental duplicate comments if id was set after initialization.
+            # Safeguard: id should not be set when body is initialized, but guard
+            # against accidental duplicate comments if id was set after initialization.
             return
         self._comment_obj = self._pr_obj.notes.create({"body": self.body})
         if self._comment_obj:
