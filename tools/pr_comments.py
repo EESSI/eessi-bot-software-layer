@@ -16,6 +16,7 @@
 #
 
 # Standard library imports
+from abc import abstractmethod, ABC
 from collections import namedtuple
 from enum import Enum
 import re
@@ -196,22 +197,27 @@ def update_pr_comment(event_info, update):
     issue_comment.edit(comment_new + update)
 
 
-class BasePRComment():
+class BasePRComment(ABC):
     """
     Base class to use for handling PR comments, which works differently for GitHub vs. GitLab.
+
+    Args:
+        repo_name (str): Full name of the repository (e.g. 'user/repo')
+        pr_number (int): Pull request number
+        body (str, optional): Comment body. Provide when creating a new comment.
+        id (int, optional): ID of an existing comment. Provide when referencing an existing comment.
+
+    Exactly one of body or id must be provided.
     """
     def __init__(self, repo_name, pr_number, body=None, id=None):
-        if self.__class__ is BasePRComment:
-            err_msg = "Do not use this base class directly. "
-            err_msg += "Please use one of its subclasses instead."
-            raise NotImplementedError(err_msg)
-
-        # 'body' should be provided when creating a new comment
-        # 'id' should be provided when dealing with an existing comment
-        if (body and id) or not (body or id):
-            err_msg = "Exactly one of 'body' and 'id' must be "
+        # Exactly one of body (new comment) or id (existing comment) must be provided
+        if (body is None) == (id is None):
+            err_msg = "Exactly one of 'body' or 'id' must be "
             err_msg += "set when initializing a comment class."
-            raise Exception(err_msg)
+            raise ValueError(err_msg)
+
+        if id is not None and not str(id).strip():
+            raise ValueError("'id' must not be empty.")
 
         self.body = body
         self.id = id
@@ -221,20 +227,25 @@ class BasePRComment():
         self._comment_obj = None
 
     @property
+    @abstractmethod
     def html_url(self):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def get(self):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def create(self):
-        raise NotImplementedError()
+        pass
 
-    def edit(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def edit(self, new_body):
+        pass
 
-    def append(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def append(self, text_to_append):
+        pass
 
 
 class GitHubPRComment(BasePRComment):
