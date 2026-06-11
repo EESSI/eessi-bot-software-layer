@@ -227,6 +227,28 @@ class BasePRComment(ABC):
         self._comment_obj = None
 
     @property
+    def body(self):
+        return self._body
+
+    @body.setter
+    def body(self, value):
+        # Ensure 'body' is not a blank string
+        if value is not None and not value.strip():
+            raise ValueError("'body' must not be empty") 
+        self._body = value
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, value):
+        # Ensure 'id' is not a blank string
+        if value is not None and not str(value).strip():
+            raise ValueError("'id' must not be empty") 
+        self._id = value
+
+    @property
     @abstractmethod
     def html_url(self):
         pass
