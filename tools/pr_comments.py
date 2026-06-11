@@ -295,16 +295,14 @@ class GitHubPRComment(BasePRComment):
         return None
 
     def get(self):
-        if not self.id:
-            raise Exception("'id' must be set to get a comment.")
+        self._require_id()
         self._comment_obj = retry_call(self._pr_obj.get_issue_comment, fargs=[self.id],
                                        exceptions=Exception, tries=5, delay=1, backoff=2, max_delay=30)
         if self._comment_obj:
             self.body = self._comment_obj.body
 
     def create(self):
-        if not self.body:
-            raise Exception("'body' must be set to create a comment.")
+        self._require_body()
         if self.id:
             # Safeguard: id should not be set when body is initialized, but guard
             # against accidental duplicate comments if id was set after initialization.
@@ -315,8 +313,7 @@ class GitHubPRComment(BasePRComment):
             self.id = self._comment_obj.id
 
     def edit(self, new_body):
-        if not self.id:
-            raise Exception("'id' must be set to edit a comment.")
+        self._require_id()
         # Ensure comment object is present
         if not self._comment_obj:
             self.get()
@@ -325,8 +322,7 @@ class GitHubPRComment(BasePRComment):
                    tries=5, delay=1, backoff=2, max_delay=30)
 
     def append(self, text_to_append):
-        if not self.id:
-            raise Exception("'id' must be set to append to a comment.")
+        self._require_id()
         # Ensure comment object is present and up to date
         self.get()
         self.edit(self.body + text_to_append)
@@ -350,14 +346,12 @@ class GitLabPRComment(BasePRComment):
         return None
 
     def get(self):
-        if not self.id:
-            raise Exception("'id' must be set to get a comment.")
+        self._require_id()
         self._comment_obj = self._pr_obj.notes.get(self.id)
         self.body = self._comment_obj.body
 
     def create(self):
-        if not self.body:
-            raise Exception("'body' must be set to create a comment.")
+        self._require_body()
         if self.id:
             # Safeguard: id should not be set when body is initialized, but guard
             # against accidental duplicate comments if id was set after initialization.
@@ -367,8 +361,7 @@ class GitLabPRComment(BasePRComment):
             self.id = self._comment_obj.id
 
     def edit(self, new_body):
-        if not self.id:
-            raise Exception("'id' must be set to edit a comment.")
+        self._require_id()
         # Ensure comment object is present
         if not self._comment_obj:
             self.get()
@@ -377,8 +370,7 @@ class GitLabPRComment(BasePRComment):
         self._comment_obj.save()
 
     def append(self, text_to_append):
-        if not self.id:
-            raise Exception("'id' must be set to append to a comment.")
+        self._require_id()
         # Ensure comment object and body are present and up to date
         self.get()
         self.edit(self.body + text_to_append)
