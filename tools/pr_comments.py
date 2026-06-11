@@ -248,6 +248,14 @@ class BasePRComment(ABC):
             raise ValueError("'id' must not be empty") 
         self._id = value
 
+    def _require_body(self):
+        if self.body is None:
+            raise ValueError("'body' must be set.")
+
+    def _require_id(self):
+        if self.id is None:
+            raise ValueError("'id' must be set.")
+
     @property
     @abstractmethod
     def html_url(self):
