@@ -234,7 +234,7 @@ class BasePRComment(ABC):
     def body(self, value):
         # Ensure 'body' is not a blank string
         if value is not None and not value.strip():
-            raise ValueError("'body' must not be empty") 
+            raise ValueError("'body' must not be empty")
         self._body = value
 
     @property
@@ -245,7 +245,7 @@ class BasePRComment(ABC):
     def id(self, value):
         # Ensure 'id' is not a blank string
         if value is not None and not str(value).strip():
-            raise ValueError("'id' must not be empty") 
+            raise ValueError("'id' must not be empty")
         self._id = value
 
     def _require_body(self):
