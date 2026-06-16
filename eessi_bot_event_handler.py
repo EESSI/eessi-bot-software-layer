@@ -36,9 +36,9 @@ from tasks.clean_up import move_to_trash_bin
 from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
-    contains_any_bot_command, get_bot_command
+    contains_any_bot_command, get_bot_command, get_supported_commands, ALL_COMMANDS
 from tools.event_info import create_event_info_instance
-from tools.git import connect_to_git_hosting_platform, get_git_hosting_platform
+from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
@@ -188,7 +188,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         comments for any bot command and execute it if one is found.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             log_file (string): path to log messages to
 
         Returns:
@@ -197,19 +197,18 @@ class EESSIBotSoftwareLayer(PyGHee):
         Raises:
             Exception: raises any exception that is not of type EESSIBotCommandError
         """
-        request_body = event_info['raw_request_body']
-        issue_url = request_body['issue']['url']
-        action = request_body['action']
-        sender = request_body['sender']['login']
-        owner = request_body['comment']['user']['login']
-        repo_name = request_body['repository']['full_name']
-        pr_number = request_body['issue']['number']
+        issue_url = event_info.issue_url
+        action = event_info.action
+        sender = event_info.event_triggered_by
+        owner = event_info.comment_created_by
+        repo_name = event_info.repo_name
+        pr_number = event_info.issue_number
 
         # TODO add request body text (['comment']['body']) to log message when
         #      log level is set to debug
         self.log(f"Comment in {issue_url} (owned by @{owner}) {action} by @{sender}")
 
-        app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+        app_name = get_app_name(self.cfg)
         command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
 
         # currently, only commands in new comments are supported
@@ -217,7 +216,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         # only scan for commands in newly created comments
         if action == 'created':
-            comment_received = request_body['comment']['body']
+            comment_received = event_info.comment_body
             self.log(f"comment action '{action}' is handled")
         else:
             # NOTE we do not respond to an updated PR comment with yet another
@@ -368,6 +367,9 @@ class EESSIBotSoftwareLayer(PyGHee):
 
             self.log(f"issue_comment event (url {issue_url}) handled!")
 
+    # PyGHee gets the event type by subscripting event_info, i.e., it gets 'note' for GL comment events
+    handle_note_event = handle_issue_comment_event
+
     def handle_installation_event(self, event_info, log_file=None):
         """
         Handle events of type installation. Main action is to log the event.
@@ -497,7 +499,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         specific bot_command given.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
             log_file (string): path to log messages to
 
@@ -512,9 +514,13 @@ class EESSIBotSoftwareLayer(PyGHee):
         cmd = bot_command.command
         handler_name = f"handle_bot_command_{cmd}"
         if hasattr(self, handler_name):
-            handler = getattr(self, handler_name)
-            self.log(f"Handling bot command {cmd}")
-            return handler(event_info, bot_command)
+            if cmd in get_supported_commands(self.cfg):
+                handler = getattr(self, handler_name)
+                self.log(f"Handling bot command {cmd}")
+                return handler(event_info, bot_command)
+            else:
+                self.log(f"Command '{cmd}' is not supported on the configured Git hosting platform.")
+                raise EESSIBotCommandError(f"Unsupported command `{cmd}`; use `bot: help` for usage information")
         else:
             self.log(f"No handler for command '{cmd}'")
             raise EESSIBotCommandError(f"unknown command `{cmd}`; use `bot: help` for usage information")
@@ -525,17 +531,25 @@ class EESSIBotSoftwareLayer(PyGHee):
         commands.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
             (string): basic information about sending commands to the bot
         """
+        # Create comma-separated lists of supported and unsupported commands
+        supported_commands = get_supported_commands(self.cfg)
+        unsupported_commands = [cmd for cmd in ALL_COMMANDS if cmd not in supported_commands]
+        supported_commands_str = ", ".join([f"`{cmd}`" for cmd in supported_commands])
+        unsupported_commands_str = ", ".join([f"`{cmd}`" for cmd in unsupported_commands])
+
         help_msg = "\n  **How to send commands to bot instances**"
         help_msg += "\n  - Commands must be sent with a **new** comment (edits of existing comments are ignored)."
         help_msg += "\n  - A comment may contain multiple commands, one per line."
         help_msg += "\n  - Every command begins at the start of a line and has the syntax `bot: COMMAND [ARGUMENTS]*`"
-        help_msg += "\n  - Currently supported COMMANDs are: `help`, `build`, `show_config`, `status`, `cancel`"
+        help_msg += "\n  - Currently supported COMMANDs are: " + supported_commands_str
+        if unsupported_commands_str:
+            help_msg += "\n  - The following COMMANDs are not yet supported: " + unsupported_commands_str
         help_msg += "\n"
         help_msg += "\n  For more information, see https://www.eessi.io/docs/bot"
         return help_msg
@@ -572,7 +586,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             else:
                 for job_id, issue_comment in submitted_jobs.items():
                     build_msg += f"\n  - submitted job `{job_id}`"
-                    if issue_comment:
+                    if issue_comment and issue_comment.html_url:
                         build_msg += f", for details & status see {issue_comment.html_url}"
         else:
             request_body = event_info['raw_request_body']

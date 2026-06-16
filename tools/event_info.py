@@ -11,6 +11,7 @@
 
 # Standard library imports
 from functools import cached_property
+from typing import Union
 
 # Third party imports (anything installed into the local Python environment)
 # (none)
@@ -252,10 +253,10 @@ class GitLabEventInfo(BaseEventInfo):
     # We therefore need to check what type of comment it is to get the issue numbers and URLs.
     @cached_property
     def issue_number(self):
-        notable_type = self._object_attributes["notable_type"]
-        if notable_type == "MergeRequest":
+        noteable_type = self._object_attributes["noteable_type"]
+        if noteable_type == "MergeRequest":
             issue_iid = self._request_body["merge_request"]["iid"]
-        elif notable_type == "Issue":
+        elif noteable_type == "Issue":
             issue_iid = self._request_body["issue"]["iid"]
         else:
             # Comments may also come from commits etc. - default to -1
@@ -264,10 +265,10 @@ class GitLabEventInfo(BaseEventInfo):
 
     @cached_property
     def issue_url(self):
-        notable_type = self._object_attributes["notable_type"]
-        if notable_type == "MergeRequest":
+        noteable_type = self._object_attributes["noteable_type"]
+        if noteable_type == "MergeRequest":
             issue_url = self._request_body["merge_request"]["url"]
-        elif notable_type == "Issue":
+        elif noteable_type == "Issue":
             issue_url = self._request_body["issue"]["url"]
         else:
             # Comments may also come from commits etc. - default to empty string
@@ -318,6 +319,10 @@ class GitLabEventInfo(BaseEventInfo):
         return self._request_body["project"]["path_with_namespace"]
 
 
+# Type for subclasses of BaseEventInfo
+EventInfo = Union[GitHubEventInfo, GitLabEventInfo]
+
+
 def create_event_info_instance(event_info):
     """
     Creates an EventInfo instance for the configured Git hosting platform.
@@ -326,7 +331,7 @@ def create_event_info_instance(event_info):
         event_info (dict): The event info dictionary created by PyGHee
 
     Returns:
-        Instance of BaseEventInfo subclass
+        EventInfo instance or None
     """
     git_host = get_git_hosting_platform()
     if git_host == GITHUB:
