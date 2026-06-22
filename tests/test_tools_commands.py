@@ -11,12 +11,52 @@
 
 # Standard library imports
 from contextlib import nullcontext
+from unittest.mock import patch
 
 # Third party imports (anything installed into the local Python environment)
 import pytest
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from tools import commands
+from tools import commands, git
+
+
+# Test SUPPORTED_COMMANDS_PER_GIT_HOST
+@pytest.mark.parametrize("git_host", git.SUPPORTED_GIT_HOSTS)
+def test_support_commands_per_git_host(git_host):
+    # There should be an entry for each supported Git hosting platform
+    assert git_host in commands.SUPPORTED_COMMANDS_PER_GIT_HOST
+
+    # Each entry should be a list of commands
+    supported_commands = commands.SUPPORTED_COMMANDS_PER_GIT_HOST[git_host]
+    assert isinstance(supported_commands, list)
+    assert all([command in commands.ALL_COMMANDS for command in supported_commands])
+
+
+# Test get_supported_commands()
+def test_get_supported_commands():
+    HOSTING_PLATFORM = "hosting_platform"
+
+    github_supported_commands = commands.SUPPORTED_COMMANDS_PER_GIT_HOST[git.GITHUB]
+    gitlab_supported_commands = commands.SUPPORTED_COMMANDS_PER_GIT_HOST[git.GITLAB]
+
+    # Use as mock get_git_hosting_platform()
+    def get_git_host(cfg=None):
+        if cfg is None:
+            return git.GITHUB
+        return cfg.get(HOSTING_PLATFORM)
+
+    with patch("tools.commands.get_git_hosting_platform", side_effect=get_git_host) as mock_get_git_host:
+        # Test without provided cfg - mock get_git_hosting_platform() defaults to 'github'
+        assert commands.get_supported_commands() is github_supported_commands
+        mock_get_git_host.assert_called_once()
+
+        # Test with provided cfg - 'hosting_platform' set to 'github'
+        assert commands.get_supported_commands({HOSTING_PLATFORM: git.GITHUB}) == github_supported_commands
+        assert mock_get_git_host.call_count == 2
+
+        # Test with provided cfg - 'hosting_platform' set to 'gitlab'
+        assert commands.get_supported_commands({HOSTING_PLATFORM: git.GITLAB}) == gitlab_supported_commands
+        assert mock_get_git_host.call_count == 3
 
 
 # Test contains_any_bot_command() with both single-line and multi-line comments
@@ -73,7 +113,7 @@ def test_get_bot_command():
     # Test different commands with varying formatting
     test_cmds = [
         # All existing commands
-        "build", "cancel", "help", "show_config", "status",
+        *commands.ALL_COMMANDS,
         # Build command with filters
         "build on:arch=icelake for:arch=x86_64/intel/icelake,accel=nvidia/cc90 repo:eessi.io-2025.06-software",
         # Non-existant command
