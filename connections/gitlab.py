@@ -63,9 +63,7 @@ def connect():
     else:
         del os.environ['GITLAB_PROJECT_ACCESS_TOKEN']
 
-    _gl = gitlab.Gitlab(url, access_token)
-    _gl.timeout = timeout
-    _gl.retry_transient_errors = True
+    _gl = gitlab.Gitlab(url, access_token, timeout=timeout, retry_transient_errors=True)
     verify_connection(_gl)
 
 
