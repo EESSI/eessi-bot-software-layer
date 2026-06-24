@@ -138,10 +138,8 @@ def test_get_instance():
         assert gl is mock_gl
 
     # Existing connection - Verify and return
-    with (
-        patch("connections.gitlab.connect") as mock_connect,
-        patch("connections.gitlab.verify_connection") as mock_verify_connection
-    ):
-        gl = gitlab.get_instance()
-        mock_verify_connection.assert_called()
-        mock_connect.assert_not_called()
+    with patch("connections.gitlab.connect") as mock_connect:
+        with patch("connections.gitlab.verify_connection") as mock_verify_connection:
+            gl = gitlab.get_instance()
+            mock_verify_connection.assert_called()
+            mock_connect.assert_not_called()
