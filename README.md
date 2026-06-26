@@ -18,15 +18,25 @@ The bot consists of two main components provided in this repository:
 
 ## <a name="prerequisites"></a>Prerequisites
 
-- GitHub account, say `GH_ACCOUNT`
-- A fork, say `GH_ACCOUNT/software-layer`, of
-  [EESSI/software-layer](https://github.com/EESSI/software-layer). The EESSI bot will act on
-  events triggered for a repository its corresponding GitHub App was installed into.
-  To install the GitHub App into a repository, the GitHub App needs to be
-  configured such that it can be installed into any repository or all
-  repositories belonging to an account/organisation and the installer
-  (account/person who performs the "installation") has permissions to perform the
-  installation.
+- If setting up the bot for GitHub:
+  - GitHub account, say `GH_ACCOUNT`
+  - A fork, say `GH_ACCOUNT/software-layer`, of
+    [EESSI/software-layer](https://github.com/EESSI/software-layer). The EESSI bot will act on
+    events triggered for a repository its corresponding GitHub App was installed into.
+    To install the GitHub App into a repository, the GitHub App needs to be
+    configured such that it can be installed into any repository or all
+    repositories belonging to an account/organisation and the installer
+    (account/person who performs the "installation") has permissions to perform the
+    installation.
+- If setting up the bot for GitLab:
+  - Account on a GitLab instance running version 19.0 or newer (must support
+    [webhooks with signing tokens](https://docs.gitlab.com/user/project/integrations/webhooks/#signing-tokens))
+  - A fork, say `GL_NAMESPACE/software-layer` for some group or namespace `GL_NAMESPACE`, of
+    [EESSI/software-layer](https://github.com/EESSI/software-layer)
+  - GitLab access token for the bot to use. The access token must have access to the fork. Use
+    either a group/project access token or a service account access token. It must have at least
+    the `Reporter` role, as well as the `api` scope to have read/write access through the API (the
+    actual permissions of the token will still be limited by the permissions of its role).
 - Access to a frontend/login node/service node of a Slurm cluster where the
   EESSI bot components will run. For the sake of brevity, we call this node
   simply `bot machine`.
