@@ -104,7 +104,10 @@ Another port can be used by adding the `--port PORT` argument. This can be parti
 node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID --port 3030
 ```
 
-## <a name="step2"></a>Step 2: Registering a GitHub App
+> [!IMPORTANT]
+> Steps 2 and 3 differ for GitHub and GitLab. Be sure to follow the instructions for your platform.
+
+## <a name="step2github"></a>Step 2 (GitHub): Registering a GitHub App
 
 We need to:
 
@@ -154,7 +157,7 @@ scroll down to the section "Private keys"
 Generate the private key, which downloads it and note the SHA256 string (to
 more easily identify the key later on).
 
-## <a name="step3"></a>Step 3: Installing the GitHub App into a repository
+## <a name="step3github"></a>Step 3 (GitHub): Installing the GitHub App into a repository
 
 > [!NOTE]
 > This will trigger the first event (`installation`). While the EESSI bot is not running yet, you can inspect this via the webpage for your Smee channel. Just open `https://smee.io/CHANNEL-ID` in a browser, and browse through the information included in the event. Naturally, some of the information will be different for other types of events.
@@ -168,6 +171,59 @@ Go to [https://github.com/settings/apps/**APP_NAME**](https://github.com/setting
 On the next page you should see a list of accounts and organisations you can install the app on. Choose one and click on the <kbd style="background-color: #28a745; color: white;">Install</kdb> button next to it.
 
 This leads to a page where you can select the repositories where the app should react to. Here, for the sake of simplicity, choose "Only select repositories", then open the pull-down menu named "Select repositories" and in there select `GH_ACCOUNT/software-layer` (`GH_ACCOUNT` is the GitHub account mentioned in section [prerequisites](#prerequisites)). Finally, click on the <kbd style="background-color: #28a745; color: white;">Install</kbd> button.
+
+## <a name="step2gitlab"></a>Step 2 (GitLab): Setting up a webhook
+
+To set up a webhook, go to your fork `GL_NAMESPACE/software-layer` (mentioned in the [prerequisites](#prerequisites)
+section), select **Settings -> Webhooks** in the sidebar, and click the <kbd>Add new webhook</kbd> button.
+
+Enter the Smee URL from [Step 1](#step1) in the **URL** field. Hide the channel ID by clicking
+<kbd>Add URL masking</kbd> and entering the `CHANNEL_ID` part of the URL in the **Sensitive portion of URL** field.
+
+Click the <kbd>Generate signing token</kbd> button to generate a signing token. Make sure to store the token somewhere
+as you will not be able to retrieve it from GitLab afterwards, though you are able to generate a new token if you lose
+your current one.
+
+In the **Trigger** list, check the boxes for "Comments" and "Merge request events".
+
+Although optional, you may also want to add a name and description for the webhook in the topmost fields.
+
+Finally, click the <kbd>Add webhook</kbd> button.
+
+## <a name="step3gitlab"></a>Step 3 (GitLab): Creating an access token
+
+There are a couple of ways to generate an access token that can be used for the bot. Depending on what is available to
+you on your GitLab instance, you may use either a project access token ([Step 3a](#step3agitlab)), or a personal access
+token belonging to a dedicated service account on the fork ([Step 3b](#step3bgitlab)). For example, project access
+tokens are unavailable on the Free plan of GitLab.com, meaning that you will have to use a service account.
+
+### <a name="step3agitlab"></a>Step 3a (GitLab): Creating a project access token
+
+In your fork, go to **Settings -> Access tokens** and click on the <kbd>Add new token</kbd> button, then:
+
+- Enter a name for the token. This will become the display name of the bot.
+- Choose the "Planner" role.
+- Select the "api" scope which gives the bot read/write access to the fork through the API. Its permissions will still
+be limited by the permissions of the role.
+- Optionally, set a description and a custom expiration date for the token.
+
+Finish by clicking <kbd>Create project access token</kbd>. Store the access token somewhere as you will not be able to
+retrieve it later (although you are able to rotate the token if you lose/expose it at some point).
+
+### <a name="step3bgitlab"></a>Step 3b (GitLab): Creating a service account personal access token
+
+In your fork, go to **Settings -> Service accounts** and click on the <kbd>Add service account</kbd> button. Enter a
+a name for the service account. This will become the display name of the bot. Optionally, you may also enter a username
+and/or description for the service account. Finish by clicking <kbd>Create</kbd>.
+
+Next to the newly created service account click on **the three dots button -> Manage access tokens**, then
+<kbd>Add new token</kbd>. Enter a token name, choose the "api" scope, and optionally enter a description and/or custom
+expiration date. Click <kbd>Generate token</kbd> and make sure to store it somewhere as you will not be able to retrieve
+ it later (though you will be able to rotate the token if you accidentally lose/expose it at some point).
+
+Finally, go to **Manage -> Members** in the left sidebar and click <kbd>Invite members</kbd>. In the box, enter the
+display name or username of the service account you just created and select it from the list. Choose the "Planner" role
+and click <kbd>Invite</kbd> to add the service account as a member of your fork.
 
 ## <a name="step4"></a>Step 4: Installing the EESSI bot on a `bot machine`
 
@@ -315,7 +371,7 @@ in which you replace `THE_TOKEN_STRING` with the actual token.
 
 ### <a name="step5.2"></a>Step 5.2: GitHub App Secret Token
 
-The GitHub App Secret Token is used to verify the webhook sender. You should have created one already when registering a new GitHub App in [Step 2](#step2).
+The GitHub App Secret Token is used to verify the webhook sender. You should have created one already when registering a new GitHub App in [Step 2](#step2github).
 
 On the `bot machine` set the environment variable `$GITHUB_APP_SECTRET_TOKEN`:
 
@@ -323,13 +379,13 @@ On the `bot machine` set the environment variable `$GITHUB_APP_SECTRET_TOKEN`:
 export GITHUB_APP_SECRET_TOKEN='THE_SECRET_TOKEN_STRING'
 ```
 
-in which you replace `THE_SECRET_TOKEN_STRING` with the secret token you have created in [Step 2](#step2).
+in which you replace `THE_SECRET_TOKEN_STRING` with the secret token you have created in [Step 2](#step2github).
 
 Note that depending on the characters used in the string you will likely have to use _single quotes_ (`'...'`) when setting the value of the environment variable.
 
 ### <a name="step5.3"></a>Step 5.3: Create a private key and store it on the `bot machine`
 
-The private key is needed to let the app authenticate when updating information at the repository such as commenting on pull requests, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2).
+The private key is needed to let the app authenticate when updating information at the repository such as commenting on pull requests, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2github).
 
 Open the page [https://github.com/settings/apps](https://github.com/settings/apps) and then click on the icon left to the name of the GitHub App for the EESSI bot or the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Edit</kbd> button for the app.
 
@@ -361,7 +417,7 @@ Time limit for requests to GitHub's REST API.
 app_id = 123456
 ```
 
-Replace '`123456`' with the id of your GitHub App. You can find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). On the opened page you will find the `app_id` in the section headed "`About`" listed as "`App ID`".
+Replace '`123456`' with the id of your GitHub App. You can find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2github). On the opened page you will find the `app_id` in the section headed "`About`" listed as "`App ID`".
 
 ```ini
 app_name = 'MY-bot'
@@ -384,11 +440,11 @@ _Note: avoid putting an actual username here as it will be visible on potentiall
 installation_id = 12345678
 ```
 
-Replace '`12345678`' with the id of the _installation_ of your GitHub App (see [Step 3](#step3)).
+Replace '`12345678`' with the id of the _installation_ of your GitHub App (see [Step 3](#step3github)).
 
-You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the number after the last `/` of the page's URL.
+You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2github) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the number after the last `/` of the page's URL.
 
-The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the **Advanced** section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2), and choose **Advanced** in the menu on the left-hand side.
+The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the **Advanced** section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2github), and choose **Advanced** in the menu on the left-hand side.
 
 ```ini
 private_key = PATH_TO_PRIVATE_KEY
