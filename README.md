@@ -258,21 +258,21 @@ git fetch origin pull/42/head:PR42
 git checkout PR42
 ```
 
-The EESSI bot requires some Python packages to be installed, which are specified in the [`requirements.txt`](https://github.com/EESSI/eessi-bot-software-layer/tree/main/requirements.txt) file. It is recommended to install these in a virtual environment based on Python 3.7 or newer. See the commands below for an example on how to set up the virtual environment, activate it, and install the requirements for the EESSI bot. These commands assume that you are in the `eessi-bot-software-layer` directory:
+The EESSI bot requires some Python packages to be installed, which are specified in the [`requirements.txt`](https://github.com/EESSI/eessi-bot-software-layer/tree/main/requirements.txt) file. It is recommended to install these in a virtual environment based on Python 3.9 or newer. See the commands below for an example on how to set up the virtual environment, activate it, and install the requirements for the EESSI bot. These commands assume that you are in the `eessi-bot-software-layer` directory:
 
 ```bash
 # assumption here is that you start from *within* the eessi-bot-software-layer directory
 cd ..
-python3.7 -m venv venv_eessi_bot_p37
-source venv_eessi_bot_p37/bin/activate
-python --version                     # output should match 'Python 3.7.*'
-which python                         # output should match '*/venv_eessi_bot_p37/bin/python'
+python3.9 -m venv venv_eessi_bot_p39
+source venv_eessi_bot_p39/bin/activate
+python --version                     # output should match 'Python 3.9.*'
+which python                         # output should match '*/venv_eessi_bot_p39/bin/python'
 python -m pip install --upgrade pip
 cd eessi-bot-software-layer
 pip install -r requirements.txt
 ```
 
-Note, before you can start the bot components (see below), you have to activate the virtual environment with `source venv_eessi_bot_p37/bin/activate`.
+Note, before you can start the bot components (see below), you have to activate the virtual environment with `source venv_eessi_bot_p39/bin/activate`.
 
 You can exit the virtual environment by running `deactivate`.
 
