@@ -13,8 +13,10 @@ deployment.
 The following sections describe and illustrate the steps necessary to set up the EESSI bot.
 The bot consists of two main components provided in this repository:
 
-- An event handler [`eessi_bot_event_handler.py`](eessi_bot_event_handler.py) which receives events from a GitHub repository and acts on them.
+- An event handler [`eessi_bot_event_handler.py`](eessi_bot_event_handler.py) which receives events from a GitHub repository or GitLab project and acts on them.
 - A job manager [`eessi_bot_job_manager.py`](eessi_bot_job_manager.py) which monitors the Slurm job queue and acts on state changes of jobs submitted by the event handler.
+
+Note that GitLab support is currently limited to the `help` command.
 
 ## <a name="prerequisites"></a>Prerequisites
 
@@ -32,11 +34,8 @@ The bot consists of two main components provided in this repository:
   - Account on a GitLab instance running version 19.0 or newer (must support
     [webhooks with signing tokens](https://docs.gitlab.com/user/project/integrations/webhooks/#signing-tokens))
   - A fork, say `GL_NAMESPACE/software-layer` for some group or namespace `GL_NAMESPACE`, of
-    [EESSI/software-layer](https://github.com/EESSI/software-layer)
-  - GitLab access token for the bot to use. The access token must have access to the fork. Use
-    either a group/project access token or a service account access token. It must have at least
-    the `Reporter` role, as well as the `api` scope to have read/write access through the API (the
-    actual permissions of the token will still be limited by the permissions of its role).
+    [EESSI/software-layer](https://github.com/EESSI/software-layer). You will need to be able to add webhooks to the
+    fork, and create access tokens for the fork (either directly or through a service account).
 - Access to a frontend/login node/service node of a Slurm cluster where the
   EESSI bot components will run. For the sake of brevity, we call this node
   simply `bot machine`.
@@ -57,8 +56,8 @@ The bot consists of two main components provided in this repository:
 
 _EESSI uses specific Smee channels. Access to them is restricted for
 EESSI-internal use._
-For development and testing purposes, one can use [smee.io](https://smee.io) as a service to relay events from GitHub
-to the EESSI bot. To do so, create a new channel via [smee.io](https://smee.io) and note
+For development and testing purposes, one can use [smee.io](https://smee.io) as a service to relay events from
+GitHub/GitLab to the EESSI bot. To do so, create a new channel via [smee.io](https://smee.io) and note
 the URL, e.g., `https://smee.io/CHANNEL-ID`.
 
 ### Step 1b: Install Smee client on `bot machine`
