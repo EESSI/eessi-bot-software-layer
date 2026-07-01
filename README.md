@@ -444,9 +444,19 @@ cp -i app.cfg.example app.cfg
 
 The example file (`app.cfg.example`) includes notes on what you have to adjust to run the bot in your environment.
 
+#### `[git]` section
+
+The section `[git]` contains general settings for the Git hosting platform:
+
+```ini
+hosting_platform = github
+```
+
+The Git hosting platform the bot should be configured for. Must be either `github` or `gitlab`.
+
 #### `[github]` section
 
-The section `[github]` contains information for connecting to GitHub:
+The section `[github]` contains information for connecting to GitHub (you may skip it if setting up the bot for GitLab):
 
 ```ini
 api_timeout = 10
@@ -459,6 +469,8 @@ app_id = 123456
 ```
 
 Replace '`123456`' with the id of your GitHub App. You can find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2github). On the opened page you will find the `app_id` in the section headed "`About`" listed as "`App ID`".
+
+<a name="github-app-name"></a>
 
 ```ini
 app_name = 'MY-bot'
@@ -492,6 +504,29 @@ private_key = PATH_TO_PRIVATE_KEY
 ```
 
 Replace `PATH_TO_PRIVATE_KEY` with the path you have noted in [Step 5.3](#step5.3github).
+
+#### `[gitlab]` section
+
+The section `[gitlab]` contains information for connecting to GitLab (you may skip it if setting up the bot for GitHub):
+
+```ini
+api_timeout = 10
+```
+
+Time limit (in seconds) for requests to GitLab's REST API.
+
+```ini
+bot_name = 'MY-bot'
+```
+
+Used for the same purpose as the [`app_name` setting](#github-app-name) in the `[github]` section. Refer to its
+documentation for more details.
+
+```ini
+instance_url = https://gitlab.com
+```
+
+The base URL of your GitLab instance. This is where the bot will connect to.
 
 #### `[bot_control]` section
 
