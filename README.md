@@ -346,14 +346,23 @@ Check that the `jq` command works by running `jq --version`.
 
 ## <a name="step5"></a>Step 5: Configuring the EESSI bot on the `bot machine`
 
-For the event handler, you need to set up two environment variables:
+> [!IMPORTANT]
+> Steps 5.1-5.3 differ for GitHub and GitLab. Be sure to follow the instructions for your platform.
 
-- `$GITHUB_TOKEN` (see [Step 5.1](#step5.1))
-- `$GITHUB_APP_SECRET_TOKEN` (see [Step 5.2](#step5.2)).
+If setting up for GitHub you need to set two environment variables for the event handler:
 
-For both the event handler and the job manager you need a private key (see [Step 5.3](#step5.3)).
+- `$GITHUB_TOKEN` (see [Step 5.1 (GitHub)](#step5.1github))
+- `$GITHUB_APP_SECRET_TOKEN` (see [Step 5.2 (GitHub)](#step5.2github)).
 
-### <a name="step5.1"></a>Step 5.1: GitHub Personal Access Token (PAT)
+Additionally, both the event handler and the job manager require a private key for GitHub usage (see
+[Step 5.3 (GitHub)](#step5.3github)).
+
+If setting up for GitLab, you will need to set two environment variables:
+
+- `$GITLAB_WEBHOOK_SECRET_TOKEN` (required by event handler only, see [Step 5.1 (GitLab)](#step5.1gitlab))
+- `$GITLAB_PROJECT_ACCESS_TOKEN` (required by event handler and job manager, see [Step 5.2 (GitLab)](#step5.2gitlab))
+
+### <a name="step5.1github"></a>Step 5.1 (GitHub): GitHub Personal Access Token (PAT)
 
 Create a Personal Access Token (PAT) for your GitHub account via the page [https://github.com/settings/tokens](https://github.com/settings/tokens) where you find a button <kbd style="background-color: #28a745; color: white;">Generate new token</kbd>.
 
@@ -369,7 +378,7 @@ export GITHUB_TOKEN='THE_TOKEN_STRING'
 
 in which you replace `THE_TOKEN_STRING` with the actual token.
 
-### <a name="step5.2"></a>Step 5.2: GitHub App Secret Token
+### <a name="step5.2github"></a>Step 5.2 (GitHub): GitHub App Secret Token
 
 The GitHub App Secret Token is used to verify the webhook sender. You should have created one already when registering a new GitHub App in [Step 2](#step2github).
 
@@ -383,7 +392,7 @@ in which you replace `THE_SECRET_TOKEN_STRING` with the secret token you have cr
 
 Note that depending on the characters used in the string you will likely have to use _single quotes_ (`'...'`) when setting the value of the environment variable.
 
-### <a name="step5.3"></a>Step 5.3: Create a private key and store it on the `bot machine`
+### <a name="step5.3github"></a>Step 5.3 (GitHub): Create a private key and store it on the `bot machine`
 
 The private key is needed to let the app authenticate when updating information at the repository such as commenting on pull requests, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2github).
 
@@ -392,6 +401,38 @@ Open the page [https://github.com/settings/apps](https://github.com/settings/app
 Near the end of the page you will find a section **Private keys** where you can create a private key by clicking on the button <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Generate a private key</kbd>.
 
 The private key should be automatically downloaded to your system. Copy it to the `bot machine` and note the full path to it (`PATH_TO_PRIVATE_KEY`). Also note down the day when the key was generated. The keys should be rotated every 6 months.
+
+### <a name="step5.1gitlab"></a>Step 5.1 (GitLab): Webhook signing token
+
+The webhook signing token is used to verify the webhook sender. You should have created and stored it during
+[Step 2](#step2gitlab).
+
+On the `bot machine` set the environment variable `$GITLAB_WEBHOOK_SECRET_TOKEN`:
+
+```bash
+export GITLAB_WEBHOOK_SECRET_TOKEN='THE_SIGNING_TOKEN'
+```
+
+in which you replace `THE_SIGNING_TOKEN` with the signing token that was generated in [Step 2](#step2gitlab). Make sure
+not to miss any part of the token, e.g. the `whsec_` prefix or any symbols.
+
+### <a name="step5.2gitlab"></a>Step 5.2 (GitLab): Access token
+
+The access token used by the bot to interact with the GitLab API. You should have created and stored it during
+[Step 3](#step3gitlab), whether you chose to follow [Step 3a](#step3agitlab) or [Step 3b](#step3bgitlab).
+
+On the `bot machine` set the environment variable `$GITLAB_PROJECT_ACCESS_TOKEN`:
+
+```bash
+export GITLAB_PROJECT_ACCESS_TOKEN='THE_ACCESS_TOKEN'
+```
+
+in which you replace `THE_ACCESS_TOKEN` with the access token that was generated in [Step 3](#step3gitlab). Make sure
+not to miss any part of the token, e.g. any prefixes or symbols.
+
+### <a name="step5.3gitlab"></a>Step 5.3 (GitLab): N/A
+
+Proceed to [Step 5.4](#step5.4).
 
 ### <a name="step5.4"></a>Step 5.4: Create the configuration file `app.cfg`
 
@@ -450,7 +491,7 @@ The `installation_id` is also provided in the payload of every event within the 
 private_key = PATH_TO_PRIVATE_KEY
 ```
 
-Replace `PATH_TO_PRIVATE_KEY` with the path you have noted in [Step 5.3](#step5.3).
+Replace `PATH_TO_PRIVATE_KEY` with the path you have noted in [Step 5.3](#step5.3github).
 
 #### `[bot_control]` section
 
