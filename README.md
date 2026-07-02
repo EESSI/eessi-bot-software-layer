@@ -534,11 +534,11 @@ The `[bot_control]` section contains settings for configuring the feature to
 send commands to the bot.
 
 ```ini
-command_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+command_permission = ACCOUNT_1 ACCOUNT_2 ...
 ```
 
-The `command_permission` setting defines which GitHub accounts can send commands
-to the bot (via new PR comments). If the value is empty _no_ GitHub account can send
+The `command_permission` setting defines which GitHub/GitLab accounts can send commands
+to the bot (via new PR comments). If the value is empty _no_ GitHub/GitLab account can send
 commands.
 
 ```ini
