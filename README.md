@@ -16,7 +16,10 @@ The bot consists of two main components provided in this repository:
 - An event handler [`eessi_bot_event_handler.py`](eessi_bot_event_handler.py) which receives events from a GitHub repository or GitLab project and acts on them.
 - A job manager [`eessi_bot_job_manager.py`](eessi_bot_job_manager.py) which monitors the Slurm job queue and acts on state changes of jobs submitted by the event handler.
 
-Note that GitLab support is currently limited to the `help` command.
+> [!WARNING]
+> **Limited feature support in GitLab**
+> 
+> Note that GitLab support is currently limited to the `help` command.
 
 ## <a name="prerequisites"></a>Prerequisites
 
