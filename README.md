@@ -18,7 +18,7 @@ The bot consists of two main components provided in this repository:
 
 > [!WARNING]
 > **Limited feature support in GitLab**
-> 
+>
 > Note that GitLab support is currently limited to the `help` command.
 
 ## <a name="prerequisites"></a>Prerequisites
