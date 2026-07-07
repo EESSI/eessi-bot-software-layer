@@ -64,8 +64,12 @@ class MockGitlab:
 # Test verify_connection()
 def test_verify_connection(capfd):
     # Token is valid and current user is successfully retrieved and stored
-    mock_gl = MockGitlab(private_token=ACCESS_TOKEN)
-    gitlab.verify_connection(mock_gl)
+    mock_gl = MockGitlab(private_token="irrelevant-for-auth-but-needed-or-constructor-would-raise-ValueError")
+    with patch.object(mock_gl, "auth", wraps=mock_gl.auth) as mock_auth:
+        # verify_connection() calls gl.auth() and checks gl.user;
+        # MockGitlab.auth() and thus mock_gl.auth() sets user without any network I/O.
+        gitlab.verify_connection(mock_gl)
+        mock_auth.assert_called_once()
 
     with patch.object(MockGitlab, "auth") as mock_auth:
         # Token is invalid - should exit
@@ -97,13 +101,20 @@ def test_verify_connection(capfd):
 # Test connect()
 @patch("connections.gitlab.gitlab.Gitlab", MockGitlab)
 def test_connect(capfd):
-    # Test successful connection
+    # connect() is expected to read the access token from the environment
+    # variable $GITLAB_PROJECT_ACCESS_TOKEN (defined via constant PAT_ENV_VAR_NAME)
     os.environ[PAT_ENV_VAR_NAME] = ACCESS_TOKEN
     with patch("connections.gitlab.verify_connection") as mock_verify_connection:
         gitlab.connect()
-        # connect() should verify connection
+        # Verify that connect() called verify_connection()
         mock_verify_connection.assert_called()
-    # Created connection should be stored as '_gl' - verify properties
+    # connect() creates the client via
+    # gitlab.Gitlab(url, access_token, timeout=timeout, retry_transient_errors=True)
+    # with 'url' and 'timeout' from the bot's config and 'access_token' from the
+    # environment variable 'GITLAB_PROJECT_ACCESS_TOKEN', and stores it as module-level
+    # '_gl'. Since Gitlab is patched with MockGitlab, which simply stores all
+    # constructor arguments as attributes, the asserts below verify that connect()
+    # passed the expected values.
     gl = gitlab._gl
     assert isinstance(gl, MockGitlab)
     assert gl.url == INSTANCE_URL
@@ -121,7 +132,6 @@ def test_connect(capfd):
 
 
 # Test get_instance()
-@patch("connections.gitlab.gitlab.Gitlab", MockGitlab)
 def test_get_instance():
     gitlab._gl = None
     mock_gl = MockGitlab(private_token=ACCESS_TOKEN)
