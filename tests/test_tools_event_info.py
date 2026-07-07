@@ -67,30 +67,37 @@ GITLAB_EVENT_PATHS = {
 }
 
 
-# PyGHee's get_event_info() expects a flask.Request object as input
-# This class roughly implements the attributes used by the PyGHee function
-# 'event' passed on initialization must be a dict read from one of the sample event files
 class MockRequest():
+    """Mock of a flask.Request object as expected by PyGHee's get_event_info().
+    Only the attributes used by that function are implemented.
+    """
+
     def __init__(self, event):
+        """Set up mock request attributes from a sample event.
+
+        Args:
+            event: dict read from one of the sample event files;
+                must contain the keys 'json' and 'headers'.
+        """
         self.json = event["json"]
         self.data = json.dumps(self.json).encode()
         self.headers = CaseInsensitiveDict(event["headers"])
 
 
 # Mock class handling individual user information in MockGitlab
-class MockGLUser():
+class MockGitlabUser():
     def __init__(self, id, username):
         self.id = id
         self.username = username
 
 
 # Mock class handling collections of users in MockGitlab
-class MockGLUsers():
+class MockGitlabUsers():
     def __init__(self, users):
         # Store ID -> User mappings
-        self._users = {id: MockGLUser(id, username) for id, username in users.items()}
+        self._users = {id: MockGitlabUser(id, username) for id, username in users.items()}
 
-    def get(self, id, *args, **kwargs):
+    def get(self, id, *_args, **_kwargs):
         user = self._users.get(id)
         if user is None:
             raise ValueError("User does not exist!")
@@ -100,15 +107,15 @@ class MockGLUsers():
 # Mock class imitating python-gitlab's Gitlab class
 class MockGitlab():
     def __init__(self, users=None):
-        self.users = MockGLUsers(users)
+        self.users = MockGitlabUsers(users)
 
 
 # Read event from file, create a MockRequest and return event_info dict from PyGHee's get_event_info()
 def get_event_info_from_file(path):
     # Use get_git_hosting_platform() imported by event_info - return value should be patched by tests
     event_source = event_info.get_git_hosting_platform()
-    with open(path, "r") as f:
-        event = json.load(f)
+    with open(path, "r") as file:
+        event = json.load(file)
     request = MockRequest(event)
     event_info_dict = get_event_info(request, event_source)
     return event_info_dict
@@ -340,15 +347,15 @@ def test_GitLabEventInfo(_):
     issue_dict["url"] = mr_dict["url"]
     event_info_dict["raw_request_body"]["issue"] = issue_dict
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
-    event_info_obj.issue_number == issue_dict["iid"]
-    event_info_obj.issue_url == issue_dict["url"]
+    assert event_info_obj.issue_number == issue_dict["iid"]
+    assert event_info_obj.issue_url == issue_dict["url"]
 
     # Test Commit comment handling - should return defaults
     event_info_dict["raw_request_body"]["object_attributes"]["noteable_type"] = "Commit"
     event_info_dict["raw_request_body"].pop("issue")
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
-    event_info_obj.issue_number == -1
-    event_info_obj.issue_url == ""
+    assert event_info_obj.issue_number == -1
+    assert event_info_obj.issue_url == ""
 
     # Test unknown event type and action
     event_info_dict["type"] = "invalidtype"
