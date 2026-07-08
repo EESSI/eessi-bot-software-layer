@@ -10,7 +10,6 @@
 #
 
 # Standard library imports
-from contextlib import nullcontext
 import copy
 from unittest.mock import MagicMock, patch
 
@@ -42,40 +41,54 @@ GITHUB_APP_NAME = GITHUB_CFG.get(config.SECTION_GITHUB, config.GITHUB_SETTING_AP
 GITLAB_BOT_NAME = GITLAB_CFG.get(config.SECTION_GITLAB, config.GITLAB_SETTING_BOT_NAME)
 
 
-# Test get_git_hosting_platform()
-@pytest.mark.parametrize("cfg,expectation", [
+# Test get_git_hosting_platform() - valid configs
+@pytest.mark.parametrize("cfg,expected", [
     # 'hosting_platform' set to 'github'
-    (CFG, nullcontext(git.GITHUB)),
-    (GITHUB_CFG, nullcontext(git.GITHUB)),
+    (CFG, git.GITHUB),
+    (GITHUB_CFG, git.GITHUB),
 
     # 'hosting_platform' set to 'gitlab'
-    (GITLAB_CFG, nullcontext(git.GITLAB)),
-
-    # 'hosting_platform' set to an invalid value - should exit
-    (UNSUPPORTED_PLATFORM_CFG, pytest.raises(SystemExit)),
-
-    # 'hosting_platform' not set - should exit
-    (NO_HOSTING_PLATFORM_CFG, pytest.raises(SystemExit)),
+    (GITLAB_CFG, git.GITLAB),
 ])
 @patch("tools.config.read_config")
-def test_get_git_hosting_platform(mock_read_config, cfg, expectation):
-    # Ensure that the Git hosting platform is not cached
-    git._git_host = None
-
+def test_get_git_hosting_platform_valid(mock_read_config, cfg, expected):
     mock_read_config.return_value = cfg
 
-    git._git_host = None
-
     # Test with provided cfg
-    with expectation as expected:
-        assert git.get_git_hosting_platform(cfg) == expected
+    git._git_host = None
+    assert git.get_git_hosting_platform(cfg) == expected
     mock_read_config.assert_not_called()
 
+    # Test without provided cfg
+    git._git_host = None
+    assert git.get_git_hosting_platform() == expected
+    mock_read_config.assert_called_once()
+
     git._git_host = None
 
+
+# Test get_git_hosting_platform() - invalid configs, should exit
+@pytest.mark.parametrize("cfg", [
+    # 'hosting_platform' set to an invalid value
+    UNSUPPORTED_PLATFORM_CFG,
+
+    # 'hosting_platform' not set
+    NO_HOSTING_PLATFORM_CFG,
+])
+@patch("tools.config.read_config")
+def test_get_git_hosting_platform_invalid(mock_read_config, cfg):
+    mock_read_config.return_value = cfg
+
+    # Test with provided cfg
+    git._git_host = None
+    with pytest.raises(SystemExit):
+        git.get_git_hosting_platform(cfg)
+    mock_read_config.assert_not_called()
+
     # Test without provided cfg
-    with expectation as expected:
-        assert git.get_git_hosting_platform() == expected
+    git._git_host = None
+    with pytest.raises(SystemExit):
+        git.get_git_hosting_platform()
     mock_read_config.assert_called_once()
 
     git._git_host = None
