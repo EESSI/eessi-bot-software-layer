@@ -26,10 +26,11 @@ def test_support_commands_per_git_host(git_host):
     # There should be an entry for each supported Git hosting platform
     assert git_host in commands.SUPPORTED_COMMANDS_PER_GIT_HOST
 
-    # Each entry should be a list of commands
+    # SUPPORTED_COMMANDS_PER_GIT_HOST should map each Git hosting platform to a list of commands
     supported_commands = commands.SUPPORTED_COMMANDS_PER_GIT_HOST[git_host]
     assert isinstance(supported_commands, list)
-    assert all([command in commands.ALL_COMMANDS for command in supported_commands])
+    for command in supported_commands:
+        assert command in commands.ALL_COMMANDS
 
 
 # Test get_supported_commands()
