@@ -1,0 +1,173 @@
+{
+  "headers": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip;q=1.0,deflate;q=0.6,identity;q=0.3",
+    "Accept-Language": "*",
+    "Connection": "keep-alive",
+    "Content-Length": "4213",
+    "Content-Type": "application/json",
+    "Host": "127.0.0.1:3000",
+    "Idempotency-Key": "b6de2702-c354-4bdd-8207-e634971623bb",
+    "Sec-Fetch-Mode": "cors",
+    "Timestamp": "1780645314004",
+    "User-Agent": "GitLab/19.1.0-pre",
+    "Webhook-Id": "b6de2702-c354-4bdd-8207-e634971623bb",
+    "Webhook-Signature": "v1,Fj4cEsqlXB6tkqVZoVig8I7P8ZrbuKofCj5dru7HK4M=",
+    "Webhook-Timestamp": "1780645313",
+    "X-Forwarded-Scheme": "https",
+    "X-Gitlab-Event": "Merge Request Hook",
+    "X-Gitlab-Event-Uuid": "a082cd15-7607-4608-b214-7edb77efb3f4",
+    "X-Gitlab-Instance": "https://gitlab.com",
+    "X-Gitlab-Webhook-Uuid": "782cd6c3-0dd8-40f1-b165-c0480773a769",
+    "X-Real-Ip": "34.74.226.42",
+    "X-Request-Id": "55b4d958185fff8cddad766fbeeea9b2",
+    "X-Scheme": "https"
+  },
+  "json": {
+    "changes": {
+      "merge_status": {
+        "current": "checking",
+        "previous": "preparing"
+      },
+      "prepared_at": {
+        "current": "2026-06-05T07:41:53.209Z",
+        "previous": null
+      },
+      "updated_at": {
+        "current": "2026-06-05T07:41:53.215Z",
+        "previous": "2026-06-05T07:41:52.123Z"
+      }
+    },
+    "event_type": "merge_request",
+    "labels": [],
+    "object_attributes": {
+      "action": "open",
+      "actioned_at": "2026-06-05T07:41:53.239Z",
+      "approval_rules": [],
+      "assignee_id": null,
+      "assignee_ids": [],
+      "author_id": 12345678,
+      "blocking_discussions_resolved": true,
+      "created_at": "2026-06-05T07:41:52.123Z",
+      "description": "Test",
+      "detailed_merge_status": "checking",
+      "draft": false,
+      "first_contribution": true,
+      "head_pipeline_id": null,
+      "human_time_change": null,
+      "human_time_estimate": null,
+      "human_total_time_spent": null,
+      "id": 123456789,
+      "iid": 1,
+      "labels": [],
+      "last_commit": {
+        "author": {
+          "email": "commituser@example.com",
+          "name": "Commit User"
+        },
+        "id": "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3",
+        "message": "Add software",
+        "timestamp": "2026-06-05T07:40:54+02:00",
+        "title": "Add software",
+        "url": "https://gitlab.com/testuser1/software-layer/-/commit/a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
+      },
+      "last_edited_at": null,
+      "last_edited_by_id": null,
+      "merge_commit_sha": null,
+      "merge_error": null,
+      "merge_params": {
+        "force_remove_source_branch": "1"
+      },
+      "merge_status": "checking",
+      "merge_user_id": null,
+      "merge_when_pipeline_succeeds": false,
+      "milestone_id": null,
+      "prepared_at": "2026-06-05T07:41:53.209Z",
+      "reviewer_ids": [],
+      "source": {
+        "avatar_url": null,
+        "ci_config_path": "",
+        "default_branch": "main",
+        "description": null,
+        "git_http_url": "https://gitlab.com/testuser1/software-layer.git",
+        "git_ssh_url": "git@gitlab.com:testuser1/software-layer.git",
+        "homepage": "https://gitlab.com/testuser1/software-layer",
+        "http_url": "https://gitlab.com/testuser1/software-layer.git",
+        "id": 87654321,
+        "name": "software-layer",
+        "namespace": "testuser1",
+        "path_with_namespace": "testuser1/software-layer",
+        "ssh_url": "git@gitlab.com:testuser1/software-layer.git",
+        "url": "git@gitlab.com:testuser1/software-layer.git",
+        "visibility_level": 0,
+        "web_url": "https://gitlab.com/testuser1/software-layer"
+      },
+      "source_branch": "add-software",
+      "source_project_id": 87654321,
+      "squash_commit_sha": null,
+      "state": "opened",
+      "state_id": 1,
+      "system": false,
+      "target": {
+        "avatar_url": null,
+        "ci_config_path": "",
+        "default_branch": "main",
+        "description": null,
+        "git_http_url": "https://gitlab.com/testuser1/software-layer.git",
+        "git_ssh_url": "git@gitlab.com:testuser1/software-layer.git",
+        "homepage": "https://gitlab.com/testuser1/software-layer",
+        "http_url": "https://gitlab.com/testuser1/software-layer.git",
+        "id": 87654321,
+        "name": "software-layer",
+        "namespace": "testuser1",
+        "path_with_namespace": "testuser1/software-layer",
+        "ssh_url": "git@gitlab.com:testuser1/software-layer.git",
+        "url": "git@gitlab.com:testuser1/software-layer.git",
+        "visibility_level": 0,
+        "web_url": "https://gitlab.com/testuser1/software-layer"
+      },
+      "target_branch": "main",
+      "target_project_id": 87654321,
+      "time_change": 0,
+      "time_estimate": 0,
+      "title": "Add software",
+      "total_time_spent": 0,
+      "updated_at": "2026-06-05T07:41:53.215Z",
+      "updated_by_id": null,
+      "url": "https://gitlab.com/testuser1/software-layer/-/merge_requests/1",
+      "work_in_progress": false
+    },
+    "object_kind": "merge_request",
+    "project": {
+      "avatar_url": null,
+      "ci_config_path": "",
+      "default_branch": "main",
+      "description": null,
+      "git_http_url": "https://gitlab.com/testuser1/software-layer.git",
+      "git_ssh_url": "git@gitlab.com:testuser1/software-layer.git",
+      "homepage": "https://gitlab.com/testuser1/software-layer",
+      "http_url": "https://gitlab.com/testuser1/software-layer.git",
+      "id": 87654321,
+      "name": "software-layer",
+      "namespace": "testuser1",
+      "path_with_namespace": "testuser1/software-layer",
+      "ssh_url": "git@gitlab.com:testuser1/software-layer.git",
+      "url": "git@gitlab.com:testuser1/software-layer.git",
+      "visibility_level": 0,
+      "web_url": "https://gitlab.com/testuser1/software-layer"
+    },
+    "repository": {
+      "description": null,
+      "homepage": "https://gitlab.com/testuser1/software-layer",
+      "name": "software-layer",
+      "url": "git@gitlab.com:testuser1/software-layer.git"
+    },
+    "user": {
+      "avatar_url": "https://example.com/avatar/id",
+      "email": "[REDACTED]",
+      "id": 12345678,
+      "name": "Test User",
+      "username": "testuser"
+    }
+  }
+}

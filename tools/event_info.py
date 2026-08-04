@@ -194,7 +194,7 @@ class GitLabEventInfo(BaseEventInfo):
 
     @cached_property
     def action(self):
-        gl_action = self._object_attributes["action"]
+        gl_action = self.event_info["action"]
         # GL uses a single 'update' action for MRs
         # Need to check changes to find exact action, e.g. 'labeled'
         if self.event_type == "pull_request" and gl_action == "update":
@@ -279,9 +279,15 @@ class GitLabEventInfo(BaseEventInfo):
     def label_name(self):
         # GL sends a single event containing all previous and current labels.
         # Since we currently only use one label, 'bot:deploy', we can check just for that.
+        def get_label_titles(labels):
+            return {label["title"] for label in labels}
+
         label_changes = self._request_body["changes"]["labels"]
+        current_labels = get_label_titles(label_changes["current"])
+        previous_labels = get_label_titles(label_changes["previous"])
+
         # The difference between the sets will yield all newly added labels
-        added_labels = set(label_changes["current"]) - set(label_changes["previous"])
+        added_labels = current_labels - previous_labels
         if "bot:deploy" in added_labels:
             return "bot:deploy"
         else:
