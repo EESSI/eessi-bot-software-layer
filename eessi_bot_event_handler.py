@@ -667,8 +667,6 @@ class EESSIBotSoftwareLayer(PyGHee):
         comment_status += "\nThis is the status of all the `bot: build` commands:"
 
         # Build header
-        submitted_job_comments_cfg = self.cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
-
         all_columns = ['on', 'for', 'repo', 'result', 'commit SHA', 'date', 'status', 'url']
         comment_status += f"\n|{'|'.join(all_columns)}|"
         comment_status += f"\n|{'|'.join(['----'] * len(all_columns))}|"
