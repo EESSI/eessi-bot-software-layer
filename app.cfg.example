@@ -63,13 +63,13 @@ instance_url = https://gitlab.com
 
 
 [bot_control]
-# which GH accounts have the permission to send commands to the bot
+# which GH/GL accounts have the permission to send commands to the bot
 # if value is left/empty everyone can send commands
-# value can be a space delimited list of GH accounts
+# value can be a space delimited list of GH/GL accounts
 #
-# NOTE, be careful to not list the bot's name (GH app name) or it may consider
-#   comments created/updated by itself as a bot command and thus enter an
-#   endless loop.
+# NOTE, be careful to not list the bot's name (GH app name or GL bot account
+#   name) or it may consider comments created/updated by itself as a bot
+#   command and thus enter an endless loop.
 command_permission =
 
 # format of the response when processing bot commands. NOTE, make sure the
