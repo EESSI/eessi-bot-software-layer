@@ -18,7 +18,7 @@
 import filecmp
 import os
 import re
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 # Third party imports (anything installed into the local Python environment)
 from collections import namedtuple
@@ -26,7 +26,7 @@ from datetime import datetime
 import pytest
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from tasks.build import Job, create_pr_comment
+from tasks.build import Job, create_pr_comment, request_bot_build_issue_comments
 from tools import run_cmd, run_subprocess
 from tools.build_params import EESSIBotBuildParams
 from tools.job_metadata import create_metadata_file, read_metadata_file
@@ -621,3 +621,54 @@ def test_create_pr_comment_with_repo_file(monkeypatch, mocked_github, tmp_path):
 
     assert comment.id == 1
     assert "software-layer-script SHA: def456789" in comment.body
+
+
+@pytest.mark.repo_name("EESSI/software-layer")
+@pytest.mark.pr_number(1)
+def test_request_bot_build_issue_comments(monkeypatch):
+    """Tests that request_bot_build_issue_comments extracts commit SHA and repo file content."""
+    from tools import config as build_config
+    original_read_config = build_config.read_config
+
+    def mock_read_config(path='app.cfg'):
+        cfg = original_read_config(path)
+        cfg['submitted_job_comments']['repo_file'] = 'bot/commit_sha'
+        cfg['submitted_job_comments']['repo_file_header'] = 'software-layer-script SHA'
+        return cfg
+
+    monkeypatch.setattr('tasks.build.config.read_config', mock_read_config)
+
+    # Mock the GitHub token
+    token_mock = Mock()
+    token_mock.token = 'mock-token'
+    monkeypatch.setattr('tasks.build.github.token', lambda: token_mock)
+    monkeypatch.setattr('tasks.build.github.get_instance', lambda: Mock())
+
+    # Mock the response from the GitHub API
+    comment_body = "\n".join([
+        "New job on instance `pytest` for repository `EESSI/software-layer`",
+        "Building on: `x86_64/generic`",
+        "Building for: `x86_64/generic`",
+        "Job dir: `symlink`",
+        "Commit SHA: `abc123`",
+        "software-layer-script SHA: def456",
+        "|date|job status|comment|",
+        "|----------|----------|------------------------|",
+        "|Jan 01 00:00:00 UTC 2025|finished|SUCCESS|",
+    ])
+    response_mock = Mock()
+    response_mock.json.return_value = [{'body': comment_body, 'html_url': 'https://example.com'}]
+    response_mock.links = {}
+    response_mock.headers = {
+        'X-RateLimit-Reset': '0',
+        'X-RateLimit-Limit': '5000',
+        'X-RateLimit-Remaining': '4999',
+    }
+    monkeypatch.setattr('tasks.build.requests.get', lambda *args, **kwargs: response_mock)
+
+    status_table = request_bot_build_issue_comments('EESSI/software-layer', 1)
+
+    assert status_table['commit sha'] == ['abc123']
+    assert status_table['repo file'] == ['def456']
+    assert status_table['for repo'] == ['EESSI/software-layer']
+    assert status_table['result'] == [':grin: SUCCESS']

@@ -418,11 +418,6 @@ jobdir = Job dir: `{symlink}`
 # commit_sha format for the 5th line in the initial PR comment; `{commit_sha}` is replaced with the commit SHA
 # from the cloned repository (i.e., the base branch HEAD at the time the job starts).
 commit_sha = Commit SHA: `{commit_sha}`
-# repo_file path (relative to repo root) of a file whose content to print as the 6th line in the PR comment.
-# Leave empty to omit the 6th line and its column in the bot:status table.
-repo_file = bot/commit_sha
-# repo_file_header is used as the label on the 6th line and as the header for the 6th column in bot:status.
-repo_file_header = software-layer-script SHA
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 # initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`  # no longer used
 

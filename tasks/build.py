@@ -976,19 +976,6 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     commit_sha, _, _ = run_cmd('git rev-parse HEAD', 'Get commit SHA', job.working_dir, raise_on_error=False)
     commit_sha = commit_sha.strip() if commit_sha else ''
 
-    # Get file content if repo_file is configured
-    repo_file = submitted_job_comments_cfg.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE, '')
-    repo_file_header = submitted_job_comments_cfg.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE_HEADER, '')
-    file_content = None
-    if repo_file:
-        file_path = os.path.join(job.working_dir, repo_file)
-        try:
-            with open(file_path, 'r') as f:
-                file_content = f.read().strip()
-        except Exception as err:
-            log(f"{fn}(): Failed to read {file_path}: {err}")
-            file_content = None
-
     # construct initial job comment
     buildenv = config.read_config()[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
@@ -997,7 +984,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     build_for_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
     jobdir = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR]
     commit_sha_fmt = submitted_job_comments_cfg.get(
-        config.SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA, 'Commit SHA: `{commit_sha}`')
+        config.SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA, 'Commit SHA: {commit_sha}')
 
     # Build header lines (1-4)
     header_lines = (f"{new_job_instance_repo}\n"
@@ -1012,12 +999,10 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                         on_accelerator=on_accelerator_str,
                         for_accelerator=for_accelerator_str)
 
-    # Build lines 5 and 6
-    lines_5_6 = ''
+    # Build line 5
+    line_5 = ''
     if commit_sha_fmt:
-        lines_5_6 += f"{commit_sha_fmt.format(commit_sha=commit_sha)}\n"
-    if repo_file and file_content is not None:
-        lines_5_6 += f"{repo_file_header}: {file_content}\n"
+        line_5 += f"{commit_sha_fmt.format(commit_sha=commit_sha)}\n"
 
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
@@ -1034,7 +1019,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                  f"{release_comment_template}|").format(
                      job_id=job_id,
                      delay_seconds=eligible_in_seconds)
-        job_comment = header_lines + lines_5_6 + table
+        job_comment = header_lines + line_5 + table
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
@@ -1044,7 +1029,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                  f"submitted|"
                  f"{release_comment_template}|").format(
                      job_id=job_id)
-        job_comment = header_lines + lines_5_6 + table
+        job_comment = header_lines + line_5 + table
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
@@ -1233,7 +1218,7 @@ def request_bot_build_issue_comments(repo_name, pr_number):
     fn = sys._getframe().f_code.co_name
 
     status_table = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [],
-                    'result': [], 'commit sha': [], 'repo file': []}
+                    'result': [], 'commit sha': []}
     cfg = config.read_config()
     github_section = cfg[config.SECTION_GITHUB]
     api_timeout = int(github_section.get(config.GITHUB_SETTING_API_TIMEOUT, 10))
@@ -1375,18 +1360,6 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                 else:
                     commit_sha = ''
 
-            # Extract repo file content (line 6, index 5) if configured
-            repo_file = submitted_job_comments_section.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE, '')
-            repo_file_header = submitted_job_comments_section.get(
-                config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE_HEADER, '')
-            repo_file_content = ''
-            if repo_file and len(comment_body) >= 6:
-                repo_file_content_fmt = f"{repo_file_header}: {{content}}"
-                repo_file_content_re = template_to_regex(repo_file_content_fmt)
-                repo_file_content_match = re.match(repo_file_content_re, comment_body[5])
-                if repo_file_content_match:
-                    repo_file_content = repo_file_content_match.group('content')
-
             # get date, status, url and result from the markdown table
             comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]
 
@@ -1443,7 +1416,6 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             status_table['url'].append(url)
             status_table['result'].append(result)
             status_table['commit sha'].append(commit_sha)
-            status_table['repo file'].append(repo_file_content)
 
     return status_table
 

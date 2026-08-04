@@ -970,14 +970,6 @@ commit_sha = Commit SHA: `{commit_sha}`
 repo_file = bot/commit_sha
 ```
 
-`repo_file` specifies the path (relative to the repository root) of a file whose content should be printed as the sixth line in the PR comment. Leave empty to omit the sixth line and its column in the `bot:status` table.
-
-```ini
-repo_file_header = software-layer-script SHA
-```
-
-`repo_file_header` is used as the label on the sixth line and as the header for the sixth column in the `bot:status` overview table.
-
 ```ini
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 ```
