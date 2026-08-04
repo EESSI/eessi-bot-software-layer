@@ -633,7 +633,8 @@ class EESSIBotSoftwareLayer(PyGHee):
 
             # Keep only the first entry for each 'for arch', as that is now the newest
             status_table_last = {
-                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []
+                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': [],
+                'commit sha': [], 'repo file': []
             }
             for x in range(0, len(sorted_table['date'])):
                 # Check if the current 'for arch' AND 'for repo' are already in the status_table_last. If not, add it
@@ -664,13 +665,30 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
-        comment_status += "\n|on|for|repo|result|date|status|url|"
-        comment_status += "\n|----|----|----|------|----|------|---|"
+
+        # Build header dynamically with optional repo_file column
+        submitted_job_comments_cfg = self.cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
+        repo_file = submitted_job_comments_cfg.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE, '')
+        repo_file_header = submitted_job_comments_cfg.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE_HEADER, '')
+
+        base_columns = ['on', 'for', 'repo', 'result']
+        extra_columns = ['commit SHA']
+        if repo_file and repo_file_header:
+            extra_columns.append(repo_file_header)
+        tail_columns = ['date', 'status', 'url']
+
+        all_columns = base_columns + extra_columns + tail_columns
+        comment_status += f"\n|{'|'.join(all_columns)}|"
+        comment_status += f"\n|{'|'.join(['----'] * len(all_columns))}|"
+
         for x in range(0, len(status_table['date'])):
             comment_status += f"\n|{status_table['on arch'][x]}|"
             comment_status += f"{status_table['for arch'][x]}|"
             comment_status += f"{status_table['for repo'][x]}|"
             comment_status += f"{status_table['result'][x]}|"
+            comment_status += f"{status_table['commit sha'][x]}|"
+            if repo_file and repo_file_header:
+                comment_status += f"{status_table['repo file'][x]}|"
             comment_status += f"{status_table['date'][x]}|"
             comment_status += f"{status_table['status'][x]}|"
             comment_status += f"{status_table['url'][x]}|"

@@ -972,6 +972,23 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     # get current date and time
     dt = datetime.now(timezone.utc)
 
+    # Get commit SHA from cloned repo
+    commit_sha, _, _ = run_cmd('git rev-parse HEAD', 'Get commit SHA', job.working_dir, raise_on_error=False)
+    commit_sha = commit_sha.strip() if commit_sha else ''
+
+    # Get file content if repo_file is configured
+    repo_file = submitted_job_comments_cfg.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE, '')
+    repo_file_header = submitted_job_comments_cfg.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE_HEADER, '')
+    file_content = None
+    if repo_file:
+        file_path = os.path.join(job.working_dir, repo_file)
+        try:
+            with open(file_path, 'r') as f:
+                file_content = f.read().strip()
+        except Exception as err:
+            log(f"{fn}(): Failed to read {file_path}: {err}")
+            file_content = None
+
     # construct initial job comment
     buildenv = config.read_config()[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
@@ -979,6 +996,29 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
     build_for_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
     jobdir = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR]
+    commit_sha_fmt = submitted_job_comments_cfg.get(
+        config.SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA, 'Commit SHA: `{commit_sha}`')
+
+    # Build header lines (1-4)
+    header_lines = (f"{new_job_instance_repo}\n"
+                    f"{build_on_arch}\n"
+                    f"{build_for_arch}\n"
+                    f"{jobdir}\n").format(
+                        app_name=app_name,
+                        on_arch=on_arch,
+                        for_arch=for_arch,
+                        symlink=symlink,
+                        repo_id=job.repo_id,
+                        on_accelerator=on_accelerator_str,
+                        for_accelerator=for_accelerator_str)
+
+    # Build lines 5 and 6
+    lines_5_6 = ''
+    if commit_sha_fmt:
+        lines_5_6 += f"{commit_sha_fmt.format(commit_sha=commit_sha)}\n"
+    if repo_file and file_content is not None:
+        lines_5_6 += f"{repo_file_header}: {file_content}\n"
+
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
@@ -987,44 +1027,24 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
-        job_comment = (f"{new_job_instance_repo}\n"
-                       f"{build_on_arch}\n"
-                       f"{build_for_arch}\n"
-                       f"{jobdir}\n"
-                       f"|date|job status|comment|\n"
-                       f"|----------|----------|------------------------|\n"
-                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                       f"submitted|"
-                       f"{release_comment_template}|").format(
-                           app_name=app_name,
-                           on_arch=on_arch,
-                           for_arch=for_arch,
-                           symlink=symlink,
-                           repo_id=job.repo_id,
-                           job_id=job_id,
-                           delay_seconds=eligible_in_seconds,
-                           on_accelerator=on_accelerator_str,
-                           for_accelerator=for_accelerator_str)
+        table = (f"|date|job status|comment|\n"
+                 f"|----------|----------|------------------------|\n"
+                 f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                 f"submitted|"
+                 f"{release_comment_template}|").format(
+                     job_id=job_id,
+                     delay_seconds=eligible_in_seconds)
+        job_comment = header_lines + lines_5_6 + table
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
-        job_comment = (f"{new_job_instance_repo}\n"
-                       f"{build_on_arch}\n"
-                       f"{build_for_arch}\n"
-                       f"{jobdir}\n"
-                       f"|date|job status|comment|\n"
-                       f"|----------|----------|------------------------|\n"
-                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                       f"submitted|"
-                       f"{release_comment_template}|").format(
-                           app_name=app_name,
-                           on_arch=on_arch,
-                           for_arch=for_arch,
-                           symlink=symlink,
-                           repo_id=job.repo_id,
-                           job_id=job_id,
-                           on_accelerator=on_accelerator_str,
-                           for_accelerator=for_accelerator_str)
+        table = (f"|date|job status|comment|\n"
+                 f"|----------|----------|------------------------|\n"
+                 f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                 f"submitted|"
+                 f"{release_comment_template}|").format(
+                     job_id=job_id)
+        job_comment = header_lines + lines_5_6 + table
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
@@ -1212,7 +1232,8 @@ def request_bot_build_issue_comments(repo_name, pr_number):
     """
     fn = sys._getframe().f_code.co_name
 
-    status_table = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []}
+    status_table = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [],
+                    'result': [], 'commit sha': [], 'repo file': []}
     cfg = config.read_config()
     github_section = cfg[config.SECTION_GITHUB]
     api_timeout = int(github_section.get(config.GITHUB_SETTING_API_TIMEOUT, 10))
@@ -1342,6 +1363,30 @@ def request_bot_build_issue_comments(repo_name, pr_number):
                     msg += f"{for_arch_re.pattern}\n"
                     raise ValueError(msg)
 
+            # Extract commit SHA (line 5, index 4)
+            commit_sha = ''
+            commit_sha_fmt = submitted_job_comments_section.get(
+                config.SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA, 'Commit SHA: `{commit_sha}`')
+            if len(comment_body) >= 5:
+                commit_sha_re = template_to_regex(commit_sha_fmt)
+                commit_sha_match = re.match(commit_sha_re, comment_body[4])
+                if commit_sha_match:
+                    commit_sha = commit_sha_match.group('commit_sha')
+                else:
+                    commit_sha = ''
+
+            # Extract repo file content (line 6, index 5) if configured
+            repo_file = submitted_job_comments_section.get(config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE, '')
+            repo_file_header = submitted_job_comments_section.get(
+                config.SUBMITTED_JOB_COMMENTS_SETTING_REPO_FILE_HEADER, '')
+            repo_file_content = ''
+            if repo_file and len(comment_body) >= 6:
+                repo_file_content_fmt = f"{repo_file_header}: {{content}}"
+                repo_file_content_re = template_to_regex(repo_file_content_fmt)
+                repo_file_content_match = re.match(repo_file_content_re, comment_body[5])
+                if repo_file_content_match:
+                    repo_file_content = repo_file_content_match.group('content')
+
             # get date, status, url and result from the markdown table
             comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]
 
@@ -1397,6 +1442,8 @@ def request_bot_build_issue_comments(repo_name, pr_number):
             status_table['status'].append(status)
             status_table['url'].append(url)
             status_table['result'].append(result)
+            status_table['commit sha'].append(commit_sha)
+            status_table['repo file'].append(repo_file_content)
 
     return status_table
 

@@ -961,6 +961,24 @@ jobdir = Job dir: `{symlink}`
 `jobdir` is used as the fourth line in a comment to a PR when a new job has been created.
 
 ```ini
+commit_sha = Commit SHA: `{commit_sha}`
+```
+
+`commit_sha` is used as the format string for the fifth line in a comment to a PR when a new job has been created. The `{commit_sha}` placeholder is replaced with the commit SHA from the cloned repository (i.e., the base branch HEAD at the time the job starts).
+
+```ini
+repo_file = bot/commit_sha
+```
+
+`repo_file` specifies the path (relative to the repository root) of a file whose content should be printed as the sixth line in the PR comment. Leave empty to omit the sixth line and its column in the `bot:status` table.
+
+```ini
+repo_file_header = software-layer-script SHA
+```
+
+`repo_file_header` is used as the label on the sixth line and as the header for the sixth column in the `bot:status` overview table.
+
+```ini
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 ```
 

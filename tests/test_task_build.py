@@ -528,3 +528,96 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
     job_id5 = "555"
     with pytest.raises(TypeError):
         create_metadata_file(job5, job_id5, pr_comment)
+
+
+@pytest.mark.repo_name("EESSI/software-layer")
+@pytest.mark.pr_number(1)
+def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path):
+    """Tests that create_pr_comment includes commit SHA from cloned repo."""
+    import subprocess
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
+
+    # Set up a git repo in tmp_path with a commit
+    subprocess.run(['git', 'init'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'config', 'user.name', 'test'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=tmp_path, capture_output=True)
+    test_file = os.path.join(tmp_path, 'test.txt')
+    with open(test_file, 'w') as f:
+        f.write('test content')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'commit', '-m', 'Initial commit'], cwd=tmp_path, capture_output=True)
+
+    ym = datetime.today().strftime('%Y.%m')
+    pr_number = 1
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
+
+    job_id = "123"
+    app_name = "pytest"
+
+    repo_name = "EESSI/software-layer"
+    repo = mocked_github.get_repo(repo_name)
+    pr = repo.get_pull(pr_number)
+    symlink = "/symlink"
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+
+    # Get the actual commit SHA
+    result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, capture_output=True, text=True)
+    expected_sha = result.stdout.strip()
+
+    assert comment.id == 1
+    assert f"Commit SHA: `{expected_sha}`" in comment.body
+
+
+@pytest.mark.repo_name("EESSI/software-layer")
+@pytest.mark.pr_number(1)
+def test_create_pr_comment_with_repo_file(monkeypatch, mocked_github, tmp_path):
+    """Tests that create_pr_comment includes file content when repo_file is configured."""
+    import subprocess
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
+
+    # Set up a git repo in tmp_path with a commit
+    subprocess.run(['git', 'init'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'config', 'user.name', 'test'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=tmp_path, capture_output=True)
+    test_file = os.path.join(tmp_path, 'test.txt')
+    with open(test_file, 'w') as f:
+        f.write('test content')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'commit', '-m', 'Initial commit'], cwd=tmp_path, capture_output=True)
+
+    # Create the file to read
+    repo_file_path = os.path.join(tmp_path, 'bot')
+    os.makedirs(repo_file_path, exist_ok=True)
+    with open(os.path.join(repo_file_path, 'commit_sha'), 'w') as f:
+        f.write('def456789')
+
+    # Monkeypatch config to set repo_file
+    from tools import config as build_config
+    original_read_config = build_config.read_config
+
+    def mock_read_config(path='app.cfg'):
+        cfg = original_read_config(path)
+        if 'submitted_job_comments' in cfg:
+            cfg['submitted_job_comments']['repo_file'] = 'bot/commit_sha'
+            cfg['submitted_job_comments']['repo_file_header'] = 'software-layer-script SHA'
+        return cfg
+
+    monkeypatch.setattr('tasks.build.config.read_config', mock_read_config)
+
+    ym = datetime.today().strftime('%Y.%m')
+    pr_number = 1
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
+
+    job_id = "123"
+    app_name = "pytest"
+
+    repo_name = "EESSI/software-layer"
+    repo = mocked_github.get_repo(repo_name)
+    pr = repo.get_pull(pr_number)
+    symlink = "/symlink"
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+
+    assert comment.id == 1
+    assert "software-layer-script SHA: def456789" in comment.body
