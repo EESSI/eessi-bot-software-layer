@@ -417,7 +417,7 @@ build_for_arch = Building for: `{for_arch}`{for_accelerator}
 jobdir = Job dir: `{symlink}`
 # commit_sha format for the 5th line in the initial PR comment; `{commit_sha}` is replaced with the commit SHA
 # from the cloned repository (i.e., the base branch HEAD at the time the job starts).
-commit_sha = Commit SHA: `{commit_sha}`
+commit_sha = Commit SHA: {commit_sha}
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 # initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`  # no longer used
 
