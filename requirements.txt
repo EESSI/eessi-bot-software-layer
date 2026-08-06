@@ -16,5 +16,5 @@ python-gitlab==6.5.0;python_version=="3.9" # Last version with Python 3.9 suppor
 python-gitlab==8.3.0;python_version>="3.10" # Most recent version on 2026-05-04
 Waitress>=3.0.1 # required to fix vulnerabilities detected by scorecards
 cryptography>=44.0.1 # required to fix vulnerabilities detected by scorecards
-PyGHee @ git+https://github.com/boegel/PyGHee.git@514bdf6b7db1ed2a965ccdabaf45f9e9b1d825b7 # Pin commit with GL support
+PyGHee>=0.2.0
 retry
