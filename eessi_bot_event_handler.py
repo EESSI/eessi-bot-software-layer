@@ -633,7 +633,8 @@ class EESSIBotSoftwareLayer(PyGHee):
 
             # Keep only the first entry for each 'for arch', as that is now the newest
             status_table_last = {
-                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': []
+                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': [],
+                'commit sha': []
             }
             for x in range(0, len(sorted_table['date'])):
                 # Check if the current 'for arch' AND 'for repo' are already in the status_table_last. If not, add it
@@ -664,13 +665,18 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
-        comment_status += "\n|on|for|repo|result|date|status|url|"
-        comment_status += "\n|----|----|----|------|----|------|---|"
+
+        # Build header
+        all_columns = ['on', 'for', 'repo', 'result', 'commit SHA', 'date', 'status', 'url']
+        comment_status += f"\n|{'|'.join(all_columns)}|"
+        comment_status += f"\n|{'|'.join(['----'] * len(all_columns))}|"
+
         for x in range(0, len(status_table['date'])):
             comment_status += f"\n|{status_table['on arch'][x]}|"
             comment_status += f"{status_table['for arch'][x]}|"
             comment_status += f"{status_table['for repo'][x]}|"
             comment_status += f"{status_table['result'][x]}|"
+            comment_status += f"{status_table['commit sha'][x]}|"
             comment_status += f"{status_table['date'][x]}|"
             comment_status += f"{status_table['status'][x]}|"
             comment_status += f"{status_table['url'][x]}|"

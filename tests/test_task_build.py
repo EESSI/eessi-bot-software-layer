@@ -18,7 +18,7 @@
 import filecmp
 import os
 import re
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 # Third party imports (anything installed into the local Python environment)
 from collections import namedtuple
@@ -26,7 +26,7 @@ from datetime import datetime
 import pytest
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from tasks.build import Job, create_pr_comment
+from tasks.build import Job, create_pr_comment, request_bot_build_issue_comments
 from tools import run_cmd, run_subprocess
 from tools.build_params import EESSIBotBuildParams
 from tools.job_metadata import create_metadata_file, read_metadata_file
@@ -528,3 +528,88 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
     job_id5 = "555"
     with pytest.raises(TypeError):
         create_metadata_file(job5, job_id5, pr_comment)
+
+
+@pytest.mark.repo_name("EESSI/software-layer")
+@pytest.mark.pr_number(1)
+def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path):
+    """Tests that create_pr_comment includes commit SHA from cloned repo."""
+    import subprocess
+    monkeypatch.setattr('tools.pr_comments.github', mocked_github)
+
+    # Set up a git repo in tmp_path with a commit
+    subprocess.run(['git', 'init'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'config', 'user.name', 'test'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=tmp_path, capture_output=True)
+    test_file = os.path.join(tmp_path, 'test.txt')
+    with open(test_file, 'w') as f:
+        f.write('test content')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, capture_output=True)
+    subprocess.run(['git', 'commit', '-m', 'Initial commit'], cwd=tmp_path, capture_output=True)
+
+    ym = datetime.today().strftime('%Y.%m')
+    pr_number = 1
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
+
+    job_id = "123"
+    app_name = "pytest"
+
+    repo_name = "EESSI/software-layer"
+    repo = mocked_github.get_repo(repo_name)
+    pr = repo.get_pull(pr_number)
+    symlink = "/symlink"
+    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+
+    # Get the actual commit SHA
+    result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, capture_output=True, text=True)
+    expected_sha = result.stdout.strip()
+
+    assert comment.id == 1
+    assert f"Commit SHA: `{expected_sha}`" in comment.body
+
+
+@pytest.mark.repo_name("EESSI/software-layer")
+@pytest.mark.pr_number(1)
+def test_request_bot_build_issue_comments(monkeypatch):
+    """Tests that request_bot_build_issue_comments extracts commit SHA."""
+    from tools import config as build_config
+    original_read_config = build_config.read_config
+
+    def mock_read_config(path='app.cfg'):
+        cfg = original_read_config(path)
+        return cfg
+
+    monkeypatch.setattr('tasks.build.config.read_config', mock_read_config)
+
+    # Mock the GitHub token
+    token_mock = Mock()
+    token_mock.token = 'mock-token'
+    monkeypatch.setattr('tasks.build.github.token', lambda: token_mock)
+    monkeypatch.setattr('tasks.build.github.get_instance', lambda: Mock())
+
+    # Mock the response from the GitHub API
+    comment_body = "\n".join([
+        "New job on instance `pytest` for repository `EESSI/software-layer`",
+        "Building on: `x86_64/generic`",
+        "Building for: `x86_64/generic`",
+        "Job dir: `symlink`",
+        "Commit SHA: `abc123`",
+        "|date|job status|comment|",
+        "|----------|----------|------------------------|",
+        "|Jan 01 00:00:00 UTC 2025|finished|SUCCESS|",
+    ])
+    response_mock = Mock()
+    response_mock.json.return_value = [{'body': comment_body, 'html_url': 'https://example.com'}]
+    response_mock.links = {}
+    response_mock.headers = {
+        'X-RateLimit-Reset': '0',
+        'X-RateLimit-Limit': '5000',
+        'X-RateLimit-Remaining': '4999',
+    }
+    monkeypatch.setattr('tasks.build.requests.get', lambda *args, **kwargs: response_mock)
+
+    status_table = request_bot_build_issue_comments('EESSI/software-layer', 1)
+
+    assert status_table['commit sha'] == ['abc123']
+    assert status_table['result'] == [':grin: SUCCESS']
