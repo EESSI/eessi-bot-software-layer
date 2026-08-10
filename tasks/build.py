@@ -1000,9 +1000,9 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                         for_accelerator=for_accelerator_str)
 
     # Build line 5
-    line_5 = ''
+    commit_sha_line = ''
     if commit_sha_fmt:
-        line_5 += f"{commit_sha_fmt.format(commit_sha=commit_sha)}\n"
+        commit_sha_line += f"{commit_sha_fmt.format(commit_sha=commit_sha)}\n"
 
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
@@ -1019,7 +1019,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                  f"{release_comment_template}|").format(
                      job_id=job_id,
                      delay_seconds=eligible_in_seconds)
-        job_comment = header_lines + line_5 + table
+        job_comment = header_lines + commit_sha_line + table
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
@@ -1029,7 +1029,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
                  f"submitted|"
                  f"{release_comment_template}|").format(
                      job_id=job_id)
-        job_comment = header_lines + line_5 + table
+        job_comment = header_lines + commit_sha_line + table
 
     # create comment to pull request
     repo_name = pr.base.repo.full_name
