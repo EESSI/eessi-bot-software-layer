@@ -967,10 +967,6 @@ commit_sha = Commit SHA: `{commit_sha}`
 `commit_sha` is used as the format string for the fifth line in a comment to a PR when a new job has been created. The `{commit_sha}` placeholder is replaced with the commit SHA from the cloned repository (i.e., the base branch HEAD at the time the job starts).
 
 ```ini
-repo_file = bot/commit_sha
-```
-
-```ini
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 ```
 
