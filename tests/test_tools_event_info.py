@@ -27,7 +27,8 @@ EVENT_INFO_PROPERTIES = [
     "action", "comment_id", "comment_body", "comment_created_by",
     "event_id", "event_triggered_by", "event_type",
     "issue_number", "issue_url", "label_name",
-    "pr_number", "pr_merged_status", "pr_url", "repo_name",
+    "pr_number", "pr_title", "pr_merged_status", "pr_url",
+    "repo_name",
 ]
 
 # Event type + action combinations with sample event files
@@ -177,6 +178,7 @@ def test_GitHubEventInfo(_):
 
     # Test properties for pull_request events
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["pull_request"]["number"]
+    assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["pull_request"]["title"]
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["pull_request"]["html_url"]
 
     # Test properties for pull_request opened
@@ -248,6 +250,7 @@ def test_GitLabEventInfo(_):
 
     # Test properties for pull_request events
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["object_attributes"]["iid"]
+    assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["object_attributes"]["title"]
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["object_attributes"]["url"]
 
     # Test properties for pull_request opened
@@ -310,6 +313,7 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.issue_number == event_info_dict["raw_request_body"]["merge_request"]["iid"]
     assert event_info_obj.issue_url == event_info_dict["raw_request_body"]["merge_request"]["url"]
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["merge_request"]["iid"]
+    assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["merge_request"]["title"]
     pr_merged_status = (event_info_dict["raw_request_body"]["merge_request"]["state"] == "merged")
     assert event_info_obj.pr_merged_status is pr_merged_status
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["merge_request"]["url"]
