@@ -421,7 +421,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             create_comment(repo_name, pr_number, comment_body, ChatLevels.BASIC)
         elif label == "bot:deploy":
             # run function to deploy built artefacts
-            deploy_built_artefacts(pr, event_info)
+            deploy_built_artefacts(event_info)
         else:
             self.log("handle_pull_request_labeled_event: no handler for label '%s'", label)
 
