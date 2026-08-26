@@ -156,7 +156,12 @@ class GitHubEventInfo(BaseEventInfo):
 
     @cached_property
     def pr_number(self):
-        return self._request_body["pull_request"]["number"]
+        if self.event_type == "pull_request":
+            pr_number = self._request_body["pull_request"]["number"]
+        else:
+            # Allow accessing 'pr_number' when handling 'issue_comment' events by falling back to 'issue_number'
+            pr_number = self.issue_number
+        return pr_number
 
     @cached_property
     def pr_title(self):

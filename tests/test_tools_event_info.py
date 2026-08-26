@@ -211,6 +211,8 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.comment_body == event_info_dict["raw_request_body"]["comment"]["body"]
     assert event_info_obj.issue_number == event_info_dict["raw_request_body"]["issue"]["number"]
     assert event_info_obj.issue_url == event_info_dict["raw_request_body"]["issue"]["html_url"]
+    # 'pr_number' should fall back to 'issue_number' for issue_comment events
+    assert event_info_obj.pr_number == event_info_obj.issue_number
 
     # Test issue_comment created
     assert event_info_obj.action == "created"
