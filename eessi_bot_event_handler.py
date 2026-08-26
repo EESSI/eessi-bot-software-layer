@@ -38,7 +38,7 @@ from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command, get_supported_commands, ALL_COMMANDS
 from tools.event_info import create_event_info_instance
-from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform
+from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform, GITLAB
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
@@ -409,7 +409,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             msg = "Handling the label 'bot:build' is disabled. Use the command `bot: build [FILTER]*` instead."
             self.log(msg)
 
-            app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+            app_name = get_app_name(self.cfg)
             command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
             comment_body = command_response_fmt.format(
                 app_name=app_name,
@@ -418,6 +418,12 @@ class EESSIBotSoftwareLayer(PyGHee):
             )
             create_comment(repo_name, pr_number, comment_body, ChatLevels.BASIC)
         elif label == "bot:deploy":
+            if get_git_hosting_platform(self.cfg) == GITLAB:
+                GL_PR_LABELED_NOT_SUPPORTED = "The `bot:deploy` label was added to this MR. " \
+                                              "Deployment is not yet supported on GitLab."
+                create_comment(repo_name, pr_number, GL_PR_LABELED_NOT_SUPPORTED, ChatLevels.BASIC)
+                return
+
             # run function to deploy built artefacts
             deploy_built_artefacts(event_info)
         else:
@@ -436,7 +442,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             PRComment instance or None
         """
         self.log("PR opened: waiting for label bot:build")
-        app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+        app_name = get_app_name(self.cfg)
         # TODO check if PR already has a comment with arch targets and
         # repositories
         node_map = get_node_types(self.cfg)
@@ -488,6 +494,9 @@ class EESSIBotSoftwareLayer(PyGHee):
             handler(event_info)
         else:
             self.log("No handler for PR action '%s'", action)
+
+    # PyGHee gets the event type by subscripting event_info, i.e., it gets 'merge_request' for GL PR events
+    handle_merge_request_event = handle_pull_request_event
 
     def handle_bot_command(self, event_info, bot_command, log_file=None):
         """
@@ -807,6 +816,11 @@ class EESSIBotSoftwareLayer(PyGHee):
         """
         repo_name = event_info.repo_name
         pr_number = event_info.pr_number
+
+        if get_git_hosting_platform(self.cfg) == GITLAB:
+            GL_PR_CLOSED_NOT_SUPPORTED = "The MR was closed. Job directory cleanup is not yet supported on GitLab."
+            create_comment(repo_name, pr_number, GL_PR_CLOSED_NOT_SUPPORTED, ChatLevels.CHATTY)
+            return
 
         # Detect event and report if PR was merged or closed
         # next value: True -> PR merged, False -> PR closed
