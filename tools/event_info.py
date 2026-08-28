@@ -17,7 +17,7 @@ from typing import Union
 # (none)
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import gitlab
+from connections import github, gitlab
 from tools.git import get_git_hosting_platform, GITHUB, GITLAB
 
 
@@ -161,15 +161,34 @@ class GitHubEventInfo(BaseEventInfo):
 
     @cached_property
     def pr_number(self):
-        return self._request_body["pull_request"]["number"]
+        pr_number = -1
+        if self.event_type == "pull_request":
+            pr_number = self._request_body["pull_request"]["number"]
+        elif self.is_pr_comment:
+            pr_number = self._request_body["issue"]["number"]
+        return pr_number
 
     @cached_property
     def pr_merged_status(self):
-        return self._request_body["pull_request"]["merged"]
+        state = None
+        if self.event_type == "pull_request":
+            state = self._request_body["pull_request"]["merged"]
+        elif self.is_pr_comment:
+            # issue_comment events do not include merged status - retrieve via GH API
+            gh = github.get_instance()
+            repo = gh.get_repo(self.repo_name)
+            pr = repo.get_pull(self.pr_number)
+            state = pr.merged
+        return state
 
     @cached_property
     def pr_url(self):
-        return self._request_body["pull_request"]["html_url"]
+        pr_url = ""
+        if self.event_type == "pull_request":
+            pr_url = self._request_body["pull_request"]["html_url"]
+        elif self.is_pr_comment:
+            pr_url = self._request_body["issue"]["pull_request"]["html_url"]
+        return pr_url
 
     @cached_property
     def repo_name(self):
@@ -311,25 +330,28 @@ class GitLabEventInfo(BaseEventInfo):
     # events from comments on MRs store information about the MR in the 'merge_request' field.
     @cached_property
     def pr_number(self):
+        pr_iid = -1
         if self.event_type == "pull_request":
             pr_iid = self._object_attributes["iid"]
-        else:
+        elif self.is_pr_comment:
             pr_iid = self._request_body["merge_request"]["iid"]
         return pr_iid
 
     @cached_property
     def pr_merged_status(self):
+        state = None
         if self.event_type == "pull_request":
-            state = self._object_attributes["state"]
-        else:
-            state = self._request_body["merge_request"]["state"]
-        return state == "merged"
+            state = self._object_attributes["state"] == "merged"
+        elif self.is_pr_comment:
+            state = self._request_body["merge_request"]["state"] == "merged"
+        return state
 
     @cached_property
     def pr_url(self):
+        url = ""
         if self.event_type == "pull_request":
             url = self._object_attributes["url"]
-        else:
+        elif self.is_pr_comment:
             url = self._request_body["merge_request"]["url"]
         return url
 
