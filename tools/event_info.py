@@ -74,6 +74,10 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
+    def is_pr_comment(self):
+        raise NotImplementedError()
+
+    @cached_property
     def issue_number(self):
         raise NotImplementedError()
 
@@ -137,6 +141,11 @@ class GitHubEventInfo(BaseEventInfo):
     @cached_property
     def event_type(self):
         return self.event_info["type"]
+
+    @cached_property
+    def is_pr_comment(self):
+        # Events from PR comments include a "pull_request" object in the "issue" object
+        return (self.event_type == "issue_comment") and ("pull_request" in self._request_body["issue"])
 
     @cached_property
     def issue_number(self):
@@ -248,6 +257,10 @@ class GitLabEventInfo(BaseEventInfo):
     def event_type(self):
         gl_event_type = self.event_info["type"]
         return self._EVENT_TYPE_MAP.get(gl_event_type, self._UNKNOWN)
+
+    @cached_property
+    def is_pr_comment(self):
+        return (self.event_type == "issue_comment") and (self._object_attributes["noteable_type"] == "MergeRequest")
 
     # The bot does not handle issue events, but comment events can come from both issue and MR comments.
     # We therefore need to check what type of comment it is to get the issue numbers and URLs.

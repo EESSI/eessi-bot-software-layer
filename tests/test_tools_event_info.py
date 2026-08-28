@@ -25,7 +25,7 @@ from tools import event_info, git
 # All properties to be implemented by the EventInfo classes
 EVENT_INFO_PROPERTIES = [
     "action", "comment_id", "comment_body", "comment_created_by",
-    "event_id", "event_triggered_by", "event_type",
+    "event_id", "event_triggered_by", "event_type", "is_pr_comment",
     "issue_number", "issue_url", "label_name",
     "pr_number", "pr_merged_status", "pr_url", "repo_name",
 ]
@@ -173,6 +173,7 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.event_id == event_info_dict["id"]
     assert event_info_obj.event_triggered_by == event_info_dict["raw_request_body"]["sender"]["login"]
     assert event_info_obj.event_type == "pull_request"
+    assert event_info_obj.is_pr_comment is False
     assert event_info_obj.repo_name == event_info_dict["raw_request_body"]["repository"]["full_name"]
 
     # Test properties for pull_request events
@@ -201,10 +202,11 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.action == "closed"
     assert event_info_obj.pr_merged_status is False
 
-    # Test properties for issue_comment events
+    # Test properties for (PR) issue_comment events
     event_info_dict = get_event_info_from_file(GITHUB_EVENT_PATHS[COMMENT_CREATED])
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
     assert event_info_obj.event_type == "issue_comment"
+    assert event_info_obj.is_pr_comment is True
     assert event_info_obj.comment_id == event_info_dict["raw_request_body"]["comment"]["id"]
     assert event_info_obj.comment_body == event_info_dict["raw_request_body"]["comment"]["body"]
     assert event_info_obj.issue_number == event_info_dict["raw_request_body"]["issue"]["number"]
@@ -226,6 +228,11 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.comment_created_by == event_info_dict["raw_request_body"]["comment"]["user"]["login"]
     assert event_info_obj.event_triggered_by != event_info_obj.comment_created_by
 
+    # Test non-PR issue_comment
+    event_info_dict["raw_request_body"]["issue"].pop("pull_request")
+    event_info_obj = event_info.create_event_info_instance(event_info_dict)
+    assert event_info_obj.is_pr_comment is False
+
     # Test installation created
     event_info_dict = get_event_info_from_file(GITHUB_EVENT_PATHS[INSTALLATION_CREATED])
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
@@ -244,6 +251,7 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.event_id == event_info_dict["id"]
     assert event_info_obj.event_triggered_by == event_info_dict["raw_request_body"]["user"]["username"]
     assert event_info_obj.event_type == "pull_request"
+    assert event_info_obj.is_pr_comment is False
     assert event_info_obj.repo_name == event_info_dict["raw_request_body"]["project"]["path_with_namespace"]
 
     # Test properties for pull_request events
@@ -301,10 +309,11 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.action == "closed"
     assert event_info_obj.pr_merged_status is False
 
-    # Test properties for issue_comment events
+    # Test properties for (PR) issue_comment events
     event_info_dict = get_event_info_from_file(GITLAB_EVENT_PATHS[COMMENT_CREATED])
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
     assert event_info_obj.event_type == "issue_comment"
+    assert event_info_obj.is_pr_comment is True
     assert event_info_obj.comment_id == event_info_dict["raw_request_body"]["object_attributes"]["id"]
     assert event_info_obj.comment_body == event_info_dict["raw_request_body"]["object_attributes"]["note"]
     assert event_info_obj.issue_number == event_info_dict["raw_request_body"]["merge_request"]["iid"]
@@ -347,6 +356,7 @@ def test_GitLabEventInfo(_):
     issue_dict["url"] = mr_dict["url"]
     event_info_dict["raw_request_body"]["issue"] = issue_dict
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
+    assert event_info_obj.is_pr_comment is False
     assert event_info_obj.issue_number == issue_dict["iid"]
     assert event_info_obj.issue_url == issue_dict["url"]
 
@@ -354,6 +364,7 @@ def test_GitLabEventInfo(_):
     event_info_dict["raw_request_body"]["object_attributes"]["noteable_type"] = "Commit"
     event_info_dict["raw_request_body"].pop("issue")
     event_info_obj = event_info.create_event_info_instance(event_info_dict)
+    assert event_info_obj.is_pr_comment is False
     assert event_info_obj.issue_number == -1
     assert event_info_obj.issue_url == ""
 
