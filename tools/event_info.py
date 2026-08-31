@@ -78,14 +78,6 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
-    def issue_number(self):
-        raise NotImplementedError()
-
-    @cached_property
-    def issue_url(self):
-        raise NotImplementedError()
-
-    @cached_property
     def label_name(self):
         raise NotImplementedError()
 
@@ -146,14 +138,6 @@ class GitHubEventInfo(BaseEventInfo):
     def is_pr_comment(self):
         # Events from PR comments include a "pull_request" object in the "issue" object
         return (self.event_type == "issue_comment") and ("pull_request" in self._request_body["issue"])
-
-    @cached_property
-    def issue_number(self):
-        return self._request_body["issue"]["number"]
-
-    @cached_property
-    def issue_url(self):
-        return self._request_body["issue"]["html_url"]
 
     @cached_property
     def label_name(self):
@@ -280,32 +264,6 @@ class GitLabEventInfo(BaseEventInfo):
     @cached_property
     def is_pr_comment(self):
         return (self.event_type == "issue_comment") and (self._object_attributes["noteable_type"] == "MergeRequest")
-
-    # The bot does not handle issue events, but comment events can come from both issue and MR comments.
-    # We therefore need to check what type of comment it is to get the issue numbers and URLs.
-    @cached_property
-    def issue_number(self):
-        noteable_type = self._object_attributes["noteable_type"]
-        if noteable_type == "MergeRequest":
-            issue_iid = self._request_body["merge_request"]["iid"]
-        elif noteable_type == "Issue":
-            issue_iid = self._request_body["issue"]["iid"]
-        else:
-            # Comments may also come from commits etc. - default to -1
-            issue_iid = -1
-        return issue_iid
-
-    @cached_property
-    def issue_url(self):
-        noteable_type = self._object_attributes["noteable_type"]
-        if noteable_type == "MergeRequest":
-            issue_url = self._request_body["merge_request"]["url"]
-        elif noteable_type == "Issue":
-            issue_url = self._request_body["issue"]["url"]
-        else:
-            # Comments may also come from commits etc. - default to empty string
-            issue_url = ""
-        return issue_url
 
     @cached_property
     def label_name(self):
