@@ -88,6 +88,9 @@ class MockPullRequest():
     def __init__(self, merged):
         self.merged = merged
 
+    def is_merged(self):
+        return self.merged
+
 
 # Mock class imitating PyGithub's Repository class
 class MockRepository():
