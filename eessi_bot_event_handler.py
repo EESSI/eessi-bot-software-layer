@@ -197,6 +197,11 @@ class EESSIBotSoftwareLayer(PyGHee):
         Raises:
             Exception: raises any exception that is not of type EESSIBotCommandError
         """
+        # The bot only handles comments on PRs, skip issue comments etc.
+        if not event_info.is_pr_comment:
+            self.log("Received non-PR comment - skipping")
+            return
+
         issue_url = event_info.issue_url
         action = event_info.action
         sender = event_info.event_triggered_by
