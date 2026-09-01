@@ -17,7 +17,7 @@ from typing import Union
 # (none)
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import gitlab
+from connections import github, gitlab
 from tools.git import get_git_hosting_platform, GITHUB, GITLAB
 
 
@@ -74,11 +74,7 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
-    def issue_number(self):
-        raise NotImplementedError()
-
-    @cached_property
-    def issue_url(self):
+    def is_pr_comment(self):
         raise NotImplementedError()
 
     @cached_property
@@ -139,12 +135,9 @@ class GitHubEventInfo(BaseEventInfo):
         return self.event_info["type"]
 
     @cached_property
-    def issue_number(self):
-        return self._request_body["issue"]["number"]
-
-    @cached_property
-    def issue_url(self):
-        return self._request_body["issue"]["html_url"]
+    def is_pr_comment(self):
+        # Events from PR comments include a "pull_request" object in the "issue" object
+        return (self.event_type == "issue_comment") and ("pull_request" in self._request_body["issue"])
 
     @cached_property
     def label_name(self):
@@ -152,15 +145,34 @@ class GitHubEventInfo(BaseEventInfo):
 
     @cached_property
     def pr_number(self):
-        return self._request_body["pull_request"]["number"]
+        pr_number = -1
+        if self.event_type == "pull_request":
+            pr_number = self._request_body["pull_request"]["number"]
+        elif self.is_pr_comment:
+            pr_number = self._request_body["issue"]["number"]
+        return pr_number
 
     @cached_property
     def pr_merged_status(self):
-        return self._request_body["pull_request"]["merged"]
+        state = None
+        if self.event_type == "pull_request":
+            state = self._request_body["pull_request"]["merged"]
+        elif self.is_pr_comment:
+            # issue_comment events do not include merged status - retrieve via GH API
+            gh = github.get_instance()
+            repo = gh.get_repo(self.repo_name)
+            pr = repo.get_pull(self.pr_number)
+            state = pr.merged
+        return state
 
     @cached_property
     def pr_url(self):
-        return self._request_body["pull_request"]["html_url"]
+        pr_url = ""
+        if self.event_type == "pull_request":
+            pr_url = self._request_body["pull_request"]["html_url"]
+        elif self.is_pr_comment:
+            pr_url = self._request_body["issue"]["pull_request"]["html_url"]
+        return pr_url
 
     @cached_property
     def repo_name(self):
@@ -249,31 +261,9 @@ class GitLabEventInfo(BaseEventInfo):
         gl_event_type = self.event_info["type"]
         return self._EVENT_TYPE_MAP.get(gl_event_type, self._UNKNOWN)
 
-    # The bot does not handle issue events, but comment events can come from both issue and MR comments.
-    # We therefore need to check what type of comment it is to get the issue numbers and URLs.
     @cached_property
-    def issue_number(self):
-        noteable_type = self._object_attributes["noteable_type"]
-        if noteable_type == "MergeRequest":
-            issue_iid = self._request_body["merge_request"]["iid"]
-        elif noteable_type == "Issue":
-            issue_iid = self._request_body["issue"]["iid"]
-        else:
-            # Comments may also come from commits etc. - default to -1
-            issue_iid = -1
-        return issue_iid
-
-    @cached_property
-    def issue_url(self):
-        noteable_type = self._object_attributes["noteable_type"]
-        if noteable_type == "MergeRequest":
-            issue_url = self._request_body["merge_request"]["url"]
-        elif noteable_type == "Issue":
-            issue_url = self._request_body["issue"]["url"]
-        else:
-            # Comments may also come from commits etc. - default to empty string
-            issue_url = ""
-        return issue_url
+    def is_pr_comment(self):
+        return (self.event_type == "issue_comment") and (self._object_attributes["noteable_type"] == "MergeRequest")
 
     @cached_property
     def label_name(self):
@@ -298,25 +288,28 @@ class GitLabEventInfo(BaseEventInfo):
     # events from comments on MRs store information about the MR in the 'merge_request' field.
     @cached_property
     def pr_number(self):
+        pr_iid = -1
         if self.event_type == "pull_request":
             pr_iid = self._object_attributes["iid"]
-        else:
+        elif self.is_pr_comment:
             pr_iid = self._request_body["merge_request"]["iid"]
         return pr_iid
 
     @cached_property
     def pr_merged_status(self):
+        state = None
         if self.event_type == "pull_request":
-            state = self._object_attributes["state"]
-        else:
-            state = self._request_body["merge_request"]["state"]
-        return state == "merged"
+            state = self._object_attributes["state"] == "merged"
+        elif self.is_pr_comment:
+            state = self._request_body["merge_request"]["state"] == "merged"
+        return state
 
     @cached_property
     def pr_url(self):
+        url = ""
         if self.event_type == "pull_request":
             url = self._object_attributes["url"]
-        else:
+        elif self.is_pr_comment:
             url = self._request_body["merge_request"]["url"]
         return url
 

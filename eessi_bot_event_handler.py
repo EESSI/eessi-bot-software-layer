@@ -197,16 +197,21 @@ class EESSIBotSoftwareLayer(PyGHee):
         Raises:
             Exception: raises any exception that is not of type EESSIBotCommandError
         """
-        issue_url = event_info.issue_url
+        # The bot only handles comments on PRs, skip issue comments etc.
+        if not event_info.is_pr_comment:
+            self.log("Received non-PR comment - skipping")
+            return
+
         action = event_info.action
         sender = event_info.event_triggered_by
         owner = event_info.comment_created_by
         repo_name = event_info.repo_name
-        pr_number = event_info.issue_number
+        pr_number = event_info.pr_number
+        pr_url = event_info.pr_url
 
         # TODO add request body text (['comment']['body']) to log message when
         #      log level is set to debug
-        self.log(f"Comment in {issue_url} (owned by @{owner}) {action} by @{sender}")
+        self.log(f"Comment in {pr_url} (owned by @{owner}) {action} by @{sender}")
 
         app_name = get_app_name(self.cfg)
         command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
@@ -365,7 +370,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             )
             issue_comment.edit(comment_body)
 
-            self.log(f"issue_comment event (url {issue_url}) handled!")
+            self.log(f"issue_comment event (url {pr_url}) handled!")
 
     # PyGHee gets the event type by subscripting event_info, i.e., it gets 'note' for GL comment events
     handle_note_event = handle_issue_comment_event
