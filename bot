@@ -11,11 +11,37 @@ JOB_MANAGER="python3 -m eessi_bot_job_manager"
 EVENT_HANDLER="python3 -m eessi_bot_event_handler"
 
 start_bot() {
+    local manager_args=()
+    local handler_args=()
+
+    shift
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i|--max-manager-iterations)
+                manager_args+=("$1" "$2")
+                shift 2
+                ;;
+            -j|--jobs)
+                manager_args+=("$1" "$2")
+                shift 2
+                ;;
+            --port)
+                handler_args+=("$1" "$2")
+                shift 2
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
     if pgrep -f "$JOB_MANAGER" >/dev/null; then
         echo "$blue>>> job manager is already running$reset"
     else
         echo "$blue>>> starting job manager...$reset"
-        $JOB_MANAGER \
+        $JOB_MANAGER "${manager_args[@]}" \
             | sed -e '1s/^/\n/' -e "s/\(.*\)/$blue\1$reset/" &
     fi
 
@@ -23,7 +49,7 @@ start_bot() {
         echo "$green>>> event handler is already running$reset"
     else
         echo "$green>>> starting event handler...$reset"
-        $EVENT_HANDLER \
+        $EVENT_HANDLER "${handler_args[@]}" \
             | sed -e '1s/^/\n/' -e "s/\(.*\)/$green\1$reset/" &
     fi
 }
@@ -60,7 +86,7 @@ status_bot() {
 
 case "$1" in
     start)
-        start_bot
+        start_bot "$@"
         ;;
 
     stop)
@@ -70,7 +96,7 @@ case "$1" in
     restart)
         stop_bot
         sleep 1
-        start_bot
+        start_bot "$@"
         ;;
 
     status)
@@ -78,7 +104,12 @@ case "$1" in
         ;;
 
     *)
-        echo "Usage: $0 {start|stop|restart|status}"
+        echo "Usage: $0 {start|stop|restart|status} [options]"
+        echo
+        echo "Start/restart options:"
+        echo "  -i, --max-manager-iterations N   Job manager max iterations"
+        echo "  -j, --jobs N                     Comma-separated list of job ids"
+        echo "      --port PORT                  Event handler port"
         exit 1
         ;;
 esac

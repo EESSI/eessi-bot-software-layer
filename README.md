@@ -1409,6 +1409,25 @@ The job manager writes log information to the file `eessi_bot_job_manager.log`.
 
 The job manager can run on a different machine than the event handler, as long as both have access to the same shared filesystem.
 
+## <a name="step7.3"></a>Step 7.3: Managing the bot with a single command
+
+The `bot` script starts, stops, restarts, and checks the status of the 2 bot components: the event handler and the job manager.
+
+```bash
+./bot start [options]
+./bot stop
+./bot restart [options]
+./bot status
+```
+
+Available `start`/`restart` options are the same as those for `event_handler.sh` and `job_manager.sh`.
+
+The following example starts the bot with 10 job manager iterations, managing only job ids 1234 and 5678, and listening for events on port 8080:
+
+```bash
+./bot start -i 10 -j 1234,5678 --port 8080
+```
+
 # Example pull request on software-layer
 
 For information on how to make pull requests and let the bot build software, see
