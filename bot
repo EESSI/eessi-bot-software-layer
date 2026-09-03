@@ -1,0 +1,84 @@
+#!/bin/bash
+
+red="$(tput setaf 1)"
+blue="$(tput setaf 4)"
+green="$(tput setaf 2)"
+reset="$(tput sgr0)"
+
+export PYTHONUNBUFFERED=1
+
+JOB_MANAGER="python3 -m eessi_bot_job_manager"
+EVENT_HANDLER="python3 -m eessi_bot_event_handler"
+
+start_bot() {
+    if pgrep -f "$JOB_MANAGER" >/dev/null; then
+        echo "$blue>>> job manager is already running$reset"
+    else
+        echo "$blue>>> starting job manager...$reset"
+        $JOB_MANAGER \
+            | sed -e '1s/^/\n/' -e "s/\(.*\)/$blue\1$reset/" &
+    fi
+
+    if pgrep -f "$EVENT_HANDLER" >/dev/null; then
+        echo "$green>>> event handler is already running$reset"
+    else
+        echo "$green>>> starting event handler...$reset"
+        $EVENT_HANDLER \
+            | sed -e '1s/^/\n/' -e "s/\(.*\)/$green\1$reset/" &
+    fi
+}
+
+stop_bot() {
+    if pgrep -f "$EVENT_HANDLER" >/dev/null; then
+        echo "$red>>> stopping event handler...$reset"
+        pkill -e -f "$EVENT_HANDLER"
+    else
+        echo "$red>>> event handler is not running$reset"
+    fi
+
+    if pgrep -f "$JOB_MANAGER" >/dev/null; then
+        echo "$red>>> stopping job manager...$reset"
+        pkill -e -f "$JOB_MANAGER"
+    else
+        echo "$red>>> job manager is not running$reset"
+    fi
+}
+
+status_bot() {
+    if pgrep -f "$JOB_MANAGER" >/dev/null; then
+        echo "$blue>>> job manager is running$reset"
+    else
+        echo "$red>>> job manager is not running$reset"
+    fi
+
+    if pgrep -f "$EVENT_HANDLER" >/dev/null; then
+        echo "$green>>> event handler is running$reset"
+    else
+        echo "$red>>> event handler is not running$reset"
+    fi
+}
+
+case "$1" in
+    start)
+        start_bot
+        ;;
+
+    stop)
+        stop_bot
+        ;;
+
+    restart)
+        stop_bot
+        sleep 1
+        start_bot
+        ;;
+
+    status)
+        status_bot
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
