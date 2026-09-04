@@ -1411,7 +1411,9 @@ The job manager can run on a different machine than the event handler, as long a
 
 ## <a name="step7.3"></a>Step 7.3: Managing the bot with a single command
 
-The `bot` script starts, stops, restarts, and checks the status of the 2 bot components: the event handler and the job manager.
+The `bot` script starts, stops, restarts, and checks the status of the 2 bot
+components: the event handler and the job manager.  It launches both component
+processes in the background.
 
 ```bash
 ./bot start [options]
@@ -1420,9 +1422,11 @@ The `bot` script starts, stops, restarts, and checks the status of the 2 bot com
 ./bot status
 ```
 
-Available `start`/`restart` options are the same as those for `event_handler.sh` and `job_manager.sh`.
+Available `start`/`restart` options are the same as those for
+`event_handler.sh` and `job_manager.sh`.
 
-The following example starts the bot with 10 job manager iterations, managing only job ids 1234 and 5678, and listening for events on port 8080:
+The following example starts the bot with 10 job manager iterations, managing
+only job ids 1234 and 5678, and listening for events on port 8080:
 
 ```bash
 ./bot start -i 10 -j 1234,5678 --port 8080
