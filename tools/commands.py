@@ -25,7 +25,7 @@ from tools.git import get_git_hosting_platform, GITHUB, GITLAB
 ALL_COMMANDS = ["help", "build", "show_config", "status", "cancel"]
 SUPPORTED_COMMANDS_PER_GIT_HOST = {
     GITHUB: ["help", "build", "show_config", "status", "cancel"],
-    GITLAB: ["help"],
+    GITLAB: ["help", "show_config"],
 }
 
 

@@ -38,7 +38,7 @@ from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command, get_supported_commands, ALL_COMMANDS
 from tools.event_info import create_event_info_instance
-from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform
+from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform, GITLAB
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
@@ -387,31 +387,29 @@ class EESSIBotSoftwareLayer(PyGHee):
         self.log("App installation event by user %s with action '%s'", user, action)
         self.log("installation event handled!")
 
-    def handle_pull_request_labeled_event(self, event_info, pr):
+    def handle_pull_request_labeled_event(self, event_info):
         """
         Handle events of type pull_request with the action labeled. Main action
         is to process the label 'bot:deploy'.
 
         Args:
-            event_info (dict): event received by event_handler
-            pr (github.PullRequest.PullRequest): instance representing the pull request
+            event_info (EventInfo): event received by event_handler
 
         Returns:
             None (implicitly)
         """
 
         # determine label
-        label = event_info['raw_request_body']['label']['name']
-        self.log("Process PR labeled event: PR#%s, label '%s'", pr.number, label)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        label = event_info.label_name
+        self.log("Process PR labeled event: PR#%s, label '%s'", pr_number, label)
 
         if label == "bot:build":
             msg = "Handling the label 'bot:build' is disabled. Use the command `bot: build [FILTER]*` instead."
             self.log(msg)
 
-            request_body = event_info['raw_request_body']
-            repo_name = request_body['repository']['full_name']
-            pr_number = request_body['pull_request']['number']
-            app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+            app_name = get_app_name(self.cfg)
             command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
             comment_body = command_response_fmt.format(
                 app_name=app_name,
@@ -420,27 +418,31 @@ class EESSIBotSoftwareLayer(PyGHee):
             )
             create_comment(repo_name, pr_number, comment_body, ChatLevels.BASIC)
         elif label == "bot:deploy":
+            if get_git_hosting_platform(self.cfg) == GITLAB:
+                GL_PR_LABELED_NOT_SUPPORTED = "The `bot:deploy` label was added to this MR. " \
+                                              "Deployment is not yet supported on GitLab."
+                create_comment(repo_name, pr_number, GL_PR_LABELED_NOT_SUPPORTED, ChatLevels.BASIC)
+                return
+
             # run function to deploy built artefacts
-            deploy_built_artefacts(pr, event_info)
+            deploy_built_artefacts(event_info)
         else:
             self.log("handle_pull_request_labeled_event: no handler for label '%s'", label)
 
-    def handle_pull_request_opened_event(self, event_info, pr, req_chatlevel=ChatLevels.CHATTY):
+    def handle_pull_request_opened_event(self, event_info, req_chatlevel=ChatLevels.CHATTY):
         """
         Handle events of type pull_request with the action opened. Main action
         is to report for which architectures and repositories a bot instance is
         configured to build for.
 
         Args:
-            event_info (dict): event received by event_handler
-            pr (github.PullRequest.PullRequest): instance representing the pull request
+            event_info (EventInfo): event received by event_handler
 
         Returns:
-            github.IssueComment.IssueComment instance or None (note, github refers to
-                PyGithub, not the github from the internal connections module)
+            PRComment instance or None
         """
         self.log("PR opened: waiting for label bot:build")
-        app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+        app_name = get_app_name(self.cfg)
         # TODO check if PR already has a comment with arch targets and
         # repositories
         node_map = get_node_types(self.cfg)
@@ -462,8 +464,9 @@ class EESSIBotSoftwareLayer(PyGHee):
         self.log(f"PR opened: comment '{comment}'")
 
         # create comment to pull request
-        repo_name = pr.base.repo.full_name
-        issue_comment = create_comment(repo_name, pr.number, comment, req_chatlevel)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        issue_comment = create_comment(repo_name, pr_number, comment, req_chatlevel)
         return issue_comment
 
     def handle_pull_request_event(self, event_info, log_file=None):
@@ -472,26 +475,28 @@ class EESSIBotSoftwareLayer(PyGHee):
         determining a handler for it.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             log_file (string): path to log messages to
 
         Returns:
             None (implicitly)
         """
-        action = event_info['action']
-        gh = github.get_instance()
-        self.log("repository: '%s'", event_info['raw_request_body']['repository']['full_name'])
-        pr = gh.get_repo(event_info['raw_request_body']['repository']
-                         ['full_name']).get_pull(event_info['raw_request_body']['pull_request']['number'])
-        self.log("PR data: %s", pr)
+        action = event_info.action
+        pr_number = event_info.pr_number
+        self.log(f"Repository: '{event_info.repo_name}'")
+        self.log(f"PR title: '{event_info.pr_title}'")
+        self.log(f"PR number: {pr_number}")
 
         handler_name = 'handle_pull_request_%s_event' % action
         if hasattr(self, handler_name):
             handler = getattr(self, handler_name)
-            self.log("Handling PR action '%s' for PR #%d...", action, pr.number)
-            handler(event_info, pr)
+            self.log("Handling PR action '%s' for PR #%d...", action, pr_number)
+            handler(event_info)
         else:
             self.log("No handler for PR action '%s'", action)
+
+    # PyGHee gets the event type by subscripting event_info, i.e., it gets 'merge_request' for GL PR events
+    handle_merge_request_event = handle_pull_request_event
 
     def handle_bot_command(self, event_info, bot_command, log_file=None):
         """
@@ -600,7 +605,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         type pull_request with the action opened.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
@@ -608,11 +613,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                 by the handler for events of type pull_request with the action opened
         """
         self.log("processing bot command 'show_config'")
-        gh = github.get_instance()
-        repo_name = event_info['raw_request_body']['repository']['full_name']
-        pr_number = event_info['raw_request_body']['issue']['number']
-        pr = gh.get_repo(repo_name).get_pull(pr_number)
-        issue_comment = self.handle_pull_request_opened_event(event_info, pr, req_chatlevel=ChatLevels.MINIMAL)
+        issue_comment = self.handle_pull_request_opened_event(event_info, req_chatlevel=ChatLevels.MINIMAL)
         if issue_comment:
             return f"\n  - added comment {issue_comment.html_url} to show configuration"
 
@@ -807,40 +808,43 @@ class EESSIBotSoftwareLayer(PyGHee):
         self.log(log_file_info)
         waitress.serve(app, listen='*:%s' % port)
 
-    def handle_pull_request_closed_event(self, event_info, pr):
+    def handle_pull_request_closed_event(self, event_info):
         """
         Handle events of type pull_request with the action 'closed'. It
         determines used by the PR and moves them to the trash_bin. It also adds
         information to the logs and a comment to the PR.
 
         Args:
-        event_info (dict): event received by event_handler
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+            event_info (EventInfo): event received by event_handler
 
         Returns:
-        github.IssueComment.IssueComment instance or None (note, github refers to
-        PyGithub, not the github from the internal connections module)
+            PRComment instance or None
         """
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+
+        if get_git_hosting_platform(self.cfg) == GITLAB:
+            GL_PR_CLOSED_NOT_SUPPORTED = "The MR was closed. Job directory cleanup is not yet supported on GitLab."
+            create_comment(repo_name, pr_number, GL_PR_CLOSED_NOT_SUPPORTED, ChatLevels.CHATTY)
+            return
 
         # Detect event and report if PR was merged or closed
-        request_body = event_info['raw_request_body']
         # next value: True -> PR merged, False -> PR closed
-        mergedOrClosed = request_body['pull_request']['merged']
+        mergedOrClosed = event_info.pr_merged_status
         status = "merged" if mergedOrClosed else "closed"
 
-        self.log(f"PR {pr.number}: PR got {status} (json value: {mergedOrClosed})")
+        self.log(f"PR {pr_number}: PR got {status} (json value: {mergedOrClosed})")
 
         # 1) determine the jobs that have been run for the PR
-        self.log(f"PR {pr.number}: determining directories to be moved to trash bin")
-        job_dirs = determine_job_dirs(pr.number)
+        self.log(f"PR {pr_number}: determining directories to be moved to trash bin")
+        job_dirs = determine_job_dirs(pr_number)
 
         if job_dirs == []:
-            self.log(f"PR {pr.number}: No job directories found; nothing to move.")
+            self.log(f"PR {pr_number}: No job directories found; nothing to move.")
         else:
             # 2) Get trash_bin_dir from configs
             trash_bin_root_dir = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR]
 
-            repo_name = request_body['repository']['full_name']
             dt_start = datetime.now(timezone.utc)
             trash_bin_dir = "/".join([trash_bin_root_dir, repo_name, dt_start.strftime('%Y.%m.%d')])
 
@@ -848,19 +852,17 @@ class EESSIBotSoftwareLayer(PyGHee):
             # cron job deletes symlinks?
 
             # 3) move the directories to the trash_bin
-            self.log(f"PR {pr.number}: moving directories to trash bin {trash_bin_dir}")
+            self.log(f"PR {pr_number}: moving directories to trash bin {trash_bin_dir}")
             move_to_trash_bin(trash_bin_dir, job_dirs)
             dt_end = datetime.now(timezone.utc)
             dt_delta = dt_end - dt_start
             seconds_elapsed = dt_delta.days * 24 * 3600 + dt_delta.seconds
-            self.log(f"PR {pr.number}: moved directories to trash bin {trash_bin_dir} (took {seconds_elapsed} seconds)")
+            self.log(f"PR {pr_number}: moved directories to trash bin {trash_bin_dir} (took {seconds_elapsed} seconds)")
 
             # 4) report move to pull request
-
-            repo_name = pr.base.repo.full_name
             clean_up_comment = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT]
             moved_comment = clean_up_comment.format(job_dirs=job_dirs, trash_bin_dir=trash_bin_dir)
-            issue_comment = create_comment(repo_name, pr.number, moved_comment, ChatLevels.CHATTY)
+            issue_comment = create_comment(repo_name, pr_number, moved_comment, ChatLevels.CHATTY)
             return issue_comment
 
 
