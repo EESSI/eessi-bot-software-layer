@@ -44,15 +44,16 @@ def test_parse_common_args(test_args, expected_parsed, expected_unknown):
 # Test event_handler_parse()
 @pytest.mark.parametrize("test_args,expectation", [
     # No args
-    ([], nullcontext(Namespace(debug=False, build=False, test=False, cron=False, file=None, port=3000))),
+    ([], nullcontext(Namespace(debug=False, build=False, test=False, cron=False, file=None, port=3000, bot_name=None))),
 
     # Short-form args
     (["-d", "-b", "-t", "-c", "-f", "file.json", "-p", "8000"],
      nullcontext(Namespace(debug=True, build=True, test=True, cron=True, file="file.json", port="8000"))),
 
     # Long-form args
-    (["--debug", "--build", "--test", "--cron", "--file", "file2.json", "--port", "9000"],
-     nullcontext(Namespace(debug=True, build=True, test=True, cron=True, file="file2.json", port="9000"))),
+    (["--debug", "--build", "--test", "--cron", "--file", "file2.json", "--port", "9000", "--bot-name", "test-bot"],
+     nullcontext(Namespace(debug=True, build=True, test=True, cron=True, file="file2.json", port="9000",
+                           bot_name="test-bot"))),
 
     # Unknown args - should fail and exit
     (["-u"], pytest.raises(SystemExit)),
@@ -66,15 +67,15 @@ def test_event_handler_parse_known_args(test_args, expectation):
 # Test job_manager_parse()
 @pytest.mark.parametrize("test_args,expectation", [
     # No args
-    ([], nullcontext(Namespace(debug=False, max_manager_iterations=-1, jobs=None))),
+    ([], nullcontext(Namespace(debug=False, max_manager_iterations=-1, jobs=None, bot_name=None))),
 
     # Short-form args
     (["-d", "-i", "0", "-j", "17"],
      nullcontext(Namespace(debug=True, max_manager_iterations="0", jobs="17"))),
 
     # Long-form args
-    (["--debug", "--max-manager-iterations", "10", "--jobs", "4,18,48"],
-     nullcontext(Namespace(debug=True, max_manager_iterations="10", jobs="4,18,48"))),
+    (["--debug", "--max-manager-iterations", "10", "--jobs", "4,18,48", "--bot-name", "test-bot"],
+     nullcontext(Namespace(debug=True, max_manager_iterations="10", jobs="4,18,48", bot_name="test-bot"))),
 
     # Unknown args - should fail and exit
     (["-u"], pytest.raises(SystemExit)),
