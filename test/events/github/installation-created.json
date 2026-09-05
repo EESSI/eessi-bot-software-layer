@@ -1,0 +1,108 @@
+{
+  "headers": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate",
+    "Accept-Language": "*",
+    "Connection": "keep-alive",
+    "Content-Length": "2818",
+    "Content-Type": "application/json",
+    "Host": "127.0.0.1:3000",
+    "Sec-Fetch-Mode": "cors",
+    "Timestamp": "1781253687553",
+    "User-Agent": "GitHub-Hookshot/831a06e",
+    "X-Forwarded-Scheme": "https",
+    "X-Github-Delivery": "7f87ab50-663a-11f1-8fd8-f855b3665b48",
+    "X-Github-Event": "installation",
+    "X-Github-Hook-Id": "123454321",
+    "X-Github-Hook-Installation-Target-Id": "1234567",
+    "X-Github-Hook-Installation-Target-Type": "integration",
+    "X-Hub-Signature": "sha1=c8e2663458dba026dea527d25f421a1096576350",
+    "X-Hub-Signature-256": "sha256=2b0c3f55b9d15f0a395453232b476e865efaea71b7effdda6a712116b39456bb",
+    "X-Real-Ip": "140.82.115.112",
+    "X-Request-Id": "700c2d29c5f2c95eaf403706223f9e1d",
+    "X-Scheme": "https"
+  },
+  "json": {
+    "action": "created",
+    "installation": {
+      "access_tokens_url": "https://api.github.com/app/installations/99999999/access_tokens",
+      "account": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/123456789?v=4",
+        "events_url": "https://api.github.com/users/testuser/events{/privacy}",
+        "followers_url": "https://api.github.com/users/testuser/followers",
+        "following_url": "https://api.github.com/users/testuser/following{/other_user}",
+        "gists_url": "https://api.github.com/users/testuser/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/testuser",
+        "id": 123456789,
+        "login": "testuser",
+        "node_id": "U_kgDOB1vNFQ",
+        "organizations_url": "https://api.github.com/users/testuser/orgs",
+        "received_events_url": "https://api.github.com/users/testuser/received_events",
+        "repos_url": "https://api.github.com/users/testuser/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/testuser/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/testuser/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/testuser",
+        "user_view_type": "public"
+      },
+      "app_id": 1234567,
+      "app_slug": "test-eessi-bot",
+      "client_id": "Iv2368hOu46EpbKV0zmA",
+      "created_at": "2026-06-12T10:41:25.000+02:00",
+      "events": [
+        "issue_comment",
+        "pull_request"
+      ],
+      "has_multiple_single_files": false,
+      "html_url": "https://github.com/settings/installations/99999999",
+      "id": 99999999,
+      "permissions": {
+        "issues": "write",
+        "metadata": "read",
+        "pull_requests": "write"
+      },
+      "repositories_url": "https://api.github.com/installation/repositories",
+      "repository_selection": "selected",
+      "single_file_name": null,
+      "single_file_paths": [],
+      "suspended_at": null,
+      "suspended_by": null,
+      "target_id": 123456789,
+      "target_type": "User",
+      "updated_at": "2026-06-12T10:41:26.000+02:00"
+    },
+    "repositories": [
+      {
+        "full_name": "testuser/software-layer",
+        "id": 1234567890,
+        "name": "software-layer",
+        "node_id": "R_kgDOSZYC0g",
+        "private": false
+      }
+    ],
+    "requester": null,
+    "sender": {
+      "avatar_url": "https://avatars.githubusercontent.com/u/123456789?v=4",
+      "events_url": "https://api.github.com/users/testuser/events{/privacy}",
+      "followers_url": "https://api.github.com/users/testuser/followers",
+      "following_url": "https://api.github.com/users/testuser/following{/other_user}",
+      "gists_url": "https://api.github.com/users/testuser/gists{/gist_id}",
+      "gravatar_id": "",
+      "html_url": "https://github.com/testuser",
+      "id": 123456789,
+      "login": "testuser",
+      "node_id": "U_kgDOB1vNFQ",
+      "organizations_url": "https://api.github.com/users/testuser/orgs",
+      "received_events_url": "https://api.github.com/users/testuser/received_events",
+      "repos_url": "https://api.github.com/users/testuser/repos",
+      "site_admin": false,
+      "starred_url": "https://api.github.com/users/testuser/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/testuser/subscriptions",
+      "type": "User",
+      "url": "https://api.github.com/users/testuser",
+      "user_view_type": "public"
+    }
+  }
+}

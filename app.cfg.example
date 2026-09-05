@@ -17,6 +17,10 @@
 
 # Also see documentation at https://github.com/EESSI/eessi-bot-software-layer/blob/main/README.md#step5.5
 
+[git]
+# Name of the Git hosting platform (supported values are 'github' and 'gitlab')
+hosting_platform = github
+
 [github]
 # API timeout, time limit for requests to GitHub's REST API
 api_timeout = 10
@@ -43,15 +47,29 @@ installation_id = 12345678
 # path to the private key that was generated when the GitHub App was registered
 private_key = PATH_TO_PRIVATE_KEY
 
+[gitlab]
+# NOTE: Access token required for GitLab:
+# https://docs.gitlab.com/user/project/settings/project_access_tokens/#bot-users-for-projects
+# Must be stored in environment variable 'GITLAB_PROJECT_ACCESS_TOKEN'.
+
+# API timeout, time limit for requests to GitLab's REST API
+api_timeout = 10
+
+# Name used to refer to your bot instance - see comment for github.app_name config
+bot_name = MY-bot
+
+# The base URL of your GitLab instance
+instance_url = https://gitlab.com
+
 
 [bot_control]
-# which GH accounts have the permission to send commands to the bot
+# which GH/GL accounts have the permission to send commands to the bot
 # if value is left/empty everyone can send commands
-# value can be a space delimited list of GH accounts
+# value can be a space delimited list of GH/GL accounts
 #
-# NOTE, be careful to not list the bot's name (GH app name) or it may consider
-#   comments created/updated by itself as a bot command and thus enter an
-#   endless loop.
+# NOTE, be careful to not list the bot's name (GH app name or GL bot account
+#   name) or it may consider comments created/updated by itself as a bot
+#   command and thus enter an endless loop.
 command_permission =
 
 # format of the response when processing bot commands. NOTE, make sure the

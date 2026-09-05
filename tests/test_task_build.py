@@ -30,7 +30,7 @@ from tasks.build import Job, create_pr_comment, request_bot_build_issue_comments
 from tools import run_cmd, run_subprocess
 from tools.build_params import EESSIBotBuildParams
 from tools.job_metadata import create_metadata_file, read_metadata_file
-from tools.pr_comments import PRComment, get_submitted_job_comment
+from tools.pr_comments import PRCommentInfo, get_submitted_job_comment
 
 # Local tests imports (reusing code from other tests)
 from tests.test_tools_pr_comments import MockIssueComment
@@ -462,7 +462,7 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
     job_id = "123"
 
     repo_name = "test_repo"
-    pr_comment = PRComment(repo_name, pr_number, 77)
+    pr_comment = PRCommentInfo(repo_name, pr_number, 77)
     create_metadata_file(job, job_id, pr_comment)
 
     expected_file = f"_bot_job{job_id}.metadata"

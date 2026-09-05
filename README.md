@@ -13,20 +13,32 @@ deployment.
 The following sections describe and illustrate the steps necessary to set up the EESSI bot.
 The bot consists of two main components provided in this repository:
 
-- An event handler [`eessi_bot_event_handler.py`](eessi_bot_event_handler.py) which receives events from a GitHub repository and acts on them.
+- An event handler [`eessi_bot_event_handler.py`](eessi_bot_event_handler.py) which receives events from a GitHub repository or GitLab project and acts on them.
 - A job manager [`eessi_bot_job_manager.py`](eessi_bot_job_manager.py) which monitors the Slurm job queue and acts on state changes of jobs submitted by the event handler.
+
+> [!WARNING]
+> **Limited feature support in GitLab**
+>
+> Note that GitLab support is currently limited to the `help` command.
 
 ## <a name="prerequisites"></a>Prerequisites
 
-- GitHub account, say `GH_ACCOUNT`
-- A fork, say `GH_ACCOUNT/software-layer`, of
-  [EESSI/software-layer](https://github.com/EESSI/software-layer). The EESSI bot will act on
-  events triggered for a repository its corresponding GitHub App was installed into.
-  To install the GitHub App into a repository, the GitHub App needs to be
-  configured such that it can be installed into any repository or all
-  repositories belonging to an account/organisation and the installer
-  (account/person who performs the "installation") has permissions to perform the
-  installation.
+- If setting up the bot for GitHub:
+  - GitHub account, say `GH_ACCOUNT`
+  - A fork, say `GH_ACCOUNT/software-layer`, of
+    [EESSI/software-layer](https://github.com/EESSI/software-layer). The EESSI bot will act on
+    events triggered for a repository its corresponding GitHub App was installed into.
+    To install the GitHub App into a repository, the GitHub App needs to be
+    configured such that it can be installed into any repository or all
+    repositories belonging to an account/organisation and the installer
+    (account/person who performs the "installation") has permissions to perform the
+    installation.
+- If setting up the bot for GitLab:
+  - Account on a GitLab instance running version 19.0 or newer (must support
+    [webhooks with signing tokens](https://docs.gitlab.com/user/project/integrations/webhooks/#signing-tokens))
+  - A fork, say `GL_NAMESPACE/software-layer` for some group or namespace `GL_NAMESPACE`, of
+    [EESSI/software-layer](https://github.com/EESSI/software-layer). You will need to be able to add webhooks to the
+    fork, and create access tokens for the fork (either directly or through a service account).
 - Access to a frontend/login node/service node of a Slurm cluster where the
   EESSI bot components will run. For the sake of brevity, we call this node
   simply `bot machine`.
@@ -47,8 +59,8 @@ The bot consists of two main components provided in this repository:
 
 _EESSI uses specific Smee channels. Access to them is restricted for
 EESSI-internal use._
-For development and testing purposes, one can use [smee.io](https://smee.io) as a service to relay events from GitHub
-to the EESSI bot. To do so, create a new channel via [smee.io](https://smee.io) and note
+For development and testing purposes, one can use [smee.io](https://smee.io) as a service to relay events from
+GitHub/GitLab to the EESSI bot. To do so, create a new channel via [smee.io](https://smee.io) and note
 the URL, e.g., `https://smee.io/CHANNEL-ID`.
 
 ### Step 1b: Install Smee client on `bot machine`
@@ -95,7 +107,10 @@ Another port can be used by adding the `--port PORT` argument. This can be parti
 node_modules/smee-client/bin/smee.js --url https://smee.io/CHANNEL-ID --port 3030
 ```
 
-## <a name="step2"></a>Step 2: Registering a GitHub App
+> [!IMPORTANT]
+> Steps 2 and 3 differ for GitHub and GitLab. Be sure to follow the instructions for your platform.
+
+## <a name="step2github"></a>Step 2 (GitHub): Registering a GitHub App
 
 We need to:
 
@@ -145,7 +160,7 @@ scroll down to the section "Private keys"
 Generate the private key, which downloads it and note the SHA256 string (to
 more easily identify the key later on).
 
-## <a name="step3"></a>Step 3: Installing the GitHub App into a repository
+## <a name="step3github"></a>Step 3 (GitHub): Installing the GitHub App into a repository
 
 > [!NOTE]
 > This will trigger the first event (`installation`). While the EESSI bot is not running yet, you can inspect this via the webpage for your Smee channel. Just open `https://smee.io/CHANNEL-ID` in a browser, and browse through the information included in the event. Naturally, some of the information will be different for other types of events.
@@ -159,6 +174,59 @@ Go to [https://github.com/settings/apps/**APP_NAME**](https://github.com/setting
 On the next page you should see a list of accounts and organisations you can install the app on. Choose one and click on the <kbd style="background-color: #28a745; color: white;">Install</kdb> button next to it.
 
 This leads to a page where you can select the repositories where the app should react to. Here, for the sake of simplicity, choose "Only select repositories", then open the pull-down menu named "Select repositories" and in there select `GH_ACCOUNT/software-layer` (`GH_ACCOUNT` is the GitHub account mentioned in section [prerequisites](#prerequisites)). Finally, click on the <kbd style="background-color: #28a745; color: white;">Install</kbd> button.
+
+## <a name="step2gitlab"></a>Step 2 (GitLab): Setting up a webhook
+
+To set up a webhook, go to your fork `GL_NAMESPACE/software-layer` (mentioned in the [prerequisites](#prerequisites)
+section), select **Settings -> Webhooks** in the sidebar, and click the <kbd>Add new webhook</kbd> button.
+
+Enter the Smee URL from [Step 1](#step1) in the **URL** field. Hide the channel ID by clicking
+<kbd>Add URL masking</kbd> and entering the `CHANNEL_ID` part of the URL in the **Sensitive portion of URL** field.
+
+Click the <kbd>Generate signing token</kbd> button to generate a signing token. Make sure to store the token somewhere
+as you will not be able to retrieve it from GitLab afterwards, though you are able to generate a new token if you lose
+your current one.
+
+In the **Trigger** list, check the boxes for "Comments" and "Merge request events".
+
+Although optional, you may also want to add a name and description for the webhook in the topmost fields.
+
+Finally, click the <kbd>Add webhook</kbd> button.
+
+## <a name="step3gitlab"></a>Step 3 (GitLab): Creating an access token
+
+There are a couple of ways to generate an access token that can be used for the bot. Depending on what is available to
+you on your GitLab instance, you may use either a project access token ([Step 3a](#step3agitlab)), or a personal access
+token belonging to a dedicated service account on the fork ([Step 3b](#step3bgitlab)). For example, project access
+tokens are unavailable on the Free plan of GitLab.com, meaning that you will have to use a service account.
+
+### <a name="step3agitlab"></a>Step 3a (GitLab): Creating a project access token
+
+In your fork, go to **Settings -> Access tokens** and click on the <kbd>Add new token</kbd> button, then:
+
+- Enter a name for the token. This will become the display name of the bot.
+- Choose the "Planner" role.
+- Select the "api" scope which gives the bot read/write access to the fork through the API. Its permissions will still
+be limited by the permissions of the role.
+- Optionally, set a description and a custom expiration date for the token.
+
+Finish by clicking <kbd>Create project access token</kbd>. Store the access token somewhere as you will not be able to
+retrieve it later (although you are able to rotate the token if you lose/expose it at some point).
+
+### <a name="step3bgitlab"></a>Step 3b (GitLab): Creating a service account personal access token
+
+In your fork, go to **Settings -> Service accounts** and click on the <kbd>Add service account</kbd> button. Enter a
+a name for the service account. This will become the display name of the bot. Optionally, you may also enter a username
+and/or description for the service account. Finish by clicking <kbd>Create</kbd>.
+
+Next to the newly created service account click on **the three dots button -> Manage access tokens**, then
+<kbd>Add new token</kbd>. Enter a token name, choose the "api" scope, and optionally enter a description and/or custom
+expiration date. Click <kbd>Generate token</kbd> and make sure to store it somewhere as you will not be able to retrieve
+ it later (though you will be able to rotate the token if you accidentally lose/expose it at some point).
+
+Finally, go to **Manage -> Members** in the left sidebar and click <kbd>Invite members</kbd>. In the box, enter the
+display name or username of the service account you just created and select it from the list. Choose the "Planner" role
+and click <kbd>Invite</kbd> to add the service account as a member of your fork.
 
 ## <a name="step4"></a>Step 4: Installing the EESSI bot on a `bot machine`
 
@@ -193,21 +261,21 @@ git fetch origin pull/42/head:PR42
 git checkout PR42
 ```
 
-The EESSI bot requires some Python packages to be installed, which are specified in the [`requirements.txt`](https://github.com/EESSI/eessi-bot-software-layer/tree/main/requirements.txt) file. It is recommended to install these in a virtual environment based on Python 3.7 or newer. See the commands below for an example on how to set up the virtual environment, activate it, and install the requirements for the EESSI bot. These commands assume that you are in the `eessi-bot-software-layer` directory:
+The EESSI bot requires some Python packages to be installed, which are specified in the [`requirements.txt`](https://github.com/EESSI/eessi-bot-software-layer/tree/main/requirements.txt) file. It is recommended to install these in a virtual environment based on Python 3.9 or newer. See the commands below for an example on how to set up the virtual environment, activate it, and install the requirements for the EESSI bot. These commands assume that you are in the `eessi-bot-software-layer` directory:
 
 ```bash
 # assumption here is that you start from *within* the eessi-bot-software-layer directory
 cd ..
-python3.7 -m venv venv_eessi_bot_p37
-source venv_eessi_bot_p37/bin/activate
-python --version                     # output should match 'Python 3.7.*'
-which python                         # output should match '*/venv_eessi_bot_p37/bin/python'
+python3.9 -m venv venv_eessi_bot_p39
+source venv_eessi_bot_p39/bin/activate
+python --version                     # output should match 'Python 3.9.*'
+which python                         # output should match '*/venv_eessi_bot_p39/bin/python'
 python -m pip install --upgrade pip
 cd eessi-bot-software-layer
 pip install -r requirements.txt
 ```
 
-Note, before you can start the bot components (see below), you have to activate the virtual environment with `source venv_eessi_bot_p37/bin/activate`.
+Note, before you can start the bot components (see below), you have to activate the virtual environment with `source venv_eessi_bot_p39/bin/activate`.
 
 You can exit the virtual environment by running `deactivate`.
 
@@ -281,14 +349,23 @@ Check that the `jq` command works by running `jq --version`.
 
 ## <a name="step5"></a>Step 5: Configuring the EESSI bot on the `bot machine`
 
-For the event handler, you need to set up two environment variables:
+> [!IMPORTANT]
+> Steps 5.1-5.3 differ for GitHub and GitLab. Be sure to follow the instructions for your platform.
 
-- `$GITHUB_TOKEN` (see [Step 5.1](#step5.1))
-- `$GITHUB_APP_SECRET_TOKEN` (see [Step 5.2](#step5.2)).
+If setting up for GitHub you need to set two environment variables for the event handler:
 
-For both the event handler and the job manager you need a private key (see [Step 5.3](#step5.3)).
+- `$GITHUB_TOKEN` (see [Step 5.1 (GitHub)](#step5.1github))
+- `$GITHUB_APP_SECRET_TOKEN` (see [Step 5.2 (GitHub)](#step5.2github)).
 
-### <a name="step5.1"></a>Step 5.1: GitHub Personal Access Token (PAT)
+Additionally, both the event handler and the job manager require a private key for GitHub usage (see
+[Step 5.3 (GitHub)](#step5.3github)).
+
+If setting up for GitLab, you will need to set two environment variables:
+
+- `$GITLAB_WEBHOOK_SECRET_TOKEN` (required by event handler only, see [Step 5.1 (GitLab)](#step5.1gitlab))
+- `$GITLAB_PROJECT_ACCESS_TOKEN` (required by event handler and job manager, see [Step 5.2 (GitLab)](#step5.2gitlab))
+
+### <a name="step5.1github"></a>Step 5.1 (GitHub): GitHub Personal Access Token (PAT)
 
 Create a Personal Access Token (PAT) for your GitHub account via the page [https://github.com/settings/tokens](https://github.com/settings/tokens) where you find a button <kbd style="background-color: #28a745; color: white;">Generate new token</kbd>.
 
@@ -304,9 +381,9 @@ export GITHUB_TOKEN='THE_TOKEN_STRING'
 
 in which you replace `THE_TOKEN_STRING` with the actual token.
 
-### <a name="step5.2"></a>Step 5.2: GitHub App Secret Token
+### <a name="step5.2github"></a>Step 5.2 (GitHub): GitHub App Secret Token
 
-The GitHub App Secret Token is used to verify the webhook sender. You should have created one already when registering a new GitHub App in [Step 2](#step2).
+The GitHub App Secret Token is used to verify the webhook sender. You should have created one already when registering a new GitHub App in [Step 2](#step2github).
 
 On the `bot machine` set the environment variable `$GITHUB_APP_SECTRET_TOKEN`:
 
@@ -314,19 +391,51 @@ On the `bot machine` set the environment variable `$GITHUB_APP_SECTRET_TOKEN`:
 export GITHUB_APP_SECRET_TOKEN='THE_SECRET_TOKEN_STRING'
 ```
 
-in which you replace `THE_SECRET_TOKEN_STRING` with the secret token you have created in [Step 2](#step2).
+in which you replace `THE_SECRET_TOKEN_STRING` with the secret token you have created in [Step 2](#step2github).
 
 Note that depending on the characters used in the string you will likely have to use _single quotes_ (`'...'`) when setting the value of the environment variable.
 
-### <a name="step5.3"></a>Step 5.3: Create a private key and store it on the `bot machine`
+### <a name="step5.3github"></a>Step 5.3 (GitHub): Create a private key and store it on the `bot machine`
 
-The private key is needed to let the app authenticate when updating information at the repository such as commenting on pull requests, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2).
+The private key is needed to let the app authenticate when updating information at the repository such as commenting on pull requests, adding labels, etc. You can create the key at the page of the GitHub App you have registered in [Step 2](#step2github).
 
 Open the page [https://github.com/settings/apps](https://github.com/settings/apps) and then click on the icon left to the name of the GitHub App for the EESSI bot or the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Edit</kbd> button for the app.
 
 Near the end of the page you will find a section **Private keys** where you can create a private key by clicking on the button <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Generate a private key</kbd>.
 
 The private key should be automatically downloaded to your system. Copy it to the `bot machine` and note the full path to it (`PATH_TO_PRIVATE_KEY`). Also note down the day when the key was generated. The keys should be rotated every 6 months.
+
+### <a name="step5.1gitlab"></a>Step 5.1 (GitLab): Webhook signing token
+
+The webhook signing token is used to verify the webhook sender. You should have created and stored it during
+[Step 2](#step2gitlab).
+
+On the `bot machine` set the environment variable `$GITLAB_WEBHOOK_SECRET_TOKEN`:
+
+```bash
+export GITLAB_WEBHOOK_SECRET_TOKEN='THE_SIGNING_TOKEN'
+```
+
+in which you replace `THE_SIGNING_TOKEN` with the signing token that was generated in [Step 2](#step2gitlab). Make sure
+not to miss any part of the token, e.g. the `whsec_` prefix or any symbols.
+
+### <a name="step5.2gitlab"></a>Step 5.2 (GitLab): Access token
+
+The access token used by the bot to interact with the GitLab API. You should have created and stored it during
+[Step 3](#step3gitlab), whether you chose to follow [Step 3a](#step3agitlab) or [Step 3b](#step3bgitlab).
+
+On the `bot machine` set the environment variable `$GITLAB_PROJECT_ACCESS_TOKEN`:
+
+```bash
+export GITLAB_PROJECT_ACCESS_TOKEN='THE_ACCESS_TOKEN'
+```
+
+in which you replace `THE_ACCESS_TOKEN` with the access token that was generated in [Step 3](#step3gitlab). Make sure
+not to miss any part of the token, e.g. any prefixes or symbols.
+
+### <a name="step5.3gitlab"></a>Step 5.3 (GitLab): N/A
+
+Proceed to [Step 5.4](#step5.4).
 
 ### <a name="step5.4"></a>Step 5.4: Create the configuration file `app.cfg`
 
@@ -338,9 +447,19 @@ cp -i app.cfg.example app.cfg
 
 The example file (`app.cfg.example`) includes notes on what you have to adjust to run the bot in your environment.
 
+#### `[git]` section
+
+The section `[git]` contains general settings for the Git hosting platform:
+
+```ini
+hosting_platform = github
+```
+
+The Git hosting platform the bot should be configured for. Must be either `github` or `gitlab`.
+
 #### `[github]` section
 
-The section `[github]` contains information for connecting to GitHub:
+The section `[github]` contains information for connecting to GitHub (you may skip it if setting up the bot for GitLab):
 
 ```ini
 api_timeout = 10
@@ -352,7 +471,9 @@ Time limit for requests to GitHub's REST API.
 app_id = 123456
 ```
 
-Replace '`123456`' with the id of your GitHub App. You can find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2). On the opened page you will find the `app_id` in the section headed "`About`" listed as "`App ID`".
+Replace '`123456`' with the id of your GitHub App. You can find the id of your GitHub App via the page [GitHub Apps](https://github.com/settings/apps). On this page, select the app you have registered in [Step 2](#step2github). On the opened page you will find the `app_id` in the section headed "`About`" listed as "`App ID`".
+
+<a name="github-app-name"></a>
 
 ```ini
 app_name = 'MY-bot'
@@ -375,17 +496,40 @@ _Note: avoid putting an actual username here as it will be visible on potentiall
 installation_id = 12345678
 ```
 
-Replace '`12345678`' with the id of the _installation_ of your GitHub App (see [Step 3](#step3)).
+Replace '`12345678`' with the id of the _installation_ of your GitHub App (see [Step 3](#step3github)).
 
-You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the number after the last `/` of the page's URL.
+You find the installation id of your GitHub App via the page [Applications](https://github.com/settings/installations). On this page, select the app you have registered in [Step 2](#step2github) by clicking on the <kbd style="background-color: #f6f8fa; color: #24292f; border: 1px solid #d0d7de; padding: 4px 8px; border-radius: 3px;">Configure</kbd> button. The installation id is shown as the number after the last `/` of the page's URL.
 
-The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the **Advanced** section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2), and choose **Advanced** in the menu on the left-hand side.
+The `installation_id` is also provided in the payload of every event within the top-level record named "`installation`". You can see the events and their payload on the webpage of your Smee.io channel (`https://smee.io/CHANNEL-ID`). Alternatively, you can see the events in the **Advanced** section of your GitHub App: open the [GitHub Apps](https://github.com/settings/apps) page, select the app you have registered in [Step 2](#step2github), and choose **Advanced** in the menu on the left-hand side.
 
 ```ini
 private_key = PATH_TO_PRIVATE_KEY
 ```
 
-Replace `PATH_TO_PRIVATE_KEY` with the path you have noted in [Step 5.3](#step5.3).
+Replace `PATH_TO_PRIVATE_KEY` with the path you have noted in [Step 5.3](#step5.3github).
+
+#### `[gitlab]` section
+
+The section `[gitlab]` contains information for connecting to GitLab (you may skip it if setting up the bot for GitHub):
+
+```ini
+api_timeout = 10
+```
+
+Time limit (in seconds) for requests to GitLab's REST API.
+
+```ini
+bot_name = 'MY-bot'
+```
+
+Used for the same purpose as the [`app_name` setting](#github-app-name) in the `[github]` section. Refer to its
+documentation for more details.
+
+```ini
+instance_url = https://gitlab.com
+```
+
+The base URL of your GitLab instance. This is where the bot will connect to.
 
 #### `[bot_control]` section
 
@@ -393,11 +537,11 @@ The `[bot_control]` section contains settings for configuring the feature to
 send commands to the bot.
 
 ```ini
-command_permission = GH_ACCOUNT_1 GH_ACCOUNT_2 ...
+command_permission = ACCOUNT_1 ACCOUNT_2 ...
 ```
 
-The `command_permission` setting defines which GitHub accounts can send commands
-to the bot (via new PR comments). If the value is empty _no_ GitHub account can send
+The `command_permission` setting defines which GitHub/GitLab accounts can send commands
+to the bot (via new PR comments). If the value is empty _no_ GitHub/GitLab account can send
 commands.
 
 ```ini
