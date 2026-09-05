@@ -85,6 +85,11 @@ def event_handler_parse(args=None):
         help="listen on a specific port for events (default 3000)",
     )
 
+    parser.add_argument(
+        "--bot-name",
+        help="bot name (not used by the bot itself), useful for keeping track of multiple bots",
+    )
+
     return parser.parse_args(args=unknown_args, namespace=parsed_args)
 
 
@@ -108,6 +113,11 @@ def job_manager_parse(args=None):
     parser.add_argument(
         "-j", "--jobs",
         help="limits the processing to a specific job id or list of comma-separated list of job ids",
+    )
+
+    parser.add_argument(
+        "--bot-name",
+        help="bot name (not used by the bot itself), useful for keeping track of multiple bots",
     )
 
     return parser.parse_args(args=unknown_args, namespace=parsed_args)
