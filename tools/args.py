@@ -87,7 +87,7 @@ def event_handler_parse(args=None):
 
     parser.add_argument(
         "--bot-name",
-        help="bot name (not used by the bot itself), useful for keeping track of multiple bots",
+        help="bot name (not used by the bot itself), useful for keeping track of multiple instances",
     )
 
     return parser.parse_args(args=unknown_args, namespace=parsed_args)
@@ -117,7 +117,7 @@ def job_manager_parse(args=None):
 
     parser.add_argument(
         "--bot-name",
-        help="bot name (not used by the bot itself), useful for keeping track of multiple bots",
+        help="bot name (not used by the bot itself), useful for keeping track of multiple instances",
     )
 
     return parser.parse_args(args=unknown_args, namespace=parsed_args)
