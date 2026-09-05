@@ -48,7 +48,8 @@ def test_parse_common_args(test_args, expected_parsed, expected_unknown):
 
     # Short-form args
     (["-d", "-b", "-t", "-c", "-f", "file.json", "-p", "8000"],
-     nullcontext(Namespace(debug=True, build=True, test=True, cron=True, file="file.json", port="8000"))),
+     nullcontext(Namespace(debug=True, build=True, test=True, cron=True, file="file.json", port="8000",
+                           bot_name=None))),
 
     # Long-form args
     (["--debug", "--build", "--test", "--cron", "--file", "file2.json", "--port", "9000", "--bot-name", "test-bot"],
@@ -71,7 +72,7 @@ def test_event_handler_parse_known_args(test_args, expectation):
 
     # Short-form args
     (["-d", "-i", "0", "-j", "17"],
-     nullcontext(Namespace(debug=True, max_manager_iterations="0", jobs="17"))),
+     nullcontext(Namespace(debug=True, max_manager_iterations="0", jobs="17", bot_name=None))),
 
     # Long-form args
     (["--debug", "--max-manager-iterations", "10", "--jobs", "4,18,48", "--bot-name", "test-bot"],
