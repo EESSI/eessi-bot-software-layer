@@ -26,7 +26,7 @@ RESET = "\033[0m"
 
 JOB_MANAGER_MODULE = "eessi_bot_job_manager"
 EVENT_HANDLER_MODULE = "eessi_bot_event_handler"
-DEFAULT_BOT_NAME = "eessi-bot"
+DEFAULT_INSTANCE = "eessi-bot"
 
 
 def parse_args():
@@ -35,23 +35,21 @@ def parse_args():
     )
     parser.add_argument("command", choices=("start", "stop", "restart", "status"))
     parser.add_argument(
-        "--bot-name",
-        default=DEFAULT_BOT_NAME,
-        help=f"bot name (default: {DEFAULT_BOT_NAME})",
+        "-i", "--instance",
+        default=DEFAULT_INSTANCE,
+        help=f"bot instance (default: {DEFAULT_INSTANCE})",
     )
     parser.add_argument(
-        "--job-manager-opts",
+        "-j", "--job-manager-opts",
         default="",
         help="additional job manager options as a string",
     )
     parser.add_argument(
-        "--event-handler-opts",
+        "-e", "--event-handler-opts",
         default="",
         help="additional event handler options as a string",
     )
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
 def get_cmdline(pid):
@@ -62,7 +60,7 @@ def get_cmdline(pid):
     return [arg.decode(errors="replace") for arg in data.split(b"\0") if arg]
 
 
-def find_processes(module, bot_name):
+def find_processes(module, instance):
     processes = []
 
     for proc in Path("/proc").iterdir():
@@ -86,15 +84,15 @@ def find_processes(module, bot_name):
             continue
 
         for i, arg in enumerate(cmdline[:-1]):
-            if arg == "--bot-name" and cmdline[i + 1] == bot_name:
+            if arg == "--instance" and cmdline[i + 1] == instance:
                 processes.append(pid)
                 break
 
     return processes
 
 
-def start_process(module, bot_name, opts):
-    cmd = ["python3", "-m", module, "--bot-name", bot_name]
+def start_process(module, instance, opts):
+    cmd = ["python3", "-m", module, "--instance", instance]
     if opts:
         cmd.extend(shlex.split(opts))
 
@@ -104,22 +102,22 @@ def start_process(module, bot_name, opts):
     subprocess.Popen(cmd, env=env, start_new_session=True)
 
 
-def start_bot(bot_name, job_manager_opts, event_handler_opts):
-    if find_processes(JOB_MANAGER_MODULE, bot_name):
-        print(f"{BLUE}>>> job manager for bot '{bot_name}' is already running{RESET}")
+def start_bot(instance, job_manager_opts, event_handler_opts):
+    if find_processes(JOB_MANAGER_MODULE, instance):
+        print(f"{BLUE}>>> job manager for bot instance '{instance}' is already running{RESET}")
     else:
-        print(f"{BLUE}>>> starting job manager for bot '{bot_name}'...{RESET}")
-        start_process(JOB_MANAGER_MODULE, bot_name, job_manager_opts)
+        print(f"{BLUE}>>> starting job manager for bot instance '{instance}'...{RESET}")
+        start_process(JOB_MANAGER_MODULE, instance, job_manager_opts)
 
-    if find_processes(EVENT_HANDLER_MODULE, bot_name):
-        print(f"{GREEN}>>> event handler for bot '{bot_name}' is already running{RESET}")
+    if find_processes(EVENT_HANDLER_MODULE, instance):
+        print(f"{GREEN}>>> event handler for bot instance '{instance}' is already running{RESET}")
     else:
-        print(f"{GREEN}>>> starting event handler for bot '{bot_name}'...{RESET}")
-        start_process(EVENT_HANDLER_MODULE, bot_name, event_handler_opts)
+        print(f"{GREEN}>>> starting event handler for bot instance '{instance}'...{RESET}")
+        start_process(EVENT_HANDLER_MODULE, instance, event_handler_opts)
 
 
-def stop_processes(module, bot_name):
-    for pid in find_processes(module, bot_name):
+def stop_processes(module, instance):
+    for pid in find_processes(module, instance):
         try:
             cmdline = get_cmdline(pid)
             os.kill(pid, signal.SIGTERM)
@@ -128,49 +126,49 @@ def stop_processes(module, bot_name):
             pass
 
 
-def stop_bot(bot_name):
-    if find_processes(EVENT_HANDLER_MODULE, bot_name):
-        print(f"{RED}>>> stopping event handler for bot '{bot_name}'...{RESET}")
-        stop_processes(EVENT_HANDLER_MODULE, bot_name)
+def stop_bot(instance):
+    if find_processes(EVENT_HANDLER_MODULE, instance):
+        print(f"{RED}>>> stopping event handler for bot instance '{instance}'...{RESET}")
+        stop_processes(EVENT_HANDLER_MODULE, instance)
     else:
-        print(f"{RED}>>> event handler for bot '{bot_name}' is not running{RESET}")
+        print(f"{RED}>>> event handler for bot instance '{instance}' is not running{RESET}")
 
-    if find_processes(JOB_MANAGER_MODULE, bot_name):
-        print(f"{RED}>>> stopping job manager for bot '{bot_name}'...{RESET}")
-        stop_processes(JOB_MANAGER_MODULE, bot_name)
+    if find_processes(JOB_MANAGER_MODULE, instance):
+        print(f"{RED}>>> stopping job manager for bot instance '{instance}'...{RESET}")
+        stop_processes(JOB_MANAGER_MODULE, instance)
     else:
-        print(f"{RED}>>> job manager for bot '{bot_name}' is not running{RESET}")
+        print(f"{RED}>>> job manager for bot instance '{instance}' is not running{RESET}")
 
 
-def status_bot(bot_name):
-    if find_processes(JOB_MANAGER_MODULE, bot_name):
-        print(f"{BLUE}>>> job manager for bot '{bot_name}' is running{RESET}")
+def status_bot(instance):
+    if find_processes(JOB_MANAGER_MODULE, instance):
+        print(f"{BLUE}>>> job manager for bot instance '{instance}' is running{RESET}")
     else:
-        print(f"{RED}>>> job manager for bot '{bot_name}' is not running{RESET}")
+        print(f"{RED}>>> job manager for bot instance '{instance}' is not running{RESET}")
 
-    if find_processes(EVENT_HANDLER_MODULE, bot_name):
-        print(f"{GREEN}>>> event handler for bot '{bot_name}' is running{RESET}")
+    if find_processes(EVENT_HANDLER_MODULE, instance):
+        print(f"{GREEN}>>> event handler for bot instance '{instance}' is running{RESET}")
     else:
-        print(f"{RED}>>> event handler for bot '{bot_name}' is not running{RESET}")
+        print(f"{RED}>>> event handler for bot instance '{instance}' is not running{RESET}")
 
 
 def main():
     args = parse_args()
 
     if args.command == "start":
-        start_bot(args.bot_name, args.job_manager_opts, args.event_handler_opts)
+        start_bot(args.instance, args.job_manager_opts, args.event_handler_opts)
         time.sleep(2)
-        status_bot(args.bot_name)
+        status_bot(args.instance)
     elif args.command == "stop":
-        stop_bot(args.bot_name)
+        stop_bot(args.instance)
     elif args.command == "restart":
-        stop_bot(args.bot_name)
+        stop_bot(args.instance)
         time.sleep(1)
-        start_bot(args.bot_name, args.job_manager_opts, args.event_handler_opts)
+        start_bot(args.instance, args.job_manager_opts, args.event_handler_opts)
         time.sleep(2)
-        status_bot(args.bot_name)
+        status_bot(args.instance)
     elif args.command == "status":
-        status_bot(args.bot_name)
+        status_bot(args.instance)
 
 
 if __name__ == "__main__":
