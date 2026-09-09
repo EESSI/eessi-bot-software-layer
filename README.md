@@ -757,6 +757,47 @@ allowed_exportvars = []
 ```
 
 ```ini
+allowed_jobargs = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+```
+
+`allowed_jobargs` defines a list of key-value patterns that are allowed to be
+specified in a PR command with the `jobargs` filter (or its alias
+`exportvariable`). Each entry is a dict with `key` and `value` keys whose values
+are regular expressions. An argument `KEY=VALUE` is accepted if its key matches
+one entry's `key` regex AND its value matches that same entry's `value` regex;
+otherwise it is rejected and no jobs are prepared. These variables will be
+exported into the build environment before running the `bot/build.sh` script.
+
+If `allowed_jobargs` is not defined, the bot falls back to the legacy
+`allowed_exportvars` setting (see above), converting each exact `KEY=VALUE`
+string into an equivalent regex pattern. This preserves backward compatibility
+for existing deployments.
+
+A reasonable default setting is
+
+```ini
+allowed_jobargs = []
+```
+
+```ini
+allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+```
+
+`allowed_submitargs` defines a list of patterns that are allowed to be passed to
+the job submission command (e.g. `sbatch`) via the `submitargs` filter. Each
+entry is a dict with a `value` key whose value is a regular expression. An
+argument is accepted if it matches one entry's `value` regex; otherwise it is
+rejected and no jobs are prepared. Unlike `jobargs`, these options are NOT
+exported into the build environment -- they are appended to the `sbatch` command
+line only.
+
+A reasonable default setting is
+
+```ini
+allowed_submitargs = []
+```
+
+```ini
 clone_git_repo_via = https
 ```
 

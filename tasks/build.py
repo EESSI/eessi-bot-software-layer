@@ -56,7 +56,8 @@ EXPORT_VARS_FILE = 'export_vars.sh'
 
 
 Job = namedtuple('Job',
-                 ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator', 'owner'))
+                 ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator', 'owner',
+                  'submit_opts'))
 
 # global repo_cfg
 repo_cfg = {}
@@ -211,9 +212,76 @@ def get_node_types(cfg):
     return node_type_map
 
 
+def get_allowed_args(cfg, setting_name):
+    """
+    Obtain list of allowed key-value patterns for jobargs or submitargs.
+
+    Each entry in the list is a dict with 'key' and 'value' keys whose values
+    are regular expressions. An argument 'KEY=VALUE' (for jobargs) or a bare
+    option string (for submitargs) is accepted if it matches one of the
+    patterns. For jobargs, the key must match the 'key' regex AND the value
+    must match the 'value' regex of the same entry.
+
+    Auto-migration: for the jobargs setting, if 'allowed_jobargs' is not
+    defined in the configuration, the function falls back to the legacy
+    'allowed_exportvars' setting. Each legacy entry (an exact 'KEY=VALUE'
+    string) is converted into a pattern {'key': '^KEY$', 'value': '^VALUE$'}
+    so that existing exact-match behaviour is preserved.
+
+    Args:
+        cfg (ConfigParser): ConfigParser instance holding full configuration
+            (typically read from 'app.cfg')
+        setting_name (string): config setting name, one of
+            config.BUILDENV_SETTING_ALLOWED_JOBARGS or
+            config.BUILDENV_SETTING_ALLOWED_SUBMITARGS
+
+    Returns:
+        (list): list of allowed pattern dicts, each with 'key' and 'value'
+            keys (for jobargs) or 'value' key only (for submitargs)
+    """
+    fn = sys._getframe().f_code.co_name
+
+    buildenv = cfg[config.SECTION_BUILDENV]
+    allowed_str = buildenv.get(setting_name)
+    allowed = []
+
+    # --- BEGIN auto-migration from legacy 'allowed_exportvars' ---
+    # If allowed_jobargs is not set, fall back to allowed_exportvars and
+    # convert each exact 'KEY=VALUE' string into a regex pattern.
+    if (setting_name == config.BUILDENV_SETTING_ALLOWED_JOBARGS
+            and not allowed_str):
+        legacy_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
+        if legacy_str:
+            try:
+                legacy = json.loads(legacy_str)
+            except json.JSONDecodeError as err:
+                print(err)
+                error(f"{fn}(): Value for allowed_exportvars ({legacy_str}) could not be decoded.")
+            for item in legacy:
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    allowed.append({'key': f'^{re.escape(key)}$', 'value': f'^{re.escape(value)}$'})
+                else:
+                    allowed.append({'value': f'^{re.escape(item)}$'})
+            log(f"{fn}(): migrated allowed_exportvars to allowed_jobargs '{json.dumps(allowed)}'")
+            return allowed
+    # --- END auto-migration from legacy 'allowed_exportvars' ---
+
+    if allowed_str:
+        try:
+            allowed = json.loads(allowed_str)
+        except json.JSONDecodeError as err:
+            print(err)
+            error(f"{fn}(): Value for {setting_name} ({allowed_str}) could not be decoded.")
+
+    log(f"{fn}(): {setting_name} '{json.dumps(allowed)}'")
+    return allowed
+
+
 def get_allowed_exportvars(cfg):
     """
-    Obtain list of allowed export variables
+    Obtain list of allowed export variables (legacy, kept for backward
+    compatibility). New code should use get_allowed_args() instead.
 
     Args:
         cfg (ConfigParser): ConfigParser instance holding full configuration
@@ -237,6 +305,61 @@ def get_allowed_exportvars(cfg):
 
     log(f"{fn}(): allowed_exportvars '{json.dumps(allowed)}'")
     return allowed
+
+
+def validate_args(args, allowed_patterns, arg_type='jobargs'):
+    """
+    Validate a list of arguments against a list of allowed patterns.
+
+    For 'jobargs', each arg is a 'KEY=VALUE' string. It is accepted if there
+    is a pattern whose 'key' regex matches KEY and whose 'value' regex matches
+    VALUE (both for the same pattern entry).
+
+    For 'submitargs', each arg is a bare option string (e.g. '--time=01:00:00').
+    It is accepted if there is a pattern whose 'value' regex matches the arg.
+
+    Args:
+        args (list): list of argument strings to validate
+        allowed_patterns (list): list of pattern dicts (from get_allowed_args)
+        arg_type (string): 'jobargs' or 'submitargs' -- determines validation mode
+
+    Returns:
+        tuple of 2 elements containing
+        - (list): list of accepted arguments
+        - (list): list of rejected arguments
+    """
+    fn = sys._getframe().f_code.co_name
+
+    accepted = []
+    rejected = []
+
+    for arg in args:
+        matched = False
+        if arg_type == 'jobargs':
+            if '=' not in arg:
+                log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
+                rejected.append(arg)
+                continue
+            key, value = arg.split('=', 1)
+            for pattern in allowed_patterns:
+                key_re = pattern.get('key', '')
+                val_re = pattern.get('value', '')
+                if re.search(key_re, key) and re.search(val_re, value):
+                    matched = True
+                    break
+        else:
+            for pattern in allowed_patterns:
+                val_re = pattern.get('value', '')
+                if re.search(val_re, arg):
+                    matched = True
+                    break
+        if matched:
+            accepted.append(arg)
+        else:
+            log(f"{fn}(): {arg_type} '{arg}' rejected (no matching pattern)")
+            rejected.append(arg)
+
+    return accepted, rejected
 
 
 def get_repo_cfg(cfg):
@@ -583,7 +706,8 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     build_env_cfg = get_build_env_cfg(cfg)
     node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
-    allowed_exportvars = get_allowed_exportvars(cfg)
+    allowed_jobargs = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_JOBARGS)
+    allowed_submitargs = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_SUBMITARGS)
 
     base_repo_name = pr.base.repo.full_name
     log(f"{fn}(): pr.base.repo.full_name '{base_repo_name}'")
@@ -612,15 +736,28 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
         log(f"{fn}(): found no accelerator requirement")
         accelerator = None
 
-    # determine exportvars from action_filter argument
-    exportvars = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
+    # determine jobargs from action_filter argument (exportvariable is an
+    # alias for jobargs, so both are retrieved via FILTER_COMPONENT_EXPORT)
+    jobargs = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
 
-    # all exportvar filters must be allowed in order to run any jobs
-    if exportvars:
-        not_allowed = [x for x in exportvars if x not in allowed_exportvars]
-        if not_allowed:
-            log(f"{fn}(): exportvariable(s) {not_allowed} not allowed")
+    # all jobargs must be allowed in order to run any jobs
+    if jobargs:
+        accepted_jobargs, rejected_jobargs = validate_args(jobargs, allowed_jobargs, arg_type='jobargs')
+        if rejected_jobargs:
+            log(f"{fn}(): jobargs(s) {rejected_jobargs} not allowed")
             return []
+        jobargs = accepted_jobargs
+
+    # determine submitargs from action_filter argument
+    submitargs = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_SUBMITARGS)
+
+    # all submitargs must be allowed in order to run any jobs
+    if submitargs:
+        accepted_submitargs, rejected_submitargs = validate_args(submitargs, allowed_submitargs, arg_type='submitargs')
+        if rejected_submitargs:
+            log(f"{fn}(): submitargs(s) {rejected_submitargs} not allowed")
+            return []
+        submitargs = accepted_submitargs
 
     jobs = []
     # Looping over all node types in the node_map to create a context for each node type and repository
@@ -695,12 +832,12 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
                             partition_info['os'], build_for_accel, node_type_name)
 
-            if exportvars:
-                prepare_export_vars_file(job_dir, exportvars)
+            if jobargs:
+                prepare_export_vars_file(job_dir, jobargs)
 
             # enlist jobs to proceed
             job = Job(job_dir, partition_info['cpu_subdir'], repo_id, partition_info['slurm_params'], year_month,
-                      pr_id, accelerator, job_owner)
+                      pr_id, accelerator, job_owner, ' '.join(submitargs))
             jobs.append(job)
 
     log(f"{fn}(): {len(jobs)} jobs to proceed after applying white list")
@@ -910,6 +1047,7 @@ def submit_job(job, cfg):
         time_limit,
         job.slurm_opts] +
         ([f"--job-name='{job_name}'"] if job_name else []) +
+        ([job.submit_opts] if job.submit_opts else []) +
         [build_job_script_path])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,

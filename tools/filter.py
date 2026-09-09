@@ -27,15 +27,28 @@ FILTER_COMPONENT_ACCEL = 'accelerator'
 FILTER_COMPONENT_ARCH = 'architecture'
 FILTER_COMPONENT_EXPORT = 'exportvariable'
 FILTER_COMPONENT_INST = 'instance'
+FILTER_COMPONENT_JOBARGS = 'jobargs'
 FILTER_COMPONENT_JOBID = 'jobid'
 FILTER_COMPONENT_REPO = 'repository'
+FILTER_COMPONENT_SUBMITARGS = 'submitargs'
 FILTER_COMPONENTS = [FILTER_COMPONENT_ACCEL,
                      FILTER_COMPONENT_ARCH,
                      FILTER_COMPONENT_EXPORT,
                      FILTER_COMPONENT_INST,
                      FILTER_COMPONENT_JOBID,
-                     FILTER_COMPONENT_REPO
+                     FILTER_COMPONENT_REPO,
+                     FILTER_COMPONENT_SUBMITARGS
                      ]
+
+# Aliases map an alternative name to a canonical FILTER_COMPONENT.
+# 'jobargs' is an alias for 'exportvariable' (both specify key=value pairs that
+# are exported into the build job's environment). Aliases are resolved before
+# the prefix-matching logic in add_filter() runs, so they avoid ambiguity with
+# other components that share a prefix (e.g. 'job' is a prefix of both 'jobargs'
+# and 'jobid').
+FILTER_COMPONENT_ALIASES = {
+    FILTER_COMPONENT_JOBARGS: FILTER_COMPONENT_EXPORT,
+}
 
 COMPONENT_TOO_SHORT = "component in filter spec '{component}:{pattern}' is too short; must be 3 characters or longer"
 COMPONENT_UNKNOWN = "unknown component={component} in {component}:{pattern}"
@@ -125,6 +138,11 @@ class EESSIBotActionFilter:
             msg = COMPONENT_TOO_SHORT.format(component=component, pattern=pattern)
             log(msg)
             raise EESSIBotActionFilterError(msg)
+        # Resolve aliases first (e.g. 'jobargs' -> 'exportvariable') so that
+        # prefix-matching below does not get confused by components sharing a
+        # prefix (e.g. 'job' is a prefix of both 'jobargs' and 'jobid').
+        if component in FILTER_COMPONENT_ALIASES:
+            component = FILTER_COMPONENT_ALIASES[component]
         full_component = None
         for cis in FILTER_COMPONENTS:
             # NOTE the below code assumes that no two filter share the same
@@ -163,7 +181,10 @@ class EESSIBotActionFilter:
            EESSIBotActionFilterError: raised if filter_string does not conform
                to 'component:pattern' format or pattern is empty
         """
-        _filter_split = filter_string.split(':')
+        # Split on the first ':' only so that the pattern may itself contain
+        # colons (e.g. 'submitargs:--time=01:00:00' or
+        # 'exportvariable:PATH=/usr/bin:/bin').
+        _filter_split = filter_string.split(':', 1)
         if len(_filter_split) != 2:
             msg = FILTER_FORMAT_ERROR.format(filter_string=filter_string)
             log(msg)
@@ -213,6 +234,9 @@ class EESSIBotActionFilter:
             msg = COMPONENT_TOO_SHORT.format(component=component, pattern=pattern)
             log(msg)
             raise EESSIBotActionFilterError(msg)
+        # Resolve aliases (e.g. 'jobargs' -> 'exportvariable') before matching.
+        if component in FILTER_COMPONENT_ALIASES:
+            component = FILTER_COMPONENT_ALIASES[component]
         full_component = None
         for cis in FILTER_COMPONENTS:
             # NOTE the below code assumes that no two filter share the same
@@ -303,8 +327,10 @@ class EESSIBotActionFilter:
                 else:
                     check = False
                     break
-            # Skip export variables: they are not action filters
+            # Skip export variables and submit args: they are not action filters
             elif af.component == FILTER_COMPONENT_EXPORT:
+                continue
+            elif af.component == FILTER_COMPONENT_SUBMITARGS:
                 continue
             # Action filter wasn't found in the context, we won't allow this
             else:

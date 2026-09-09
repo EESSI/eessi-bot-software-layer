@@ -193,7 +193,7 @@ no_build_permission_comment = GH account `{build_labeler}` is not authorized to 
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
-# exported into the build environment via 'exportvariable' filters
+# exported into the build environment via 'exportvariable' (or 'jobargs') filters
 # The bot build script makes use of the variable 'SKIP_TESTS' to determine if
 # ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
 # 'yes' and the exportvariable filter is added to a bot build command
@@ -207,6 +207,36 @@ allow_update_submit_opts = false
 #
 # It's safe to use the following line as default setting:
 allowed_exportvars = []
+
+# defines which key-value pairs are allowed to be exported into the build
+# environment via 'jobargs' (or 'exportvariable') filters. Each entry is a
+# dict with 'key' and 'value' keys whose values are regular expressions. An
+# argument 'KEY=VALUE' is accepted if its key matches one entry's 'key' regex
+# AND its value matches that same entry's 'value' regex; otherwise it is
+# rejected and no jobs are prepared.
+# If 'allowed_jobargs' is not defined, the bot falls back to the legacy
+# 'allowed_exportvars' setting (see above), converting each exact 'KEY=VALUE'
+# string into an equivalent regex pattern. This preserves backward
+# compatibility for existing deployments.
+# NOTE, the setting is optional. If you want to enable this feature, uncomment
+# the line below and define meaningful pattern(s). For example:
+# allowed_jobargs = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+#
+# It's safe to use the following line as default setting:
+allowed_jobargs = []
+
+# defines which options are allowed to be passed to the job submission command
+# (e.g. sbatch) via 'submitargs' filters. Each entry is a dict with a 'value'
+# key whose value is a regular expression. An argument is accepted if it
+# matches one entry's 'value' regex; otherwise it is rejected and no jobs are
+# prepared. Unlike 'jobargs', these options are NOT exported into the build
+# environment -- they are appended to the sbatch command line only.
+# NOTE, the setting is optional. If you want to enable this feature, uncomment
+# the line below and define meaningful pattern(s). For example:
+# allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+#
+# It's safe to use the following line as default setting:
+allowed_submitargs = []
 
 # mechanisn to use to clone Git repository
 # 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)

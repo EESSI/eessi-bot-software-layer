@@ -325,7 +325,7 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmp_path):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -355,7 +355,7 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmp_path):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -381,7 +381,7 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -407,7 +407,7 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmp_path):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -434,7 +434,7 @@ def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmp_path):
     print("CREATING PR COMMENT")
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -549,7 +549,7 @@ def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path)
 
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 1
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
@@ -613,3 +613,114 @@ def test_request_bot_build_issue_comments(monkeypatch):
 
     assert status_table['commit sha'] == ['abc123']
     assert status_table['result'] == [':grin: SUCCESS']
+
+
+class TestValidateArgs:
+    """Tests for validate_args function in tasks/build.py"""
+
+    def test_jobargs_exact_match(self):
+        from tasks.build import validate_args
+        patterns = [{"key": "^SKIP_TESTS$", "value": "^yes$"}]
+        accepted, rejected = validate_args(["SKIP_TESTS=yes"], patterns, arg_type="jobargs")
+        assert accepted == ["SKIP_TESTS=yes"]
+        assert rejected == []
+
+    def test_jobargs_regex_match(self):
+        from tasks.build import validate_args
+        patterns = [{"key": "SKIP_.*", "value": "yes|no"}]
+        accepted, rejected = validate_args(
+            ["SKIP_TESTS=yes", "SKIP_INTEGRATION=no"], patterns, arg_type="jobargs"
+        )
+        assert accepted == ["SKIP_TESTS=yes", "SKIP_INTEGRATION=no"]
+        assert rejected == []
+
+    def test_jobargs_rejected_value(self):
+        from tasks.build import validate_args
+        patterns = [{"key": "^SKIP_TESTS$", "value": "^yes$"}]
+        accepted, rejected = validate_args(["SKIP_TESTS=maybe"], patterns, arg_type="jobargs")
+        assert accepted == []
+        assert rejected == ["SKIP_TESTS=maybe"]
+
+    def test_jobargs_rejected_key(self):
+        from tasks.build import validate_args
+        patterns = [{"key": "^SKIP_TESTS$", "value": "^yes$"}]
+        accepted, rejected = validate_args(["OTHER=yes"], patterns, arg_type="jobargs")
+        assert accepted == []
+        assert rejected == ["OTHER=yes"]
+
+    def test_jobargs_missing_equals(self):
+        from tasks.build import validate_args
+        patterns = [{"key": ".*", "value": ".*"}]
+        accepted, rejected = validate_args(["INVALID"], patterns, arg_type="jobargs")
+        assert accepted == []
+        assert rejected == ["INVALID"]
+
+    def test_submitargs_match(self):
+        from tasks.build import validate_args
+        patterns = [{"value": "--time=.*"}]
+        accepted, rejected = validate_args(["--time=01:00:00"], patterns, arg_type="submitargs")
+        assert accepted == ["--time=01:00:00"]
+        assert rejected == []
+
+    def test_submitargs_rejected(self):
+        from tasks.build import validate_args
+        patterns = [{"value": "--time=.*"}]
+        accepted, rejected = validate_args(["--partition=gpu"], patterns, arg_type="submitargs")
+        assert accepted == []
+        assert rejected == ["--partition=gpu"]
+
+    def test_empty_patterns_reject_all(self):
+        from tasks.build import validate_args
+        accepted, rejected = validate_args(["SKIP_TESTS=yes"], [], arg_type="jobargs")
+        assert accepted == []
+        assert rejected == ["SKIP_TESTS=yes"]
+
+
+class TestGetAllowedArgs:
+    """Tests for get_allowed_args function in tasks/build.py"""
+
+    def test_auto_migrate_from_exportvars(self):
+        from tasks.build import get_allowed_args
+        import json
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_exportvars": json.dumps(["SKIP_TESTS=yes", "SKIP_TESTS=no"]),
+        }
+        result = get_allowed_args(cfg, "allowed_jobargs")
+        assert len(result) == 2
+        assert result[0]["key"] == "^SKIP_TESTS$"
+        assert result[0]["value"] == "^yes$"
+        assert result[1]["value"] == "^no$"
+
+    def test_jobargs_takes_precedence_over_exportvars(self):
+        from tasks.build import get_allowed_args
+        import json
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_exportvars": json.dumps(["SKIP_TESTS=yes"]),
+            "allowed_jobargs": json.dumps([{"key": "DEBUG_.*", "value": "true|false"}]),
+        }
+        result = get_allowed_args(cfg, "allowed_jobargs")
+        assert len(result) == 1
+        assert result[0]["key"] == "DEBUG_.*"
+
+    def test_submitargs_no_legacy_fallback(self):
+        from tasks.build import get_allowed_args
+        import json
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_exportvars": json.dumps(["SKIP_TESTS=yes"]),
+        }
+        result = get_allowed_args(cfg, "allowed_submitargs")
+        assert result == []
+
+    def test_empty_settings(self):
+        from tasks.build import get_allowed_args
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {}
+        assert get_allowed_args(cfg, "allowed_jobargs") == []
+        assert get_allowed_args(cfg, "allowed_submitargs") == []
