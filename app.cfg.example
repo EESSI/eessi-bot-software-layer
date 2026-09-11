@@ -225,6 +225,13 @@ allowed_exportvars = []
 # It's safe to use the following line as default setting:
 allowed_jobargs = []
 
+# SECURITY NOTE: as a defence-in-depth measure, the bot sanitizes all jobargs
+# and submitargs values and rejects any argument that contains shell
+# metacharacters (anything outside [a-zA-Z0-9_=:./+,@-]). This prevents shell
+# injection even if a pattern above is overly permissive (e.g. value '.*').
+# Additionally, pattern entries that are not well-formed dicts with string
+# 'key'/'value' values are silently dropped at configuration read time.
+
 # defines which options are allowed to be passed to the job submission command
 # (e.g. sbatch) via 'submitargs' filters. Each entry is a dict with a 'value'
 # key whose value is a regular expression. An argument is accepted if it

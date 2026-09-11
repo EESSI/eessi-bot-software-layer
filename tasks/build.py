@@ -212,6 +212,84 @@ def get_node_types(cfg):
     return node_type_map
 
 
+# Characters that are safe in shell contexts. Anything outside this set is
+# rejected to prevent shell injection via jobargs (written to export_vars.sh and
+# sourced by the shell) or submitargs (appended to an sbatch command line that
+# is executed with shell=True by run_cmd).
+SAFE_CHARS_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@-]+$')
+
+
+def sanitize_arg(arg, arg_type='jobargs'):
+    """
+    Check that an argument does not contain shell metacharacters.
+
+    This is a defence-in-depth check applied AFTER regex allow-list matching.
+    Even if a configured pattern is overly permissive (e.g. value '.*'), this
+    function rejects any arg that contains characters which could be
+    interpreted by the shell (e.g. backticks, $(), ;, |, &, spaces, newlines).
+
+    For 'jobargs', the full 'KEY=VALUE' string is checked. For 'submitargs',
+    the bare option string is checked.
+
+    Args:
+        arg (string): argument to check
+        arg_type (string): 'jobargs' or 'submitargs' (used in log messages)
+
+    Returns:
+        (bool): True if the argument is safe, False otherwise
+    """
+    fn = sys._getframe().f_code.co_name
+
+    if not SAFE_CHARS_RE.match(arg):
+        log(f"{fn}(): {arg_type} '{arg}' rejected (contains unsafe characters)")
+        return False
+    return True
+
+
+def validate_allowed_args_patterns(patterns, setting_name):
+    """
+    Validate the structure of allowed-args patterns read from configuration.
+
+    Each entry must be a dict. For jobargs, each entry must have 'key' and
+    'value' keys with string values. For submitargs, each entry must have a
+    'value' key with a string value. Entries that do not conform are dropped
+    with a log message. A warning is logged for patterns whose 'value' regex
+    is '.*' (matches anything), as these effectively disable the allow-list
+    restriction for that entry.
+
+    Args:
+        patterns (list): list of pattern dicts parsed from configuration
+        setting_name (string): config setting name (used in log messages)
+
+    Returns:
+        (list): list of valid pattern dicts
+    """
+    fn = sys._getframe().f_code.co_name
+
+    if not isinstance(patterns, list):
+        log(f"{fn}(): {setting_name} is not a list, ignoring")
+        return []
+
+    valid = []
+    for entry in patterns:
+        if not isinstance(entry, dict):
+            log(f"{fn}(): {setting_name} entry {entry} is not a dict, ignoring")
+            continue
+        if not isinstance(entry.get('value', ''), str):
+            log(f"{fn}(): {setting_name} entry {entry} has non-string 'value', ignoring")
+            continue
+        if setting_name == config.BUILDENV_SETTING_ALLOWED_JOBARGS:
+            if not isinstance(entry.get('key', ''), str):
+                log(f"{fn}(): {setting_name} entry {entry} has non-string 'key', ignoring")
+                continue
+        if entry.get('value') == '.*':
+            log(f"{fn}(): WARNING {setting_name} entry {entry} uses '.*' for value, "
+                "which accepts any value -- ensure this is intentional")
+        valid.append(entry)
+
+    return valid
+
+
 def get_allowed_args(cfg, setting_name):
     """
     Obtain list of allowed key-value patterns for jobargs or submitargs.
@@ -264,7 +342,7 @@ def get_allowed_args(cfg, setting_name):
                 else:
                     allowed.append({'value': f'^{re.escape(item)}$'})
             log(f"{fn}(): migrated allowed_exportvars to allowed_jobargs '{json.dumps(allowed)}'")
-            return allowed
+            return validate_allowed_args_patterns(allowed, setting_name)
     # --- END auto-migration from legacy 'allowed_exportvars' ---
 
     if allowed_str:
@@ -274,6 +352,7 @@ def get_allowed_args(cfg, setting_name):
             print(err)
             error(f"{fn}(): Value for {setting_name} ({allowed_str}) could not be decoded.")
 
+    allowed = validate_allowed_args_patterns(allowed, setting_name)
     log(f"{fn}(): {setting_name} '{json.dumps(allowed)}'")
     return allowed
 
@@ -354,7 +433,13 @@ def validate_args(args, allowed_patterns, arg_type='jobargs'):
                     matched = True
                     break
         if matched:
-            accepted.append(arg)
+            # Defence-in-depth: even if the regex pattern matched, reject any
+            # arg that contains shell metacharacters to prevent injection via
+            # jobargs (sourced by the shell) or submitargs (shell=True in run_cmd)
+            if sanitize_arg(arg, arg_type):
+                accepted.append(arg)
+            else:
+                rejected.append(arg)
         else:
             log(f"{fn}(): {arg_type} '{arg}' rejected (no matching pattern)")
             rejected.append(arg)

@@ -797,6 +797,13 @@ A reasonable default setting is
 allowed_submitargs = []
 ```
 
+**Security note:** As a defence-in-depth measure, the bot sanitizes all
+`jobargs` and `submitargs` values and rejects any argument that contains shell
+metacharacters (anything outside `[a-zA-Z0-9_=:./+,@-]`). This prevents shell
+injection even if a configured pattern is overly permissive (e.g. `value: ".*"`).
+Additionally, pattern entries that are not well-formed dicts with string
+`key`/`value` values are silently dropped at configuration read time.
+
 ```ini
 clone_git_repo_via = https
 ```

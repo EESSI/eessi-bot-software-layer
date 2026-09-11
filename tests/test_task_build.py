@@ -724,3 +724,111 @@ class TestGetAllowedArgs:
         cfg["buildenv"] = {}
         assert get_allowed_args(cfg, "allowed_jobargs") == []
         assert get_allowed_args(cfg, "allowed_submitargs") == []
+
+
+class TestSanitizeArg:
+    """Tests for sanitize_arg function in tasks/build.py"""
+
+    def test_safe_jobargs(self):
+        from tasks.build import sanitize_arg
+        assert sanitize_arg("SKIP_TESTS=yes", "jobargs")
+
+    def test_safe_submitargs(self):
+        from tasks.build import sanitize_arg
+        assert sanitize_arg("--time=01:00:00", "submitargs")
+        assert sanitize_arg("--export=ALL,FOO=bar", "submitargs")
+
+    def test_rejects_backticks(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("VAR=yes`rm -rf ~`", "jobargs")
+
+    def test_rejects_dollar_paren(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("VAR=$(malicious)", "jobargs")
+
+    def test_rejects_semicolon(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("--time=01:00:00;rm -rf ~", "submitargs")
+
+    def test_rejects_pipe(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("VAR=value|cat /etc/passwd", "jobargs")
+
+    def test_rejects_ampersand(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("VAR=value&&malicious", "jobargs")
+
+    def test_rejects_spaces(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("VAR=with spaces", "jobargs")
+
+    def test_rejects_newline(self):
+        from tasks.build import sanitize_arg
+        assert not sanitize_arg("VAR=with\nnewline", "jobargs")
+
+
+class TestValidateArgsSecurity:
+    """Tests that validate_args blocks shell injection even with permissive patterns"""
+
+    def test_permissive_pattern_allows_safe_arg(self):
+        from tasks.build import validate_args
+        patterns = [{"key": ".*", "value": ".*"}]
+        accepted, rejected = validate_args(["SKIP_TESTS=yes"], patterns, arg_type="jobargs")
+        assert accepted == ["SKIP_TESTS=yes"]
+        assert rejected == []
+
+    def test_permissive_pattern_blocks_injection_jobargs(self):
+        from tasks.build import validate_args
+        patterns = [{"key": ".*", "value": ".*"}]
+        accepted, rejected = validate_args(["EVIL=yes`rm -rf ~`"], patterns, arg_type="jobargs")
+        assert accepted == []
+        assert rejected == ["EVIL=yes`rm -rf ~`"]
+
+    def test_permissive_pattern_blocks_injection_submitargs(self):
+        from tasks.build import validate_args
+        patterns = [{"value": ".*"}]
+        accepted, rejected = validate_args(["--time=01:00:00;rm -rf ~"], patterns, arg_type="submitargs")
+        assert accepted == []
+        assert rejected == ["--time=01:00:00;rm -rf ~"]
+
+
+class TestValidateAllowedArgsPatterns:
+    """Tests for validate_allowed_args_patterns function in tasks/build.py"""
+
+    def test_valid_patterns_pass_through(self):
+        from tasks.build import validate_allowed_args_patterns
+        result = validate_allowed_args_patterns(
+            [{"key": "SKIP_.*", "value": "yes|no"}], "allowed_jobargs"
+        )
+        assert len(result) == 1
+
+    def test_non_dict_entry_dropped(self):
+        from tasks.build import validate_allowed_args_patterns
+        result = validate_allowed_args_patterns(["notadict", {"value": "ok"}], "allowed_submitargs")
+        assert len(result) == 1
+
+    def test_non_string_value_dropped(self):
+        from tasks.build import validate_allowed_args_patterns
+        result = validate_allowed_args_patterns([{"value": 123}], "allowed_submitargs")
+        assert len(result) == 0
+
+    def test_non_string_key_dropped(self):
+        from tasks.build import validate_allowed_args_patterns
+        result = validate_allowed_args_patterns([{"key": 123, "value": "ok"}], "allowed_jobargs")
+        assert len(result) == 0
+
+    def test_non_list_returns_empty(self):
+        from tasks.build import validate_allowed_args_patterns
+        assert validate_allowed_args_patterns("notalist", "allowed_jobargs") == []
+
+    def test_get_allowed_args_drops_invalid_config_entries(self):
+        from tasks.build import get_allowed_args
+        import json
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_submitargs": json.dumps([{"value": "--time=.*"}, "badentry", {"value": 123}]),
+        }
+        result = get_allowed_args(cfg, "allowed_submitargs")
+        assert len(result) == 1
+        assert result[0]["value"] == "--time=.*"
