@@ -40,6 +40,8 @@ FILTER_COMPONENTS = [FILTER_COMPONENT_ACCEL,
                      FILTER_COMPONENT_SUBMITARGS
                      ]
 
+# Developed FILTER_COMPONENT_ALIASES (comment, definition and
+#   use in this file) with the help of a locally hosted glm5.2 via Codex.
 # Aliases map an alternative name to a canonical FILTER_COMPONENT.
 # 'jobargs' is an alias for 'exportvariable' (both specify key=value pairs that
 # are exported into the build job's environment).

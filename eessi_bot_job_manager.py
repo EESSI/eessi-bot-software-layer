@@ -30,6 +30,8 @@
 #
 # license: GPLv2
 #
+# Some changes in this file were developed with the help of a locally hosted glm5.2 via Codex.
+#
 
 # Standard library imports
 from datetime import datetime, timezone

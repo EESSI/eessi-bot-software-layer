@@ -225,6 +225,7 @@ JOBARG_VALUE_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@$-]*$')
 SUBMITARG_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@-]+$')
 
 
+# Developed sanitize_arg with the help of a locally hosted glm5.2 via Codex.
 def sanitize_arg(arg, arg_type='jobargs'):
     """
     Check that an argument does not contain shell metacharacters.
@@ -268,6 +269,7 @@ def sanitize_arg(arg, arg_type='jobargs'):
         return True
 
 
+# Developed check_patterns_wellformed with the help of a locally hosted glm5.2 via Codex.
 def check_patterns_wellformed(patterns, setting_name):
     """
     Validate the structure of allowed-args patterns read from configuration.
@@ -312,6 +314,7 @@ def check_patterns_wellformed(patterns, setting_name):
     return valid
 
 
+# Developed check_allowed_args_config with the help of a locally hosted glm5.2 via Codex.
 def check_allowed_args_config(cfg):
     """
     Check at start-up that the allowed_jobargs, allowed_submitargs and (legacy)
@@ -347,6 +350,7 @@ def check_allowed_args_config(cfg):
     return ok
 
 
+# Developed get_allowed_args with the help of a locally hosted glm5.2 via Codex.
 def get_allowed_args(cfg, setting_name):
     """
     Obtain list of allowed key-value patterns for jobargs or submitargs.
@@ -416,6 +420,7 @@ def get_allowed_args(cfg, setting_name):
     return allowed
 
 
+# Developed validate_args with the help of a locally hosted glm5.2 via Codex.
 def validate_args(args, allowed_patterns, arg_type='jobargs'):
     """
     Validate a list of arguments against a list of allowed patterns.

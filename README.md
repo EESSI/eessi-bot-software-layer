@@ -1,3 +1,5 @@
+<!-- Some sections in this file were developed with the help of a locally hosted glm5.2 via Codex. -->
+
 > [!NOTE]
 > In the future the installation and configuration of the bot will be moved
 > to the EESSI docs, likely under [Build-test-deploy bot](https://www.eessi.io/docs/bot/).
