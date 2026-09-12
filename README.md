@@ -778,8 +778,10 @@ specified in a PR command with the `jobargs` filter (or its alias
 `exportvariable`). Each entry is a dict with `key` and `value` keys whose values
 are regular expressions. An argument `KEY=VALUE` is accepted if its key matches
 one entry's `key` regex AND its value matches that same entry's `value` regex;
-otherwise it is rejected and no jobs are prepared. These variables will be
-exported into the build environment before running the `bot/build.sh` script.
+otherwise it is rejected and no jobs are prepared. Patterns are matched using
+Python's `re` module (`re.search`), so the patterns are Python regular
+expressions. These variables will be exported into the build environment before
+running the `bot/build.sh` script.
 
 If `allowed_jobargs` is not defined, the bot falls back to the legacy
 `allowed_exportvars` setting (see above), converting each exact `KEY=VALUE`
@@ -810,9 +812,23 @@ allowed_submitargs = [{"value": "--(time|partition|mem)=.*"}]
 the job submission command (e.g. `sbatch`) via the `submitargs` filter. Each
 entry is a dict with a `value` key whose value is a regular expression. An
 argument is accepted if it matches one entry's `value` regex; otherwise it is
-rejected and no jobs are prepared. Unlike `jobargs`, these options are NOT
-exported into the build environment -- they are appended to the `sbatch` command
-line only.
+rejected and no jobs are prepared. Patterns are matched using Python's `re`
+module (`re.search`), so the patterns are Python regular expressions. Unlike
+`jobargs`, these options are NOT exported into the build environment -- they are
+appended to the `sbatch` command line only.
+
+**Argument ordering:** The full submit command is constructed as:
+
+```
+<submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_opts> <script>
+```
+
+where `<slurm_params>` is the global setting from `[buildenv]`, `<slurm_opts>`
+comes from the node type's `slurm_params` in the node map, and `<submit_opts>`
+are the user-supplied submitargs. Because submitargs are placed *after*
+`slurm_params` and `slurm_opts`, they can override values set by the site
+configuration (e.g. partition, time limit, memory). Site operators should be
+aware of this when defining `allowed_submitargs` patterns.
 
 A reasonable default setting is
 

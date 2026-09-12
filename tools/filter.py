@@ -42,10 +42,18 @@ FILTER_COMPONENTS = [FILTER_COMPONENT_ACCEL,
 
 # Aliases map an alternative name to a canonical FILTER_COMPONENT.
 # 'jobargs' is an alias for 'exportvariable' (both specify key=value pairs that
-# are exported into the build job's environment). Aliases are resolved before
-# the prefix-matching logic in add_filter() runs, so they avoid ambiguity with
-# other components that share a prefix (e.g. 'job' is a prefix of both 'jobargs'
-# and 'jobid').
+# are exported into the build job's environment).
+#
+# 'jobargs' is intentionally NOT included in FILTER_COMPONENTS: it exists only
+# as an alias and is resolved to 'exportvariable' before any prefix matching
+# happens. If it were in FILTER_COMPONENTS, the prefix-matching logic would be
+# ambiguous because 'job' is a prefix of both 'jobargs' and 'jobid', so an
+# abbreviation like 'job:...' could match either one. By keeping 'jobargs' out
+# of FILTER_COMPONENTS and resolving it early, 'job:...' still correctly
+# resolves to 'jobid' (the only FILTER_COMPONENTS entry with that prefix).
+#
+# Aliases are resolved in both add_filter() and remove_filter() before the
+# prefix-matching loop runs.
 FILTER_COMPONENT_ALIASES = {
     FILTER_COMPONENT_JOBARGS: FILTER_COMPONENT_EXPORT,
 }

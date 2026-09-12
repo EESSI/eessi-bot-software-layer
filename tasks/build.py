@@ -851,8 +851,8 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
         log(f"{fn}(): found no accelerator requirement")
         accelerator = None
 
-    # determine jobargs from action_filter argument (exportvariable is an
-    # alias for jobargs, so both are retrieved via FILTER_COMPONENT_EXPORT)
+    # determine jobargs from action_filter argument (jobargs is an alias for
+    # exportvariable, so both are retrieved via FILTER_COMPONENT_EXPORT)
     jobargs = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
 
     # all jobargs must be allowed in order to run any jobs

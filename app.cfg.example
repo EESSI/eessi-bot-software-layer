@@ -214,6 +214,8 @@ allowed_exportvars = []
 # argument 'KEY=VALUE' is accepted if its key matches one entry's 'key' regex
 # AND its value matches that same entry's 'value' regex; otherwise it is
 # rejected and no jobs are prepared.
+# Patterns are matched using Python's 're' module (re.search), so the patterns
+# are Python regular expressions.
 # If 'allowed_jobargs' is not defined, the bot falls back to the legacy
 # 'allowed_exportvars' setting (see above), converting each exact 'KEY=VALUE'
 # string into an equivalent regex pattern. This preserves backward
@@ -249,6 +251,16 @@ allowed_jobargs = []
 # matches one entry's 'value' regex; otherwise it is rejected and no jobs are
 # prepared. Unlike 'jobargs', these options are NOT exported into the build
 # environment -- they are appended to the sbatch command line only.
+# Patterns are matched using Python's 're' module (re.search), so the patterns
+# are Python regular expressions.
+# NOTE on argument ordering: the full submit command is constructed as:
+#   <submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_opts> <script>
+# where <slurm_params> is the global setting from [buildenv], <slurm_opts> comes
+# from the node type's 'slurm_params' in the node_map, and <submit_opts> are the
+# user-supplied submitargs. Because submitargs are placed AFTER slurm_params and
+# slurm_opts, they can override values set by the site configuration (e.g.
+# partition, time limit, memory). Site operators should be aware of this when
+# defining allowed_submitargs patterns.
 # NOTE, the setting is optional. If you want to enable this feature, uncomment
 # the line below and define meaningful pattern(s). For example:
 # allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
