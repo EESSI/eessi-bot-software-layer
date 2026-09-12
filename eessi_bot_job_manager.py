@@ -46,6 +46,7 @@ from connections import github
 from tools import config, job_metadata, run_cmd
 from tools.args import job_manager_parse
 from tools.pr_comments import get_submitted_job_comment, update_comment
+from tasks.build import check_allowed_args_config
 
 
 # settings that are required in 'app.cfg'
@@ -658,6 +659,11 @@ def main():
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")
+        sys.exit(1)
+    # Verify that allowed_jobargs/submitargs/exportvars settings are valid JSON
+    cfg = config.read_config()
+    if not check_allowed_args_config(cfg):
+        print("Configuration check: FAILED (invalid allowed_args settings)")
         sys.exit(1)
     github.connect()
 

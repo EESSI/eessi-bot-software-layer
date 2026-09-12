@@ -30,7 +30,7 @@ import waitress
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
 from tasks.build import cancel_jobs, check_build_permission, get_job_ids, get_node_types, \
-    get_work_dirs, request_bot_build_issue_comments, submit_build_jobs
+    get_work_dirs, request_bot_build_issue_comments, submit_build_jobs, check_allowed_args_config
 from tasks.deploy import deploy_built_artefacts, determine_job_dirs
 from tasks.clean_up import move_to_trash_bin
 from tools import config
@@ -879,6 +879,12 @@ def main():
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")
+        sys.exit(1)
+
+    # Verify that allowed_jobargs/submitargs/exportvars settings are valid JSON
+    cfg = config.read_config()
+    if not check_allowed_args_config(cfg):
+        print("Configuration check: FAILED (invalid allowed_args settings)")
         sys.exit(1)
 
     # Verify that the event handler is able to connect to the Git hosting platform

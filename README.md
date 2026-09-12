@@ -760,6 +760,19 @@ allowed_exportvars = []
 allowed_jobargs = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
 ```
 
+More advanced examples:
+
+```ini
+# allow any value for EB_ARGS (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345)
+allowed_jobargs = [{"key": "EB_ARGS", "value": ".*"}]
+
+# allow a specific set of install paths
+allowed_jobargs = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
+
+# allow unsetting a variable (empty value)
+allowed_jobargs = [{"key": "FOO", "value": ""}]
+```
+
 `allowed_jobargs` defines a list of key-value patterns that are allowed to be
 specified in a PR command with the `jobargs` filter (or its alias
 `exportvariable`). Each entry is a dict with `key` and `value` keys whose values
@@ -783,6 +796,16 @@ allowed_jobargs = []
 allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
 ```
 
+More advanced examples:
+
+```ini
+# allow a specific time format only
+allowed_submitargs = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
+
+# allow multiple options with one pattern
+allowed_submitargs = [{"value": "--(time|partition|mem)=.*"}]
+```
+
 `allowed_submitargs` defines a list of patterns that are allowed to be passed to
 the job submission command (e.g. `sbatch`) via the `submitargs` filter. Each
 entry is a dict with a `value` key whose value is a regular expression. An
@@ -799,10 +822,14 @@ allowed_submitargs = []
 
 **Security note:** As a defence-in-depth measure, the bot sanitizes all
 `jobargs` and `submitargs` values and rejects any argument that contains shell
-metacharacters (anything outside `[a-zA-Z0-9_=:./+,@-]`). This prevents shell
-injection even if a configured pattern is overly permissive (e.g. `value: ".*"`).
-Additionally, pattern entries that are not well-formed dicts with string
-`key`/`value` values are silently dropped at configuration read time.
+metacharacters. For `jobargs`, keys and values are validated separately: keys
+must be valid shell identifiers (`[a-zA-Z_][a-zA-Z0-9_]*`), and values may
+contain `$` (for variable references like `/tmp/$USER`) but no other shell
+metacharacters. For `submitargs`, the strict charset `[a-zA-Z0-9_=:./+,@-]` is
+used (no `$`, no spaces). This prevents shell injection even if a configured
+pattern is overly permissive (e.g. `value: ".*"`). Additionally, pattern entries
+that are not well-formed dicts with string `key`/`value` values are silently
+dropped at configuration read time.
 
 ```ini
 clone_git_repo_via = https

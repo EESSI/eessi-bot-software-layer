@@ -312,6 +312,41 @@ def check_patterns_wellformed(patterns, setting_name):
     return valid
 
 
+def check_allowed_args_config(cfg):
+    """
+    Check at start-up that the allowed_jobargs, allowed_submitargs and (legacy)
+    allowed_exportvars settings, if present, contain valid JSON. Logs an error
+    and returns False if any setting cannot be decoded so the caller can refuse
+    to start the bot.
+
+    Args:
+        cfg (ConfigParser): ConfigParser instance holding full configuration
+            (typically read from 'app.cfg')
+
+    Returns:
+        (bool): True if all present settings are valid JSON, False otherwise
+    """
+    fn = sys._getframe().f_code.co_name
+
+    buildenv = cfg[config.SECTION_BUILDENV]
+    settings = [
+        config.BUILDENV_SETTING_ALLOWED_JOBARGS,
+        config.BUILDENV_SETTING_ALLOWED_SUBMITARGS,
+        config.BUILDENV_SETTING_ALLOWED_EXPORTVARS,
+    ]
+    ok = True
+    for setting_name in settings:
+        setting_str = buildenv.get(setting_name)
+        if setting_str:
+            try:
+                json.loads(setting_str)
+            except json.JSONDecodeError as err:
+                log(f"{fn}(): ERROR Value for {setting_name} ({setting_str}) "
+                    f"could not be decoded: {err}")
+                ok = False
+    return ok
+
+
 def get_allowed_args(cfg, setting_name):
     """
     Obtain list of allowed key-value patterns for jobargs or submitargs.
@@ -356,7 +391,8 @@ def get_allowed_args(cfg, setting_name):
                 legacy = json.loads(legacy_str)
             except json.JSONDecodeError as err:
                 print(err)
-                error(f"{fn}(): Value for allowed_exportvars ({legacy_str}) could not be decoded.")
+                log(f"{fn}(): ERROR Value for allowed_exportvars ({legacy_str}) could not be decoded: {err}")
+                return []
             for item in legacy:
                 if '=' in item:
                     key, value = item.split('=', 1)
@@ -372,7 +408,8 @@ def get_allowed_args(cfg, setting_name):
             allowed = json.loads(allowed_str)
         except json.JSONDecodeError as err:
             print(err)
-            error(f"{fn}(): Value for {setting_name} ({allowed_str}) could not be decoded.")
+            log(f"{fn}(): ERROR Value for {setting_name} ({allowed_str}) could not be decoded: {err}")
+            return []
 
     allowed = check_patterns_wellformed(allowed, setting_name)
     log(f"{fn}(): {setting_name} '{json.dumps(allowed)}'")

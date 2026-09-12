@@ -377,9 +377,13 @@ def test_jobargs_alias_retrieved_via_export_component():
 
 def test_job_prefix_matches_jobid_not_jobargs():
     from tools.filter import FILTER_COMPONENT_JOBID
+    from tools.filter import FILTER_COMPONENT_EXPORT
     af = EESSIBotActionFilter("job:123")
     actual = af.get_filter_by_component(FILTER_COMPONENT_JOBID)
     assert actual == ["123"]
+    # Ensure 'job:' did not accidentally resolve to the exportvariable component
+    actual_export = af.get_filter_by_component(FILTER_COMPONENT_EXPORT)
+    assert actual_export == []
 
 
 def test_submitargs_component():
@@ -390,10 +394,11 @@ def test_submitargs_component():
 
 
 def test_submitargs_with_colons_in_value():
+    # Verify that colons in the value are preserved (split on first ':' only)
     from tools.filter import FILTER_COMPONENT_SUBMITARGS
-    af = EESSIBotActionFilter("submitargs:--time=01:00:00")
+    af = EESSIBotActionFilter("submitargs:--licenses=foo@bar:2")
     actual = af.get_filter_by_component(FILTER_COMPONENT_SUBMITARGS)
-    assert actual == ["--time=01:00:00"]
+    assert actual == ["--licenses=foo@bar:2"]
 
 
 def test_exportvariable_with_colon_in_value():

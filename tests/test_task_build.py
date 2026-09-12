@@ -691,6 +691,7 @@ class TestGetAllowedArgs:
         assert len(result) == 2
         assert result[0]["key"] == "^SKIP_TESTS$"
         assert result[0]["value"] == "^yes$"
+        assert result[1]["key"] == "^SKIP_TESTS$"
         assert result[1]["value"] == "^no$"
 
     def test_jobargs_takes_precedence_over_exportvars(self):
@@ -724,6 +725,59 @@ class TestGetAllowedArgs:
         cfg["buildenv"] = {}
         assert get_allowed_args(cfg, "allowed_jobargs") == []
         assert get_allowed_args(cfg, "allowed_submitargs") == []
+
+    def test_invalid_json_returns_empty(self):
+        # If the JSON cannot be decoded, get_allowed_args should log and
+        # return [] rather than calling error() (which exits the process).
+        from tasks.build import get_allowed_args
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_jobargs": "not valid json",
+        }
+        assert get_allowed_args(cfg, "allowed_jobargs") == []
+
+    def test_invalid_json_legacy_returns_empty(self):
+        # Same for the legacy allowed_exportvars auto-migration path.
+        from tasks.build import get_allowed_args
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_exportvars": "not valid json",
+        }
+        assert get_allowed_args(cfg, "allowed_jobargs") == []
+
+
+class TestCheckAllowedArgsConfig:
+    """Tests for check_allowed_args_config function in tasks/build.py"""
+
+    def test_valid_json_passes(self):
+        from tasks.build import check_allowed_args_config
+        import json
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_jobargs": json.dumps([{"key": "SKIP_.*", "value": "yes|no"}]),
+            "allowed_submitargs": json.dumps([{"value": "--time=.*"}]),
+            "allowed_exportvars": json.dumps(["SKIP_TESTS=yes"]),
+        }
+        assert check_allowed_args_config(cfg) is True
+
+    def test_invalid_json_fails(self):
+        from tasks.build import check_allowed_args_config
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {
+            "allowed_jobargs": "not valid json",
+        }
+        assert check_allowed_args_config(cfg) is False
+
+    def test_empty_settings_pass(self):
+        from tasks.build import check_allowed_args_config
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg["buildenv"] = {}
+        assert check_allowed_args_config(cfg) is True
 
 
 class TestSanitizeArg:

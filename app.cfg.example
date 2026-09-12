@@ -221,6 +221,13 @@ allowed_exportvars = []
 # NOTE, the setting is optional. If you want to enable this feature, uncomment
 # the line below and define meaningful pattern(s). For example:
 # allowed_jobargs = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+# More advanced examples:
+#   - allow any value for EB_ARGS (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345):
+#     allowed_jobargs = [{"key": "EB_ARGS", "value": ".*"}]
+#   - allow a specific set of install paths:
+#     allowed_jobargs = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
+#   - allow unsetting a variable (empty value):
+#     allowed_jobargs = [{"key": "FOO", "value": ""}]
 #
 # It's safe to use the following line as default setting:
 allowed_jobargs = []
@@ -245,6 +252,11 @@ allowed_jobargs = []
 # NOTE, the setting is optional. If you want to enable this feature, uncomment
 # the line below and define meaningful pattern(s). For example:
 # allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+# More advanced examples:
+#   - allow a specific time format only:
+#     allowed_submitargs = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
+#   - allow multiple options with one pattern:
+#     allowed_submitargs = [{"value": "--(time|partition|mem)=.*"}]
 #
 # It's safe to use the following line as default setting:
 allowed_submitargs = []
