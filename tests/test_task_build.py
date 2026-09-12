@@ -726,41 +726,6 @@ class TestGetAllowedArgs:
         assert get_allowed_args(cfg, "allowed_submitargs") == []
 
 
-class TestGetAllowedExportvars:
-    """Tests for get_allowed_exportvars (legacy) function in tasks/build.py"""
-
-    def test_returns_string_entries(self):
-        from tasks.build import get_allowed_exportvars
-        import json
-        import configparser
-        cfg = configparser.ConfigParser()
-        cfg["buildenv"] = {
-            "allowed_exportvars": json.dumps(["SKIP_TESTS=yes", "SKIP_TESTS=no"]),
-        }
-        result = get_allowed_exportvars(cfg)
-        assert result == ["SKIP_TESTS=yes", "SKIP_TESTS=no"]
-
-    def test_drops_non_string_entries(self):
-        # Non-string entries (e.g. integers) are silently dropped to keep
-        # consistent with validate_patterns behaviour.
-        from tasks.build import get_allowed_exportvars
-        import json
-        import configparser
-        cfg = configparser.ConfigParser()
-        cfg["buildenv"] = {
-            "allowed_exportvars": json.dumps(["SKIP_TESTS=yes", 123, None]),
-        }
-        result = get_allowed_exportvars(cfg)
-        assert result == ["SKIP_TESTS=yes"]
-
-    def test_empty_setting(self):
-        from tasks.build import get_allowed_exportvars
-        import configparser
-        cfg = configparser.ConfigParser()
-        cfg["buildenv"] = {}
-        assert get_allowed_exportvars(cfg) == []
-
-
 class TestSanitizeArg:
     """Tests for sanitize_arg function in tasks/build.py"""
 
@@ -769,10 +734,15 @@ class TestSanitizeArg:
         assert sanitize_arg("SKIP_TESTS=yes", "jobargs")
 
     def test_safe_jobargs_with_dollar(self):
-        # '$' is allowed in jobargs values (e.g. EB_ARGS=/tmp/$USER/pr12345)
+        # '$' is allowed in jobargs values (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345)
         # because jobargs are written to export_vars.sh and sourced by the shell.
         from tasks.build import sanitize_arg
-        assert sanitize_arg("EB_ARGS=/tmp/$USER/pr12345", "jobargs")
+        assert sanitize_arg("EB_ARGS=--installpath=/tmp/$USER/pr12345", "jobargs")
+
+    def test_safe_jobargs_empty_value(self):
+        # An empty value is allowed (e.g. FOO= to unset a variable).
+        from tasks.build import sanitize_arg
+        assert sanitize_arg("FOO=", "jobargs")
 
     def test_safe_submitargs(self):
         from tasks.build import sanitize_arg
@@ -843,8 +813,8 @@ class TestValidateArgsSecurity:
         # and should pass even with a permissive '.*' pattern.
         from tasks.build import validate_args
         patterns = [{"key": ".*", "value": ".*"}]
-        accepted, rejected = validate_args(["EB_ARGS=/tmp/$USER/pr12345"], patterns, arg_type="jobargs")
-        assert accepted == ["EB_ARGS=/tmp/$USER/pr12345"]
+        accepted, rejected = validate_args(["EB_ARGS=--installpath=/tmp/$USER/pr12345"], patterns, arg_type="jobargs")
+        assert accepted == ["EB_ARGS=--installpath=/tmp/$USER/pr12345"]
         assert rejected == []
 
     def test_permissive_pattern_blocks_injection_jobargs(self):
@@ -873,10 +843,10 @@ class TestValidateArgsSecurity:
         assert rejected == ["${UNDEF:-echo dangerous}=yes"]
 
 
-class TestValidatePatterns:
-    """Tests for validate_patterns function in tasks/build.py.
+class TestCheckPatternsWellformed:
+    """Tests for check_patterns_wellformed function in tasks/build.py.
 
-    validate_patterns checks that pattern entries read from configuration are
+    check_patterns_wellformed checks that pattern entries read from configuration are
     well-formed dicts with string 'key'/'value' fields. The rules differ
     slightly between jobargs and submitargs:
     - jobargs entries require both 'key' and 'value' to be strings
@@ -886,33 +856,33 @@ class TestValidatePatterns:
     """
 
     def test_valid_patterns_pass_through(self):
-        from tasks.build import validate_patterns
-        result = validate_patterns(
+        from tasks.build import check_patterns_wellformed
+        result = check_patterns_wellformed(
             [{"key": "SKIP_.*", "value": "yes|no"}], "allowed_jobargs"
         )
         assert len(result) == 1
 
     def test_non_dict_entry_dropped(self):
         # For submitargs only the 'value' field is validated (no 'key' required).
-        from tasks.build import validate_patterns
-        result = validate_patterns(["notadict", {"value": "ok"}], "allowed_submitargs")
+        from tasks.build import check_patterns_wellformed
+        result = check_patterns_wellformed(["notadict", {"value": "ok"}], "allowed_submitargs")
         assert len(result) == 1
 
     def test_non_string_value_dropped(self):
         # 123 is not a valid value because 'value' must be a string (regex
         # pattern), not an integer.
-        from tasks.build import validate_patterns
-        result = validate_patterns([{"value": 123}], "allowed_submitargs")
+        from tasks.build import check_patterns_wellformed
+        result = check_patterns_wellformed([{"value": 123}], "allowed_submitargs")
         assert len(result) == 0
 
     def test_non_string_key_dropped(self):
-        from tasks.build import validate_patterns
-        result = validate_patterns([{"key": 123, "value": "ok"}], "allowed_jobargs")
+        from tasks.build import check_patterns_wellformed
+        result = check_patterns_wellformed([{"key": 123, "value": "ok"}], "allowed_jobargs")
         assert len(result) == 0
 
     def test_non_list_returns_empty(self):
-        from tasks.build import validate_patterns
-        assert validate_patterns("notalist", "allowed_jobargs") == []
+        from tasks.build import check_patterns_wellformed
+        assert check_patterns_wellformed("notalist", "allowed_jobargs") == []
 
     def test_get_allowed_args_drops_invalid_config_entries(self):
         # Config contains three entries: a valid dict, a bare string (not a

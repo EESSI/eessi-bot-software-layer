@@ -218,7 +218,8 @@ def get_node_types(cfg):
 # valid shell identifiers. Injection metacharacters (backticks, $(), ;, |, &,
 # spaces, newlines, etc.) are always rejected.
 JOBARG_KEY_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-JOBARG_VALUE_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@$-]+$')
+# An empty value is allowed (e.g. FOO= to unset a variable), hence '*' not '+'.
+JOBARG_VALUE_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@$-]*$')
 # submitargs are appended to an sbatch command line executed with shell=True,
 # so they get the strictest charset (no '$', no spaces).
 SUBMITARG_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@-]+$')
@@ -234,9 +235,10 @@ def sanitize_arg(arg, arg_type='jobargs'):
     by the shell (e.g. backticks, $(), ;, |, &, spaces, newlines).
 
     For 'jobargs', the key and value are checked separately: the key must be a
-    valid shell identifier, and the value may contain '$' (for variable
-    references) but no other shell metacharacters. For 'submitargs', the bare
-    option string is checked against a strict charset (no '$', no spaces).
+    valid shell identifier, and the value may be empty (e.g. 'FOO=' to unset a
+    variable) or contain '$' (for variable references) but no other shell
+    metacharacters. For 'submitargs', the bare option string is checked against
+    a strict charset (no '$', no spaces).
 
     Args:
         arg (string): argument to check
@@ -266,7 +268,7 @@ def sanitize_arg(arg, arg_type='jobargs'):
         return True
 
 
-def validate_patterns(patterns, setting_name):
+def check_patterns_wellformed(patterns, setting_name):
     """
     Validate the structure of allowed-args patterns read from configuration.
 
@@ -362,7 +364,7 @@ def get_allowed_args(cfg, setting_name):
                 else:
                     allowed.append({'value': f'^{re.escape(item)}$'})
             log(f"{fn}(): migrated allowed_exportvars to allowed_jobargs '{json.dumps(allowed)}'")
-            return validate_patterns(allowed, setting_name)
+            return check_patterns_wellformed(allowed, setting_name)
     # --- END auto-migration from legacy 'allowed_exportvars' ---
 
     if allowed_str:
@@ -372,46 +374,9 @@ def get_allowed_args(cfg, setting_name):
             print(err)
             error(f"{fn}(): Value for {setting_name} ({allowed_str}) could not be decoded.")
 
-    allowed = validate_patterns(allowed, setting_name)
+    allowed = check_patterns_wellformed(allowed, setting_name)
     log(f"{fn}(): {setting_name} '{json.dumps(allowed)}'")
     return allowed
-
-
-def get_allowed_exportvars(cfg):
-    """
-    Obtain list of allowed export variables (legacy, kept for backward
-    compatibility). New code should use get_allowed_args() instead.
-
-    Args:
-        cfg (ConfigParser): ConfigParser instance holding full configuration
-            (typically read from 'app.cfg')
-
-    Returns:
-        (list): list of allowed export variable-value pairs of the format VARIABLE=VALUE
-    """
-    fn = sys._getframe().f_code.co_name
-
-    log(f"{fn}(): WARNING allowed_exportvars is deprecated, use allowed_jobargs instead")
-
-    buildenv = cfg[config.SECTION_BUILDENV]
-    allowed_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
-    allowed = []
-
-    if allowed_str:
-        try:
-            allowed = json.loads(allowed_str)
-        except json.JSONDecodeError as err:
-            print(err)
-            error(f"{fn}(): Value for allowed_exportvars ({allowed_str}) could not be decoded.")
-
-    # Validate structure: each entry must be a string (exact 'KEY=VALUE' pair).
-    # Non-string entries are silently dropped, consistent with validate_patterns.
-    valid = [item for item in allowed if isinstance(item, str)]
-    if len(valid) != len(allowed):
-        log(f"{fn}(): dropped {len(allowed) - len(valid)} non-string entries from allowed_exportvars")
-
-    log(f"{fn}(): allowed_exportvars '{json.dumps(valid)}'")
-    return valid
 
 
 def validate_args(args, allowed_patterns, arg_type='jobargs'):
