@@ -55,6 +55,7 @@ _ERROR_NONE = "none"
 EXPORT_VARS_FILE = 'export_vars.sh'
 
 
+# addition of job.submit_opts was developed with the help of a locally hosted glm5.2 via Codex
 Job = namedtuple('Job',
                  ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator', 'owner',
                   'submit_opts'))
@@ -212,6 +213,8 @@ def get_node_types(cfg):
     return node_type_map
 
 
+# Developed comment and *_RE definitions with the help of a locally
+#   hosted glm5.2 via Codex.
 # --- Defence-in-depth character allow-lists ---
 # jobargs are written to export_vars.sh and sourced by the shell, so '$' is
 # legitimate in values (e.g. EB_ARGS="/tmp/$USER/pr12345"). Keys must be
@@ -856,6 +859,8 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
         log(f"{fn}(): found no accelerator requirement")
         accelerator = None
 
+    # Developed code for handling jobargs and submitargs with the help of a
+    #   locally hosted glm5.2 via Codex.
     # determine jobargs from action_filter argument (jobargs is an alias for
     # exportvariable, so both are retrieved via FILTER_COMPONENT_EXPORT)
     jobargs = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
@@ -1161,6 +1166,7 @@ def submit_job(job, cfg):
     if not os.path.exists(build_job_script_path):
         error(f"Build job script not found at {build_job_script_path}")
 
+    # addition of job.submit_opts was developed with the help of a locally hosted glm5.2 via Codex
     command_line = ' '.join([
         build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
         build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],

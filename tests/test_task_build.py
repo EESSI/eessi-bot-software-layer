@@ -615,6 +615,7 @@ def test_request_bot_build_issue_comments(monkeypatch):
     assert status_table['result'] == [':grin: SUCCESS']
 
 
+# Developed with the help of a locally hosted glm5.2 via Codex.
 class TestValidateArgs:
     """Tests for validate_args function in tasks/build.py"""
 
@@ -676,6 +677,7 @@ class TestValidateArgs:
         assert rejected == ["SKIP_TESTS=yes"]
 
 
+# Developed with the help of a locally hosted glm5.2 via Codex.
 class TestGetAllowedArgs:
     """Tests for get_allowed_args function in tasks/build.py"""
 
@@ -754,6 +756,7 @@ class TestGetAllowedArgs:
         assert any("could not be decoded" in msg for msg in log_msgs)
 
 
+# Developed with the help of a locally hosted glm5.2 via Codex.
 class TestCheckAllowedArgsConfig:
     """Tests for check_allowed_args_config function in tasks/build.py"""
 
@@ -790,6 +793,7 @@ class TestCheckAllowedArgsConfig:
         assert check_allowed_args_config(cfg) is True
 
 
+# Developed with the help of a locally hosted glm5.2 via Codex.
 class TestSanitizeArg:
     """Tests for sanitize_arg function in tasks/build.py"""
 
@@ -862,6 +866,7 @@ class TestSanitizeArg:
         assert not sanitize_arg("VAR=with\nnewline", "jobargs")
 
 
+# Developed with the help of a locally hosted glm5.2 via Codex.
 class TestValidateArgsSecurity:
     """Tests that validate_args blocks shell injection even with permissive patterns"""
 
@@ -907,6 +912,7 @@ class TestValidateArgsSecurity:
         assert rejected == ["${UNDEF:-echo dangerous}=yes"]
 
 
+# Developed with the help of a locally hosted glm5.2 via Codex.
 class TestCheckPatternsWellformed:
     """Tests for check_patterns_wellformed function in tasks/build.py.
 
