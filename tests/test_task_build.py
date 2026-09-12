@@ -726,9 +726,11 @@ class TestGetAllowedArgs:
         assert get_allowed_args(cfg, "allowed_jobargs") == []
         assert get_allowed_args(cfg, "allowed_submitargs") == []
 
-    def test_invalid_json_returns_empty(self):
+    def test_invalid_json_returns_empty(self, monkeypatch):
         # If the JSON cannot be decoded, get_allowed_args should log and
         # return [] rather than calling error() (which exits the process).
+        log_msgs = []
+        monkeypatch.setattr("tasks.build.log", lambda msg: log_msgs.append(msg))
         from tasks.build import get_allowed_args
         import configparser
         cfg = configparser.ConfigParser()
@@ -736,9 +738,12 @@ class TestGetAllowedArgs:
             "allowed_jobargs": "not valid json",
         }
         assert get_allowed_args(cfg, "allowed_jobargs") == []
+        assert any("could not be decoded" in msg for msg in log_msgs)
 
-    def test_invalid_json_legacy_returns_empty(self):
+    def test_invalid_json_legacy_returns_empty(self, monkeypatch):
         # Same for the legacy allowed_exportvars auto-migration path.
+        log_msgs = []
+        monkeypatch.setattr("tasks.build.log", lambda msg: log_msgs.append(msg))
         from tasks.build import get_allowed_args
         import configparser
         cfg = configparser.ConfigParser()
@@ -746,6 +751,7 @@ class TestGetAllowedArgs:
             "allowed_exportvars": "not valid json",
         }
         assert get_allowed_args(cfg, "allowed_jobargs") == []
+        assert any("could not be decoded" in msg for msg in log_msgs)
 
 
 class TestCheckAllowedArgsConfig:
@@ -763,7 +769,10 @@ class TestCheckAllowedArgsConfig:
         }
         assert check_allowed_args_config(cfg) is True
 
-    def test_invalid_json_fails(self):
+    def test_invalid_json_fails(self, monkeypatch):
+        # Should return False and log an error about the decode failure.
+        log_msgs = []
+        monkeypatch.setattr("tasks.build.log", lambda msg: log_msgs.append(msg))
         from tasks.build import check_allowed_args_config
         import configparser
         cfg = configparser.ConfigParser()
@@ -771,6 +780,7 @@ class TestCheckAllowedArgsConfig:
             "allowed_jobargs": "not valid json",
         }
         assert check_allowed_args_config(cfg) is False
+        assert any("could not be decoded" in msg for msg in log_msgs)
 
     def test_empty_settings_pass(self):
         from tasks.build import check_allowed_args_config

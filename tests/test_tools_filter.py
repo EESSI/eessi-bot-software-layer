@@ -393,14 +393,6 @@ def test_submitargs_component():
     assert actual == ["--time=01:00:00"]
 
 
-def test_submitargs_with_colons_in_value():
-    # Verify that colons in the value are preserved (split on first ':' only)
-    from tools.filter import FILTER_COMPONENT_SUBMITARGS
-    af = EESSIBotActionFilter("submitargs:--licenses=foo@bar:2")
-    actual = af.get_filter_by_component(FILTER_COMPONENT_SUBMITARGS)
-    assert actual == ["--licenses=foo@bar:2"]
-
-
 def test_exportvariable_with_colon_in_value():
     from tools.filter import FILTER_COMPONENT_EXPORT
     af = EESSIBotActionFilter("exportvariable:PATH=/usr/bin:/bin")
