@@ -227,7 +227,11 @@ allowed_jobargs = []
 
 # SECURITY NOTE: as a defence-in-depth measure, the bot sanitizes all jobargs
 # and submitargs values and rejects any argument that contains shell
-# metacharacters (anything outside [a-zA-Z0-9_=:./+,@-]). This prevents shell
+# metacharacters. For jobargs, keys and values are validated separately:
+# keys must be valid shell identifiers ([a-zA-Z_][a-zA-Z0-9_]*), and values
+# may contain '$' (for variable references like /tmp/$USER) but no other
+# shell metacharacters. For submitargs, the strict charset
+# [a-zA-Z0-9_=:./+,@-] is used (no '$', no spaces). This prevents shell
 # injection even if a pattern above is overly permissive (e.g. value '.*').
 # Additionally, pattern entries that are not well-formed dicts with string
 # 'key'/'value' values are silently dropped at configuration read time.
