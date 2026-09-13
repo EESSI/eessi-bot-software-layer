@@ -821,13 +821,13 @@ appended to the `sbatch` command line only.
 
 **Argument ordering:** The full submit command is constructed as:
 
-```
+```bash
 <submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_opts> <script>
 ```
 
 where `<slurm_params>` is the global setting from `[buildenv]`, `<slurm_opts>`
 comes from the node type's `slurm_params` in the node map, and `<submit_opts>`
-are the user-supplied submitargs. Because submitargs are placed *after*
+are the user-supplied submitargs. Because submitargs are placed _after_
 `slurm_params` and `slurm_opts`, they can override values set by the site
 configuration (e.g. partition, time limit, memory). Site operators should be
 aware of this when defining `allowed_submitargs` patterns.
