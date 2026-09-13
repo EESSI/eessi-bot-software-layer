@@ -457,7 +457,7 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
     # create some test data
     ym = datetime.today().strftime('%Y.%m')
     pr_number = 999
-    job = Job(tmp_path, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic", "user01")
+    job = Job(tmp_path, "test/architecture", "EESSI", "--speed_up_job", ym, pr_number, "fpga/magic", "user01", "")
 
     job_id = "123"
 
