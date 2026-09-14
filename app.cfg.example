@@ -14,6 +14,8 @@
 #
 # license: GPLv2
 #
+# Some changes in this file were developed with the help of a locally hosted glm5.2 via Codex.
+#
 
 # Also see documentation at https://github.com/EESSI/eessi-bot-software-layer/blob/main/README.md#step5.5
 
@@ -193,7 +195,7 @@ no_build_permission_comment = GH account `{build_labeler}` is not authorized to 
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
-# exported into the build environment via 'exportvariable' filters
+# exported into the build environment via 'exportvariable' (or 'jobargs') filters
 # The bot build script makes use of the variable 'SKIP_TESTS' to determine if
 # ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
 # 'yes' and the exportvariable filter is added to a bot build command
@@ -207,6 +209,71 @@ allow_update_submit_opts = false
 #
 # It's safe to use the following line as default setting:
 allowed_exportvars = []
+
+# defines which key-value pairs are allowed to be exported into the build
+# environment via 'jobargs' (or 'exportvariable') filters. Each entry is a
+# dict with 'key' and 'value' keys whose values are regular expressions. An
+# argument 'KEY=VALUE' is accepted if its key matches one entry's 'key' regex
+# AND its value matches that same entry's 'value' regex; otherwise it is
+# rejected and no jobs are prepared.
+# Patterns are matched using Python's 're' module (re.search), so the patterns
+# are Python regular expressions.
+# If 'allowed_jobargs' is not defined, the bot falls back to the legacy
+# 'allowed_exportvars' setting (see above), converting each exact 'KEY=VALUE'
+# string into an equivalent regex pattern. This preserves backward
+# compatibility for existing deployments.
+# NOTE, the setting is optional. If you want to enable this feature, uncomment
+# the line below and define meaningful pattern(s). For example:
+# allowed_jobargs = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+# More advanced examples:
+#   - allow any value for EB_ARGS (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345):
+#     allowed_jobargs = [{"key": "EB_ARGS", "value": ".*"}]
+#   - allow a specific set of install paths:
+#     allowed_jobargs = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
+#   - allow unsetting a variable (empty value):
+#     allowed_jobargs = [{"key": "FOO", "value": ""}]
+#
+# It's safe to use the following line as default setting:
+allowed_jobargs = []
+
+# SECURITY NOTE: as a defence-in-depth measure, the bot sanitizes all jobargs
+# and submitargs values and rejects any argument that contains shell
+# metacharacters. For jobargs, keys and values are validated separately:
+# keys must be valid shell identifiers ([a-zA-Z_][a-zA-Z0-9_]*), and values
+# may contain '$' (for variable references like /tmp/$USER) but no other
+# shell metacharacters. For submitargs, the strict charset
+# [a-zA-Z0-9_=:./+,@-] is used (no '$', no spaces). This prevents shell
+# injection even if a pattern above is overly permissive (e.g. value '.*').
+# Additionally, pattern entries that are not well-formed dicts with string
+# 'key'/'value' values are silently dropped at configuration read time.
+
+# defines which options are allowed to be passed to the job submission command
+# (e.g. sbatch) via 'submitargs' filters. Each entry is a dict with a 'value'
+# key whose value is a regular expression. An argument is accepted if it
+# matches one entry's 'value' regex; otherwise it is rejected and no jobs are
+# prepared. Unlike 'jobargs', these options are NOT exported into the build
+# environment -- they are appended to the sbatch command line only.
+# Patterns are matched using Python's 're' module (re.search), so the patterns
+# are Python regular expressions.
+# NOTE on argument ordering: the full submit command is constructed as:
+#   <submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_opts> <script>
+# where <slurm_params> is the global setting from [buildenv], <slurm_opts> comes
+# from the node type's 'slurm_params' in the node_map, and <submit_opts> are the
+# user-supplied submitargs. Because submitargs are placed AFTER slurm_params and
+# slurm_opts, they can override values set by the site configuration (e.g.
+# partition, time limit, memory). Site operators should be aware of this when
+# defining allowed_submitargs patterns.
+# NOTE, the setting is optional. If you want to enable this feature, uncomment
+# the line below and define meaningful pattern(s). For example:
+# allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+# More advanced examples:
+#   - allow a specific time format only:
+#     allowed_submitargs = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
+#   - allow multiple options with one pattern:
+#     allowed_submitargs = [{"value": "--(time|partition|mem)=.*"}]
+#
+# It's safe to use the following line as default setting:
+allowed_submitargs = []
 
 # mechanisn to use to clone Git repository
 # 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)

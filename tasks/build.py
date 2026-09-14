@@ -55,8 +55,10 @@ _ERROR_NONE = "none"
 EXPORT_VARS_FILE = 'export_vars.sh'
 
 
+# addition of job.submit_opts was developed with the help of a locally hosted glm5.2 via Codex
 Job = namedtuple('Job',
-                 ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator', 'owner'))
+                 ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator', 'owner',
+                  'submit_opts'))
 
 # global repo_cfg
 repo_cfg = {}
@@ -211,32 +213,276 @@ def get_node_types(cfg):
     return node_type_map
 
 
-def get_allowed_exportvars(cfg):
+# Developed comment and *_RE definitions with the help of a locally
+#   hosted glm5.2 via Codex.
+# --- Defence-in-depth character allow-lists ---
+# jobargs are written to export_vars.sh and sourced by the shell, so '$' is
+# legitimate in values (e.g. EB_ARGS="/tmp/$USER/pr12345"). Keys must be
+# valid shell identifiers. Injection metacharacters (backticks, $(), ;, |, &,
+# spaces, newlines, etc.) are always rejected.
+JOBARG_KEY_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+# An empty value is allowed (e.g. FOO= to unset a variable), hence '*' not '+'.
+JOBARG_VALUE_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@$-]*$')
+# submitargs are appended to an sbatch command line executed with shell=True,
+# so they get the strictest charset (no '$', no spaces).
+SUBMITARG_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@-]+$')
+
+
+# Developed sanitize_arg with the help of a locally hosted glm5.2 via Codex.
+def sanitize_arg(arg, arg_type='jobargs'):
     """
-    Obtain list of allowed export variables
+    Check that an argument does not contain shell metacharacters.
+
+    This is a defence-in-depth check applied AFTER regex allow-list matching.
+    Even if a configured pattern is overly permissive (e.g. value '.*'), this
+    function rejects any arg that contains characters which could be interpreted
+    by the shell (e.g. backticks, $(), ;, |, &, spaces, newlines).
+
+    For 'jobargs', the key and value are checked separately: the key must be a
+    valid shell identifier, and the value may be empty (e.g. 'FOO=' to unset a
+    variable) or contain '$' (for variable references) but no other shell
+    metacharacters. For 'submitargs', the bare option string is checked against
+    a strict charset (no '$', no spaces).
+
+    Args:
+        arg (string): argument to check
+        arg_type (string): 'jobargs' or 'submitargs' (used in log messages)
+
+    Returns:
+        (bool): True if the argument is safe, False otherwise
+    """
+    fn = sys._getframe().f_code.co_name
+
+    if arg_type == 'jobargs':
+        if '=' not in arg:
+            log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
+            return False
+        key, value = arg.split('=', 1)
+        if not JOBARG_KEY_RE.match(key):
+            log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe key '{key}')")
+            return False
+        if not JOBARG_VALUE_RE.match(value):
+            log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe value '{value}')")
+            return False
+        return True
+    else:
+        if not SUBMITARG_RE.match(arg):
+            log(f"{fn}(): {arg_type} '{arg}' rejected (contains unsafe characters)")
+            return False
+        return True
+
+
+# Developed check_patterns_wellformed with the help of a locally hosted glm5.2 via Codex.
+def check_patterns_wellformed(patterns, setting_name):
+    """
+    Validate the structure of allowed-args patterns read from configuration.
+
+    Each entry must be a dict. For jobargs, each entry must have 'key' and
+    'value' keys with string values. For submitargs, each entry must have a
+    'value' key with a string value. Entries that do not conform are dropped
+    with a log message. A warning is logged for patterns whose 'value' regex
+    is '.*' (matches anything), as these effectively disable the allow-list
+    restriction for that entry.
+
+    Args:
+        patterns (list): list of pattern dicts parsed from configuration
+        setting_name (string): config setting name (used in log messages)
+
+    Returns:
+        (list): list of valid pattern dicts
+    """
+    fn = sys._getframe().f_code.co_name
+
+    if not isinstance(patterns, list):
+        log(f"{fn}(): {setting_name} is not a list, ignoring")
+        return []
+
+    valid = []
+    for entry in patterns:
+        if not isinstance(entry, dict):
+            log(f"{fn}(): {setting_name} entry {entry} is not a dict, ignoring")
+            continue
+        if not isinstance(entry.get('value', ''), str):
+            log(f"{fn}(): {setting_name} entry {entry} has non-string 'value', ignoring")
+            continue
+        if setting_name == config.BUILDENV_SETTING_ALLOWED_JOBARGS:
+            if not isinstance(entry.get('key', ''), str):
+                log(f"{fn}(): {setting_name} entry {entry} has non-string 'key', ignoring")
+                continue
+        if entry.get('value') == '.*':
+            log(f"{fn}(): WARNING {setting_name} entry {entry} uses '.*' for value, "
+                "which accepts any value -- ensure this is intentional")
+        valid.append(entry)
+
+    return valid
+
+
+# Developed check_allowed_args_config with the help of a locally hosted glm5.2 via Codex.
+def check_allowed_args_config(cfg):
+    """
+    Check at start-up that the allowed_jobargs, allowed_submitargs and (legacy)
+    allowed_exportvars settings, if present, contain valid JSON. Logs an error
+    and returns False if any setting cannot be decoded so the caller can refuse
+    to start the bot.
 
     Args:
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
 
     Returns:
-        (list): list of allowed export variable-value pairs of the format VARIABLE=VALUE
+        (bool): True if all present settings are valid JSON, False otherwise
     """
     fn = sys._getframe().f_code.co_name
 
     buildenv = cfg[config.SECTION_BUILDENV]
-    allowed_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
+    settings = [
+        config.BUILDENV_SETTING_ALLOWED_JOBARGS,
+        config.BUILDENV_SETTING_ALLOWED_SUBMITARGS,
+        config.BUILDENV_SETTING_ALLOWED_EXPORTVARS,
+    ]
+    ok = True
+    for setting_name in settings:
+        setting_str = buildenv.get(setting_name)
+        if setting_str:
+            try:
+                json.loads(setting_str)
+            except json.JSONDecodeError as err:
+                log(f"{fn}(): ERROR Value for {setting_name} ({setting_str}) "
+                    f"could not be decoded: {err}")
+                ok = False
+    return ok
+
+
+# Developed get_allowed_args with the help of a locally hosted glm5.2 via Codex.
+def get_allowed_args(cfg, setting_name):
+    """
+    Obtain list of allowed key-value patterns for jobargs or submitargs.
+
+    Each entry in the list is a dict with 'key' and 'value' keys whose values
+    are regular expressions. An argument 'KEY=VALUE' (for jobargs) or a bare
+    option string (for submitargs) is accepted if it matches one of the
+    patterns. For jobargs, the key must match the 'key' regex AND the value
+    must match the 'value' regex of the same entry.
+
+    Auto-migration: for the jobargs setting, if 'allowed_jobargs' is not
+    defined in the configuration, the function falls back to the legacy
+    'allowed_exportvars' setting. Each legacy entry (an exact 'KEY=VALUE'
+    string) is converted into a pattern {'key': '^KEY$', 'value': '^VALUE$'}
+    so that existing exact-match behaviour is preserved.
+
+    Args:
+        cfg (ConfigParser): ConfigParser instance holding full configuration
+            (typically read from 'app.cfg')
+        setting_name (string): config setting name, one of
+            config.BUILDENV_SETTING_ALLOWED_JOBARGS or
+            config.BUILDENV_SETTING_ALLOWED_SUBMITARGS
+
+    Returns:
+        (list): list of allowed pattern dicts, each with 'key' and 'value'
+            keys (for jobargs) or 'value' key only (for submitargs)
+    """
+    fn = sys._getframe().f_code.co_name
+
+    buildenv = cfg[config.SECTION_BUILDENV]
+    allowed_str = buildenv.get(setting_name)
     allowed = []
+
+    # --- BEGIN auto-migration from legacy 'allowed_exportvars' ---
+    # If allowed_jobargs is not set, fall back to allowed_exportvars and
+    # convert each exact 'KEY=VALUE' string into a regex pattern.
+    if (setting_name == config.BUILDENV_SETTING_ALLOWED_JOBARGS
+            and not allowed_str):
+        legacy_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
+        if legacy_str:
+            try:
+                legacy = json.loads(legacy_str)
+            except json.JSONDecodeError as err:
+                print(err)
+                log(f"{fn}(): ERROR Value for allowed_exportvars ({legacy_str}) could not be decoded: {err}")
+                return []
+            for item in legacy:
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    allowed.append({'key': f'^{re.escape(key)}$', 'value': f'^{re.escape(value)}$'})
+                else:
+                    allowed.append({'value': f'^{re.escape(item)}$'})
+            log(f"{fn}(): migrated allowed_exportvars to allowed_jobargs '{json.dumps(allowed)}'")
+            return check_patterns_wellformed(allowed, setting_name)
+    # --- END auto-migration from legacy 'allowed_exportvars' ---
 
     if allowed_str:
         try:
             allowed = json.loads(allowed_str)
         except json.JSONDecodeError as err:
             print(err)
-            error(f"{fn}(): Value for allowed_exportvars ({allowed_str}) could not be decoded.")
+            log(f"{fn}(): ERROR Value for {setting_name} ({allowed_str}) could not be decoded: {err}")
+            return []
 
-    log(f"{fn}(): allowed_exportvars '{json.dumps(allowed)}'")
+    allowed = check_patterns_wellformed(allowed, setting_name)
+    log(f"{fn}(): {setting_name} '{json.dumps(allowed)}'")
     return allowed
+
+
+# Developed validate_args with the help of a locally hosted glm5.2 via Codex.
+def validate_args(args, allowed_patterns, arg_type='jobargs'):
+    """
+    Validate a list of arguments against a list of allowed patterns.
+
+    For 'jobargs', each arg is a 'KEY=VALUE' string. It is accepted if there
+    is a pattern whose 'key' regex matches KEY and whose 'value' regex matches
+    VALUE (both for the same pattern entry).
+
+    For 'submitargs', each arg is a bare option string (e.g. '--time=01:00:00').
+    It is accepted if there is a pattern whose 'value' regex matches the arg.
+
+    Args:
+        args (list): list of argument strings to validate
+        allowed_patterns (list): list of pattern dicts (from get_allowed_args)
+        arg_type (string): 'jobargs' or 'submitargs' -- determines validation mode
+
+    Returns:
+        tuple of 2 elements containing
+        - (list): list of accepted arguments
+        - (list): list of rejected arguments
+    """
+    fn = sys._getframe().f_code.co_name
+
+    accepted = []
+    rejected = []
+
+    for arg in args:
+        matched = False
+        if arg_type == 'jobargs':
+            if '=' not in arg:
+                log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
+                rejected.append(arg)
+                continue
+            key, value = arg.split('=', 1)
+            for pattern in allowed_patterns:
+                key_re = pattern.get('key', '')
+                val_re = pattern.get('value', '')
+                if re.search(key_re, key) and re.search(val_re, value):
+                    matched = True
+                    break
+        else:
+            for pattern in allowed_patterns:
+                val_re = pattern.get('value', '')
+                if re.search(val_re, arg):
+                    matched = True
+                    break
+        if matched:
+            # Defence-in-depth: even if the regex pattern matched, reject any
+            # arg that contains shell metacharacters to prevent injection via
+            # jobargs (sourced by the shell) or submitargs (shell=True in run_cmd)
+            if sanitize_arg(arg, arg_type):
+                accepted.append(arg)
+            else:
+                rejected.append(arg)
+        else:
+            log(f"{fn}(): {arg_type} '{arg}' rejected (no matching pattern)")
+            rejected.append(arg)
+
+    return accepted, rejected
 
 
 def get_repo_cfg(cfg):
@@ -582,7 +828,8 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     build_env_cfg = get_build_env_cfg(cfg)
     node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
-    allowed_exportvars = get_allowed_exportvars(cfg)
+    allowed_jobargs = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_JOBARGS)
+    allowed_submitargs = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_SUBMITARGS)
 
     base_repo_name = pr.base.repo.full_name
     log(f"{fn}(): pr.base.repo.full_name '{base_repo_name}'")
@@ -611,15 +858,30 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
         log(f"{fn}(): found no accelerator requirement")
         accelerator = None
 
-    # determine exportvars from action_filter argument
-    exportvars = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
+    # Developed code for handling jobargs and submitargs with the help of a
+    #   locally hosted glm5.2 via Codex.
+    # determine jobargs from action_filter argument (jobargs is an alias for
+    # exportvariable, so both are retrieved via FILTER_COMPONENT_EXPORT)
+    jobargs = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
 
-    # all exportvar filters must be allowed in order to run any jobs
-    if exportvars:
-        not_allowed = [x for x in exportvars if x not in allowed_exportvars]
-        if not_allowed:
-            log(f"{fn}(): exportvariable(s) {not_allowed} not allowed")
+    # all jobargs must be allowed in order to run any jobs
+    if jobargs:
+        accepted_jobargs, rejected_jobargs = validate_args(jobargs, allowed_jobargs, arg_type='jobargs')
+        if rejected_jobargs:
+            log(f"{fn}(): jobargs(s) {rejected_jobargs} not allowed")
             return []
+        jobargs = accepted_jobargs
+
+    # determine submitargs from action_filter argument
+    submitargs = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_SUBMITARGS)
+
+    # all submitargs must be allowed in order to run any jobs
+    if submitargs:
+        accepted_submitargs, rejected_submitargs = validate_args(submitargs, allowed_submitargs, arg_type='submitargs')
+        if rejected_submitargs:
+            log(f"{fn}(): submitargs(s) {rejected_submitargs} not allowed")
+            return []
+        submitargs = accepted_submitargs
 
     jobs = []
     # Looping over all node types in the node_map to create a context for each node type and repository
@@ -694,12 +956,12 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
                             partition_info['os'], build_for_accel, node_type_name)
 
-            if exportvars:
-                prepare_export_vars_file(job_dir, exportvars)
+            if jobargs:
+                prepare_export_vars_file(job_dir, jobargs)
 
             # enlist jobs to proceed
             job = Job(job_dir, partition_info['cpu_subdir'], repo_id, partition_info['slurm_params'], year_month,
-                      pr_id, accelerator, job_owner)
+                      pr_id, accelerator, job_owner, ' '.join(submitargs))
             jobs.append(job)
 
     log(f"{fn}(): {len(jobs)} jobs to proceed after applying white list")
@@ -903,12 +1165,14 @@ def submit_job(job, cfg):
     if not os.path.exists(build_job_script_path):
         error(f"Build job script not found at {build_job_script_path}")
 
+    # addition of job.submit_opts was developed with the help of a locally hosted glm5.2 via Codex
     command_line = ' '.join([
         build_env_cfg[config.BUILDENV_SETTING_SUBMIT_COMMAND],
         build_env_cfg[config.BUILDENV_SETTING_SLURM_PARAMS],
         time_limit,
         job.slurm_opts] +
         ([f"--job-name='{job_name}'"] if job_name else []) +
+        ([job.submit_opts] if job.submit_opts else []) +
         [build_job_script_path])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,

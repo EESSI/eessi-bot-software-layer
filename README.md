@@ -1,3 +1,5 @@
+<!-- Some sections in this file were developed with the help of a locally hosted glm5.2 via Codex. -->
+
 > [!NOTE]
 > In the future the installation and configuration of the bot will be moved
 > to the EESSI docs, likely under [Build-test-deploy bot](https://www.eessi.io/docs/bot/).
@@ -755,6 +757,97 @@ A resonable default setting is
 ```ini
 allowed_exportvars = []
 ```
+
+```ini
+allowed_jobargs = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+```
+
+More advanced examples:
+
+```ini
+# allow any value for EB_ARGS (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345)
+allowed_jobargs = [{"key": "EB_ARGS", "value": ".*"}]
+
+# allow a specific set of install paths
+allowed_jobargs = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
+
+# allow unsetting a variable (empty value)
+allowed_jobargs = [{"key": "FOO", "value": ""}]
+```
+
+`allowed_jobargs` defines a list of key-value patterns that are allowed to be
+specified in a PR command with the `jobargs` filter (or its alias
+`exportvariable`). Each entry is a dict with `key` and `value` keys whose values
+are regular expressions. An argument `KEY=VALUE` is accepted if its key matches
+one entry's `key` regex AND its value matches that same entry's `value` regex;
+otherwise it is rejected and no jobs are prepared. Patterns are matched using
+Python's `re` module (`re.search`), so the patterns are Python regular
+expressions. These variables will be exported into the build environment before
+running the `bot/build.sh` script.
+
+If `allowed_jobargs` is not defined, the bot falls back to the legacy
+`allowed_exportvars` setting (see above), converting each exact `KEY=VALUE`
+string into an equivalent regex pattern. This preserves backward compatibility
+for existing deployments.
+
+A reasonable default setting is
+
+```ini
+allowed_jobargs = []
+```
+
+```ini
+allowed_submitargs = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+```
+
+More advanced examples:
+
+```ini
+# allow a specific time format only
+allowed_submitargs = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
+
+# allow multiple options with one pattern
+allowed_submitargs = [{"value": "--(time|partition|mem)=.*"}]
+```
+
+`allowed_submitargs` defines a list of patterns that are allowed to be passed to
+the job submission command (e.g. `sbatch`) via the `submitargs` filter. Each
+entry is a dict with a `value` key whose value is a regular expression. An
+argument is accepted if it matches one entry's `value` regex; otherwise it is
+rejected and no jobs are prepared. Patterns are matched using Python's `re`
+module (`re.search`), so the patterns are Python regular expressions. Unlike
+`jobargs`, these options are NOT exported into the build environment -- they are
+appended to the `sbatch` command line only.
+
+**Argument ordering:** The full submit command is constructed as:
+
+```bash
+<submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_opts> <script>
+```
+
+where `<slurm_params>` is the global setting from `[buildenv]`, `<slurm_opts>`
+comes from the node type's `slurm_params` in the node map, and `<submit_opts>`
+are the user-supplied submitargs. Because submitargs are placed _after_
+`slurm_params` and `slurm_opts`, they can override values set by the site
+configuration (e.g. partition, time limit, memory). Site operators should be
+aware of this when defining `allowed_submitargs` patterns.
+
+A reasonable default setting is
+
+```ini
+allowed_submitargs = []
+```
+
+**Security note:** As a defence-in-depth measure, the bot sanitizes all
+`jobargs` and `submitargs` values and rejects any argument that contains shell
+metacharacters. For `jobargs`, keys and values are validated separately: keys
+must be valid shell identifiers (`[a-zA-Z_][a-zA-Z0-9_]*`), and values may
+contain `$` (for variable references like `/tmp/$USER`) but no other shell
+metacharacters. For `submitargs`, the strict charset `[a-zA-Z0-9_=:./+,@-]` is
+used (no `$`, no spaces). This prevents shell injection even if a configured
+pattern is overly permissive (e.g. `value: ".*"`). Additionally, pattern entries
+that are not well-formed dicts with string `key`/`value` values are silently
+dropped at configuration read time.
 
 ```ini
 clone_git_repo_via = https
