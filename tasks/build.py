@@ -310,7 +310,7 @@ def get_repo_cfg(cfg):
     return repo_cfg
 
 
-def create_pr_dir(pr, cfg, event_info):
+def create_pr_dir(cfg, event_info):
     """
     Create working directory for job to be submitted. Full path to the working
     directory has the format
@@ -321,10 +321,9 @@ def create_pr_dir(pr, cfg, event_info):
     contains four digits, and month contains two digits
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
 
     Returns:
         tuple of 3 elements containing
@@ -346,8 +345,8 @@ def create_pr_dir(pr, cfg, event_info):
     jobs_base_dir = build_env_cfg[config.BUILDENV_SETTING_JOBS_BASE_DIR]
 
     year_month = datetime.today().strftime('%Y.%m')
-    pr_id = 'pr_%s' % pr.number
-    event_id = 'event_%s' % event_info['id']
+    pr_id = 'pr_%s' % event_info.pr_number
+    event_id = 'event_%s' % event_info.event_id
     event_dir = os.path.join(jobs_base_dir, year_month, pr_id, event_id)
     # NOTE the first call of os.makedirs cannot be deferred (i.e., to only
     # after it has been determined that any job will be created due to the
@@ -459,13 +458,13 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
     return 'downloading PR succeeded', 'no error while downloading PR', 0, _ERROR_NONE
 
 
-def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage):
+def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, download_pr_error, error_stage):
     """
     Handle download_pr() exit code and write helpful comment to PR in case of failure
 
     Args:
         base_repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+        pr_number (int): number of the pull request in the repository
         download_pr_exit_code (int): exit code from download_pr(). 0 if all tasks were successful,
             otherwise it corresponds to the error codes of git clone, git checkout, git apply, or curl.
         download_pr_error (string): none, or the output of stderr from git clone, git checkout, git apply or curl.
@@ -504,7 +503,7 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
             download_comment = f"```{download_pr_error}```"
 
         download_comment = pr_comments.create_comment(
-            repo_name=base_repo_name, pr_number=pr.number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
+            repo_name=base_repo_name, pr_number=pr_number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
             )
         if download_comment:
             log(f"{fn}(): created PR issue comment with id {download_comment.id}")
@@ -599,7 +598,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     #      instead of using a run_dir, maybe just create a unique dir for each
     #      job to be submitted? thus we could easily postpone the create_pr_dir
     #      call to just before download_pr
-    year_month, pr_id, run_dir = create_pr_dir(pr, cfg, event_info)
+    year_month, pr_id, run_dir = create_pr_dir(cfg, event_info)
 
     # determine accelerator from action_filter argument
     accelerators = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_ACCEL)
@@ -681,7 +680,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
                 base_repo_name, base_branch_name, pr, job_dir, clone_via=clone_git_repo_via,
                 )
-            comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
+            comment_download_pr(base_repo_name, pr.number, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
             msg = f"{fn}(): node type = '{node_type_name}' => "
             msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
@@ -1091,22 +1090,23 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
     return job_id_to_comment_map
 
 
-def check_build_permission(pr, event_info):
+def check_build_permission(event_info):
     """
-    Check if GitHub account whom's action resulted in an event is authorized to
+    Check if account whose action resulted in an event is authorized to
     trigger a build job
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
 
     Returns:
-        (bool): True -> GitHub account is authorized, False -> GitHub account is
-            not authorized
+        (bool): True -> account is authorized, False -> account is not authorized
     """
     fn = sys._getframe().f_code.co_name
 
-    log(f"{fn}(): build for PR {pr.number}")
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+
+    log(f"{fn}(): build for PR {pr_number}")
 
     cfg = config.read_config()
 
@@ -1116,18 +1116,17 @@ def check_build_permission(pr, event_info):
 
     log(f"{fn}(): build permission '{build_permission}'")
 
-    build_labeler = event_info['raw_request_body']['sender']['login']
+    build_labeler = event_info.event_triggered_by
     if build_labeler not in build_permission.split():
-        log(f"{fn}(): GH account '{build_labeler}' is not authorized to build")
+        log(f"{fn}(): account '{build_labeler}' is not authorized to build")
         no_build_permission_comment = buildenv.get(config.BUILDENV_SETTING_NO_BUILD_PERMISSION_COMMENT)
-        repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
-                                   pr.number,
+                                   pr_number,
                                    no_build_permission_comment.format(build_labeler=build_labeler),
                                    ChatLevels.MINIMAL)
         return False
     else:
-        log(f"{fn}(): GH account '{build_labeler}' is authorized to build")
+        log(f"{fn}(): account '{build_labeler}' is authorized to build")
         return True
 
 

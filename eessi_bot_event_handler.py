@@ -588,7 +588,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             build_msg += "not submitting build jobs"
             return build_msg
 
-        if check_build_permission(pr, event_info):
+        if check_build_permission(event_info):
             # use filter from command
             submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters, bot_command.build_params)
             if submitted_jobs is None or len(submitted_jobs) == 0:
@@ -757,7 +757,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         # Jobs can only be cancelled by the user who submitted the job
         # -> No need to proceed if user cannot submit jobs
-        if not check_build_permission(pr, event_info):
+        if not check_build_permission(event_info):
             self.log(f"User '{user}' does not have build permission - skipping cancellation.")
             return f"\n  - User `{user}` cannot submit or cancel build jobs."
 
