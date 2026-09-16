@@ -37,19 +37,12 @@ from pyghee.utils import error, log
 from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
+from tools.git import ERROR_CURL, ERROR_GIT_APPLY, ERROR_GIT_CHECKOUT, ERROR_GIT_CLONE, ERROR_NONE, ERROR_PR_DIFF
 from tools.pr_comments import ChatLevels, create_comment, update_comment
 from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
 
 # defaults (used if not specified via, eg, 'app.cfg')
 DEFAULT_JOB_TIME_LIMIT = "24:00:00"
-
-# error codes used in this file
-_ERROR_CURL = "curl"
-_ERROR_GIT_APPLY = "git apply"
-_ERROR_GIT_CHECKOUT = "git checkout"
-_ERROR_GIT_CLONE = "git clone"
-_ERROR_PR_DIFF = "pr_diff"
-_ERROR_NONE = "none"
 
 # other constants
 EXPORT_VARS_FILE = 'export_vars.sh'
@@ -417,12 +410,12 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         clone_output = ''
         clone_error = f"Unknown mechanism to clone Git repo: {clone_via}"
         clone_exit_code = 1
-        error_stage = _ERROR_GIT_CLONE
+        error_stage = ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
 
     clone_output, clone_error, clone_exit_code = clone_git_repo(repo_url, arch_job_dir)
     if clone_exit_code != 0:
-        error_stage = _ERROR_GIT_CLONE
+        error_stage = ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
 
     git_checkout_cmd = ' '.join([
@@ -434,7 +427,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         git_checkout_cmd, "checkout branch '%s'" % branch_name, arch_job_dir, raise_on_error=False
         )
     if checkout_exit_code != 0:
-        error_stage = _ERROR_GIT_CHECKOUT
+        error_stage = ERROR_GIT_CHECKOUT
         return checkout_output, checkout_err, checkout_exit_code, error_stage
 
     log(f'obtaining PR diff with command {pr_diff_cmd}')
@@ -442,7 +435,7 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         pr_diff_cmd, "obtain PR diff", arch_job_dir, raise_on_error=False
         )
     if pr_diff_exit_code != 0:
-        error_stage = _ERROR_PR_DIFF
+        error_stage = ERROR_PR_DIFF
         return pr_diff_output, pr_diff_error, pr_diff_exit_code, error_stage
 
     git_apply_cmd = f'git apply {pr.number}.diff'
@@ -451,11 +444,11 @@ def download_pr(repo_name, branch_name, pr, arch_job_dir, clone_via=None):
         git_apply_cmd, "apply patch", arch_job_dir, raise_on_error=False
         )
     if git_apply_exit_code != 0:
-        error_stage = _ERROR_GIT_APPLY
+        error_stage = ERROR_GIT_APPLY
         return git_apply_output, git_apply_error, git_apply_exit_code, error_stage
 
     # need to return four items also in case everything went fine
-    return 'downloading PR succeeded', 'no error while downloading PR', 0, _ERROR_NONE
+    return 'downloading PR succeeded', 'no error while downloading PR', 0, ERROR_NONE
 
 
 def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, download_pr_error, error_stage):
@@ -479,23 +472,23 @@ def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, downlo
         fn = sys._getframe().f_code.co_name
 
         download_pr_comments_cfg = config.read_config()[config.SECTION_DOWNLOAD_PR_COMMENTS]
-        if error_stage == _ERROR_GIT_CLONE:
+        if error_stage == ERROR_GIT_CLONE:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP]}")
-        elif error_stage == _ERROR_GIT_CHECKOUT:
+        elif error_stage == ERROR_GIT_CHECKOUT:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP]}")
-        elif error_stage == _ERROR_CURL:
+        elif error_stage == ERROR_CURL:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP]}")
-        elif error_stage == _ERROR_GIT_APPLY:
+        elif error_stage == ERROR_GIT_APPLY:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
-        elif error_stage == _ERROR_PR_DIFF:
+        elif error_stage == ERROR_PR_DIFF:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP]}")
