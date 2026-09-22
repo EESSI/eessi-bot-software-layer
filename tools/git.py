@@ -37,6 +37,7 @@ ERROR_GIT_CHECKOUT = "git checkout"
 ERROR_GIT_CLONE = "git clone"
 ERROR_GIT_FETCH = "git fetch"
 ERROR_GIT_DIFF = "git diff"
+ERROR_MAKE_DIRS = "makedirs"
 ERROR_PR_DIFF = "pr_diff"
 ERROR_NONE = "none"
 
@@ -134,16 +135,22 @@ class BaseGitRepository:
     def _get_pr_diff(self, pr_number, diff_filename):
         raise NotImplementedError("This method must be implemented per Git hosting platform.")
 
+    def _make_dirs(self):
+        try:
+            os.makedirs(self._directory, exist_ok=True)
+        except Exception as err:
+            err_msg = f"Unable to set up directory '{self._directory}' for Git repository '{self._repo_url}': '{err}'"
+            return "", err_msg, self._EC_NOT_OK, ERROR_MAKE_DIRS
+        return "Creating directories succeeded", "", self._EC_OK, ERROR_NONE
+
     def clone(self):
         if self._cloned:
             return self._ALREADY_CLONED
 
         # Ensure 'self._directory' exists
-        try:
-            os.makedirs(self._directory, exist_ok=True)
-        except Exception as err:
-            err_msg = f"Unable to set up directory '{self._directory}' for Git repository '{self._repo_url}': '{err}'"
-            return "", err_msg, self._EC_NOT_OK, ERROR_GIT_CLONE
+        stdout, stderr, exit_code, error_stage = self._make_dirs()
+        if exit_code != 0:
+            return stdout, stderr, exit_code, error_stage
 
         clone_cmd = f"git clone {self._repo_url} {self._directory}"
         clone_msg = f"Cloning repository '{self._repo_url}' to '{self._directory}'"
