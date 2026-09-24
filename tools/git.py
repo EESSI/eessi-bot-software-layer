@@ -11,6 +11,7 @@
 
 # Standard library imports
 import os
+from typing import Union
 
 # Third party imports (anything installed into the local Python environment)
 # (none)
@@ -265,3 +266,6 @@ class GitLabGitRepository(BaseGitRepository):
             return stdout, stderr, exit_code, error_stage
 
         return "Obtaining PR diff succeeded", "", self._EC_OK, ERROR_NONE
+
+
+GitRepository = Union[GitHubGitRepository | GitLabGitRepository]
