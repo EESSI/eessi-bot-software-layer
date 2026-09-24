@@ -247,3 +247,21 @@ class BaseGitRepository:
 class GitHubGitRepository(BaseGitRepository):
     # No overrides needed
     pass
+
+
+class GitLabGitRepository(BaseGitRepository):
+    def _get_pr_diff(self, pr_number, diff_filename):
+        # Requires override for GitLab. Contrary to most other Git hosting
+        # platforms, GitLab uses 'merge-requests/#/head' for PR ref names.
+        src_ref = f"merge-requests/{pr_number}/head"
+        dst_ref = f"pr{pr_number}"
+
+        stdout, stderr, exit_code, error_stage = self.fetch(src_ref, dst_ref)
+        if exit_code != 0:
+            return stdout, stderr, exit_code, error_stage
+
+        stdout, stderr, exit_code, error_stage = self.diff("HEAD", dst_ref, diff_filename, merge_base=True)
+        if exit_code != 0:
+            return stdout, stderr, exit_code, error_stage
+
+        return "Obtaining PR diff succeeded", "", self._EC_OK, ERROR_NONE
