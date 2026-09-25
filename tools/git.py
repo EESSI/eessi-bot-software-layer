@@ -269,3 +269,26 @@ class GitLabGitRepository(BaseGitRepository):
 
 
 GitRepository = Union[GitHubGitRepository | GitLabGitRepository]
+
+
+def create_git_repository_instance(repo_url, directory, git_host):
+    """
+    Creates a GitRepository instance for the given Git hosting platform.
+
+    Args:
+        repo_url (str): The HTTPS or SSH URL of the repository, as used by 'git clone'
+        directory (str or pathlib.Path): The directory the repository should be cloned to. The
+            directory will be created when calling clone() if it does not exist. If it already
+            exists it must be empty, otherwise cloning will fail.
+        git_host (str): The Git hosting platform the repository given as 'repo_url' is hosted on.
+            Must be either 'github' or 'gitlab'. Can be set independently of the configured Git
+            hosting platform (e.g. 'github' can be given even if the bot is configured for GitLab).
+
+    Returns:
+        GitRepository instance or None
+    """
+    if git_host == GITHUB:
+        return GitHubGitRepository(repo_url, directory)
+    elif git_host == GITLAB:
+        return GitLabGitRepository(repo_url, directory)
+    return None
