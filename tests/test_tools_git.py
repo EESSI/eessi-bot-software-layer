@@ -40,6 +40,14 @@ NO_HOSTING_PLATFORM_CFG.remove_option(config.SECTION_GIT, config.GIT_SETTING_HOS
 GITHUB_APP_NAME = GITHUB_CFG.get(config.SECTION_GITHUB, config.GITHUB_SETTING_APP_NAME)
 GITLAB_BOT_NAME = GITLAB_CFG.get(config.SECTION_GITLAB, config.GITLAB_SETTING_BOT_NAME)
 
+# For use in GitRepository tests
+REPO_URL = "https://example.org/testuser/software-layer.git"
+
+
+# Subclass for use in BaseGitRepository tests
+class GenericGitRepository(git.BaseGitRepository):
+    pass
+
 
 # Test get_git_hosting_platform() - valid configs
 @pytest.mark.parametrize("cfg,expected", [
@@ -147,3 +155,16 @@ def test_get_app_name(mock_get_git_host, mock_read_config, cfg, expected):
     # Test without provided cfg
     assert git.get_app_name() == expected
     mock_read_config.assert_called_once()
+
+
+def test_BaseGitRepository(tmp_path):
+    # Creating a BaseGitRepository instance should fail
+    with pytest.raises(NotImplementedError):
+        git.BaseGitRepository(REPO_URL, tmp_path)
+
+    # GenericGitRepository is a subclass of BaseGitRepository without any overrides
+    # Test properties
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    assert repo._cloned is False
+    assert repo._directory == tmp_path
+    assert repo._repo_url == REPO_URL
