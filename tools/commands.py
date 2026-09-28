@@ -11,6 +11,7 @@
 
 # Standard library imports
 import re
+import shlex
 import sys
 
 # Third party imports (anything installed into the local Python environment)
@@ -108,7 +109,7 @@ class EESSIBotCommand:
             Exception: if any other exception was caught
         """
         # TODO add function name to log messages
-        cmd_as_list = cmd_str.split()
+        cmd_as_list = shlex.split(cmd_str)
         self.command = cmd_as_list[0]  # E.g. 'build' or 'help'
         self.general_args = []
         self.action_filters = None
@@ -173,13 +174,14 @@ class EESSIBotCommand:
             log(f"Other general arguments: {self.general_args}")
             normalized_filters += other_filter_args
 
-            # Finally, change into a space-separated string, as expected by EESSIBotActionFilter
-            # e.g "arch:amd/zen2 accel:nvidia/cc90 repo:my.repo.io"
+            # Pass the list of filter strings directly to EESSIBotActionFilter.
+            # Using a list (rather than joining and re-splitting on whitespace)
+            # preserves spaces inside filter values (e.g. jobargs values that
+            # were quoted in the original command and extracted by shlex.split).
             if normalized_filters:
-                arg_str = " ".join(normalized_filters)
                 try:
-                    log(f"Passing the following arguments to the EESSIBotActionFilter: {arg_str}")
-                    self.action_filters = EESSIBotActionFilter(arg_str)
+                    log(f"Passing the following arguments to the EESSIBotActionFilter: {normalized_filters}")
+                    self.action_filters = EESSIBotActionFilter(filter_list=normalized_filters)
                 except EESSIBotActionFilterError as err:
                     log(f"ERROR: EESSIBotActionFilterError - {err.args}")
                     self.action_filters = None

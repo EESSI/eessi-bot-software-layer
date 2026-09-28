@@ -14,6 +14,8 @@
 #
 # license: GPLv2
 #
+# Some changes in this file were developed with the help of a locally hosted glm5.2 via Codex.
+#
 
 # Standard library imports
 import configparser
@@ -41,6 +43,8 @@ BOT_CONTROL_SETTING_CHATLEVEL = 'chatlevel'
 
 SECTION_BUILDENV = 'buildenv'
 BUILDENV_SETTING_ALLOWED_EXPORTVARS = 'allowed_exportvars'
+BUILDENV_SETTING_ALLOWED_JOBARGS = 'allowed_jobargs'
+BUILDENV_SETTING_ALLOWED_SUBMITARGS = 'allowed_submitargs'
 BUILDENV_SETTING_ALLOW_UPDATE_SUBMIT_OPTS = 'allow_update_submit_opts'
 BUILDENV_SETTING_BUILD_JOB_SCRIPT = 'build_job_script'
 BUILDENV_SETTING_BUILD_LOGS_DIR = 'build_logs_dir'

@@ -359,3 +359,75 @@ def test_match_accelerator_syntax_equal(accel_filter_equal_syntax):
     expected = True
     actual = accel_filter_equal_syntax.check_filters(context)
     assert expected == actual
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_jobargs_alias_resolves_to_exportvariable():
+    af = EESSIBotActionFilter("jobargs:SKIP_TESTS=yes")
+    expected = "exportvariable:SKIP_TESTS=yes"
+    actual = af.to_string()
+    assert expected == actual
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_jobargs_alias_retrieved_via_export_component():
+    from tools.filter import FILTER_COMPONENT_EXPORT
+    af = EESSIBotActionFilter("jobargs:SKIP_TESTS=yes")
+    actual = af.get_filter_by_component(FILTER_COMPONENT_EXPORT)
+    assert actual == ["SKIP_TESTS=yes"]
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_job_prefix_matches_jobid_not_jobargs():
+    from tools.filter import FILTER_COMPONENT_JOBID
+    from tools.filter import FILTER_COMPONENT_EXPORT
+    af = EESSIBotActionFilter("job:123")
+    actual = af.get_filter_by_component(FILTER_COMPONENT_JOBID)
+    assert actual == ["123"]
+    # Ensure 'job:' did not accidentally resolve to the exportvariable component
+    actual_export = af.get_filter_by_component(FILTER_COMPONENT_EXPORT)
+    assert actual_export == []
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_submitargs_component():
+    from tools.filter import FILTER_COMPONENT_SUBMITARGS
+    af = EESSIBotActionFilter("submitargs:--time=01:00:00")
+    actual = af.get_filter_by_component(FILTER_COMPONENT_SUBMITARGS)
+    assert actual == ["--time=01:00:00"]
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_exportvariable_with_colon_in_value():
+    from tools.filter import FILTER_COMPONENT_EXPORT
+    af = EESSIBotActionFilter("exportvariable:PATH=/usr/bin:/bin")
+    actual = af.get_filter_by_component(FILTER_COMPONENT_EXPORT)
+    assert actual == ["PATH=/usr/bin:/bin"]
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_check_filters_skips_submitargs():
+    af = EESSIBotActionFilter("arch:amd/zen2 submitargs:--time=01:00:00")
+    assert af.check_filters({"architecture": "amd/zen2"})
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_check_filters_skips_jobargs():
+    af = EESSIBotActionFilter("arch:amd/zen2 jobargs:SKIP_TESTS=yes")
+    assert af.check_filters({"architecture": "amd/zen2"})
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_multiple_submitargs():
+    from tools.filter import FILTER_COMPONENT_SUBMITARGS
+    af = EESSIBotActionFilter("submitargs:--time=01:00:00 submitargs:--partition=gpu")
+    actual = af.get_filter_by_component(FILTER_COMPONENT_SUBMITARGS)
+    assert actual == ["--time=01:00:00", "--partition=gpu"]
+
+
+# Developed with the help of a locally hosted glm5.2 via Codex.
+def test_multiple_jobargs():
+    from tools.filter import FILTER_COMPONENT_EXPORT
+    af = EESSIBotActionFilter("jobargs:SKIP_TESTS=yes jobargs:DEBUG=true")
+    actual = af.get_filter_by_component(FILTER_COMPONENT_EXPORT)
+    assert actual == ["SKIP_TESTS=yes", "DEBUG=true"]
