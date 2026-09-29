@@ -305,3 +305,86 @@ def test_BaseGitRepository_make_dirs(tmp_path):
     assert stderr == ""
     assert exit_code == 0
     assert error_stage == git.ERROR_NONE
+
+
+# Test BaseGitRepository.clone()
+@patch("tools.git.run_cmd")
+@patch("tools.git.BaseGitRepository._make_dirs")
+def test_BaseGitRepository_clone(mock_make_dirs, mock_run_cmd, tmp_path):
+    successful_make_dirs_message = "Creating directories succeeded"
+    successful_make_dirs_return = (successful_make_dirs_message, "", 0, git.ERROR_NONE)
+    # git logs to stderr by default
+    successful_clone_message = "Cloning succeeded"
+    successful_clone_return = ("", successful_clone_message, 0)
+
+    failed_make_dirs_message = "Creating directories failed"
+    failed_make_dirs_return = ("", failed_make_dirs_message, 1, git.ERROR_MAKE_DIRS)
+    # Failed git clone returns exit code 128
+    failed_clone_message = "Cloning failed"
+    failed_clone_return = ("", failed_clone_message, 128)
+
+    # Test _make_dirs fails
+    mock_make_dirs.return_value = failed_make_dirs_return
+    mock_run_cmd.return_value = successful_clone_return
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    stdout, stderr, exit_code, error_stage = repo.clone()
+    mock_make_dirs.assert_called_once()
+    mock_run_cmd.assert_not_called()
+    assert stdout == ""
+    assert failed_make_dirs_message in stderr
+    assert exit_code == 1
+    assert error_stage == git.ERROR_MAKE_DIRS
+    assert repo._cloned is False
+
+    mock_make_dirs.reset_mock()
+    mock_run_cmd.reset_mock()
+
+    # Test clone fails (e.g. directory is not empty)
+    mock_make_dirs.return_value = successful_make_dirs_return
+    mock_run_cmd.return_value = failed_clone_return
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    stdout, stderr, exit_code, error_stage = repo.clone()
+    mock_make_dirs.assert_called_once()
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert failed_clone_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_CLONE
+    assert repo._cloned is False
+
+    mock_make_dirs.reset_mock()
+    mock_run_cmd.reset_mock()
+
+    # Test clone succeeds
+    mock_make_dirs.return_value = successful_make_dirs_return
+    mock_run_cmd.return_value = successful_clone_return
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    stdout, stderr, exit_code, error_stage = repo.clone()
+    mock_make_dirs.assert_called_once()
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert successful_clone_message in stderr
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+    assert repo._cloned is True
+
+    # Check run_cmd arguments
+    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
+    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
+    assert cmd == f"git clone {REPO_URL} {tmp_path}"
+    assert len(log_msg) > 0
+    assert working_dir == tmp_path
+    assert raise_on_error is False
+
+    mock_make_dirs.reset_mock()
+    mock_run_cmd.reset_mock()
+
+    # Test repo already cloned (i.e. clone() has succeeded previously)
+    stdout, stderr, exit_code, error_stage = repo.clone()
+    mock_make_dirs.assert_not_called()
+    mock_run_cmd.assert_not_called()
+    assert len(stdout) > 0
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+    assert repo._cloned is True
