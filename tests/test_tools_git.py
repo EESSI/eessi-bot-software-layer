@@ -11,6 +11,8 @@
 
 # Standard library imports
 import copy
+import os
+import sys
 from unittest.mock import MagicMock, patch
 
 # Third party imports (anything installed into the local Python environment)
@@ -225,6 +227,80 @@ def test_BaseGitRepository_get_pr_diff(mock_diff, mock_fetch, tmp_path):
     stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
     mock_fetch.assert_called_once_with(src_ref, dst_ref)
     mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
+    assert len(stdout) > 0
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+
+
+# Test BaseGitRepository._make_dirs()
+def test_BaseGitRepository_make_dirs(tmp_path):
+    repo_path = tmp_path / "software-layer"
+
+    # Test 'directory' exists as a file - should return non-zero exit code and error stage ERROR_MAKEDIRS
+    repo_path.touch()
+    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
+    assert repo_path.is_file()
+    assert stdout == ""
+    assert len(stderr) > 0
+    assert exit_code != 0
+    assert error_stage == git.ERROR_MAKE_DIRS
+    repo_path.unlink()
+
+    # Test missing write permission - should raise non-zero exit code and error stage ERROR_MAKEDIRS
+    # Skip the test if not on Linux or if running as root, otherwise it will fail
+    if sys.platform != "linux":
+        print("Not running on Linux - skipping BaseGitRepository._make_dirs missing permission test")
+    elif os.geteuid() == 0:
+        print("Running as root - skipping BaseGitRepository._make_dirs missing permission test")
+    else:
+        # Create parent directory without write permission
+        repo_path.mkdir(mode=0o500, parents=True)
+        unable_to_create_path = repo_path / "unable-to-create"
+        stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, unable_to_create_path)._make_dirs()
+        assert not unable_to_create_path.exists()
+        assert stdout == ""
+        assert len(stderr) > 0
+        assert exit_code != 0
+        assert error_stage == git.ERROR_MAKE_DIRS
+        repo_path.rmdir()
+
+    # Test lowest path level missing
+    assert not repo_path.exists()
+    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
+    assert repo_path.exists() and repo_path.is_dir()
+    assert len(stdout) > 0
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+    repo_path.rmdir()
+
+    # Test two lowest path levels missing
+    subdir = repo_path / "subdir"
+    assert not repo_path.exists()
+    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, subdir)._make_dirs()
+    assert repo_path.exists() and repo_path.is_dir()
+    assert subdir.exists() and subdir.is_dir()
+    assert len(stdout) > 0
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+    subdir.rmdir()
+
+    # Test 'directory' already exists as a directory
+    repo_path.mkdir(parents=True, exist_ok=True)
+    assert repo_path.exists() and repo_path.is_dir()
+    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
+    assert repo_path.exists() and repo_path.is_dir()
+    assert len(stdout) > 0
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+    repo_path.rmdir()
+
+    # Test 'directory' being given as a string
+    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path.as_posix())._make_dirs()
+    assert repo_path.exists() and repo_path.is_dir()
     assert len(stdout) > 0
     assert stderr == ""
     assert exit_code == 0
