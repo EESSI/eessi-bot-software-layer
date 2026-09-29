@@ -168,3 +168,64 @@ def test_BaseGitRepository(tmp_path):
     assert repo._cloned is False
     assert repo._directory == tmp_path
     assert repo._repo_url == REPO_URL
+
+
+# Test BaseGitRepository._get_pr_diff()
+@patch("tools.git.BaseGitRepository.fetch")
+@patch("tools.git.BaseGitRepository.diff")
+def test_BaseGitRepository_get_pr_diff(mock_diff, mock_fetch, tmp_path):
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    pr_number = 1234
+    diff_filename = f"{pr_number}.diff"
+    src_ref = f"pull/{pr_number}/head"
+    dst_ref = f"pr{pr_number}"
+    # git logs to stderr by default
+    successful_fetch_message = "Fetch successful"
+    successful_fetch_return = ("", successful_fetch_message, 0, git.ERROR_NONE)
+    successful_diff_return = ("", "", 0, git.ERROR_NONE)
+    # Failed git fetch/diff returns exit code 128
+    failed_fetch_message = "Fetch failed"
+    failed_fetch_return = ("", failed_fetch_message, 128, git.ERROR_GIT_FETCH)
+    failed_diff_message = "Diff failed"
+    failed_diff_return = ("", failed_diff_message, 128, git.ERROR_GIT_DIFF)
+
+    # Test fetch stage fails
+    mock_fetch.return_value = failed_fetch_return
+    mock_diff.return_value = successful_diff_return
+    stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
+    mock_fetch.assert_called_once_with(src_ref, dst_ref)
+    # _get_pr_diff should return early if any stage fails
+    mock_diff.assert_not_called()
+    assert stdout == ""
+    assert failed_fetch_message in stderr
+    # _get_pr_diff should pass the exit code if any stage fails
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_FETCH
+
+    mock_fetch.reset_mock()
+    mock_diff.reset_mock()
+
+    # Test diff stage fails
+    mock_fetch.return_value = successful_fetch_return
+    mock_diff.return_value = failed_diff_return
+    stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
+    mock_fetch.assert_called_once_with(src_ref, dst_ref)
+    mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
+    assert stdout == ""
+    assert failed_diff_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_DIFF
+
+    mock_fetch.reset_mock()
+    mock_diff.reset_mock()
+
+    # Test _get_pr_diff successful
+    mock_fetch.return_value = successful_fetch_return
+    mock_diff.return_value = successful_diff_return
+    stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
+    mock_fetch.assert_called_once_with(src_ref, dst_ref)
+    mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
+    assert len(stdout) > 0
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
