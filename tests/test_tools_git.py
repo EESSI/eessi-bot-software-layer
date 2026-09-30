@@ -577,3 +577,57 @@ def test_BaseGitRepository_diff(mock_run_cmd, tmp_path):
     assert len(log_msg) > 0
     assert working_dir == tmp_path
     assert raise_on_error is False
+
+
+# Test BaseGitRepository.apply()
+@patch("tools.git.run_cmd")
+def test_BaseGitRepository_apply(mock_run_cmd, tmp_path):
+    patch = "42.diff"
+    # No output on successful git apply
+    successful_apply_return = ("", "", 0)
+    # git apply error with exit code 128
+    failed_apply_message = "Apply failed"
+    failed_apply_return = ("", failed_apply_message, 128)
+
+    # Test pre-clone apply - should return early with non-zero exit code and error stage ERROR_GIT_APPLY
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    assert repo._cloned is False
+    stdout, stderr, exit_code, error_stage = repo.apply(patch)
+    mock_run_cmd.assert_not_called()
+    assert stdout == ""
+    assert len(stderr) > 0
+    assert exit_code != 0
+    assert error_stage == git.ERROR_GIT_APPLY
+
+    mock_run_cmd.reset_mock()
+
+    # Manually set '_cloned' property
+    repo._cloned = True
+
+    # Test apply fails (e.g. 'patch' does not exist)
+    mock_run_cmd.return_value = failed_apply_return
+    stdout, stderr, exit_code, error_stage = repo.apply(patch)
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert failed_apply_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_APPLY
+
+    mock_run_cmd.reset_mock()
+
+    # Test successful apply
+    mock_run_cmd.return_value = successful_apply_return
+    stdout, stderr, exit_code, error_stage = repo.apply(patch)
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert stderr == ""
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+
+    # Check run_cmd arguments
+    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
+    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
+    assert cmd == f"git apply {patch}"
+    assert len(log_msg) > 0
+    assert working_dir == tmp_path
+    assert raise_on_error is False
