@@ -443,3 +443,60 @@ def test_BaseGitRepository_checkout(mock_run_cmd, tmp_path):
     assert len(log_msg) > 0
     assert working_dir == tmp_path
     assert raise_on_error is False
+
+
+# Test BaseGitRepository.fetch()
+@patch("tools.git.run_cmd")
+def test_BaseGitRepository_fetch(mock_run_cmd, tmp_path):
+    pr_number = 42
+    src_ref = f"pull/{pr_number}/head"
+    dst_ref = f"pr{pr_number}"
+    # git logs to stderr by default
+    successful_fetch_message = "Fetch succeeded"
+    successful_fetch_return = ("", successful_fetch_message, 0)
+    # 'fatal' git fetch error returns exit code 128
+    failed_fetch_message = "Fetch failed"
+    failed_fetch_return = ("", failed_fetch_message, 128)
+
+    # Test pre-clone fetch - should return early with non-zero exit code and error stage ERROR_GIT_FETCH
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    assert repo._cloned is False
+    stdout, stderr, exit_code, error_stage = repo.fetch(src_ref, dst_ref)
+    mock_run_cmd.assert_not_called()
+    assert stdout == ""
+    assert len(stderr) > 0
+    assert exit_code != 0
+    assert error_stage == git.ERROR_GIT_FETCH
+
+    mock_run_cmd.reset_mock()
+
+    # Manually set '_cloned' property
+    repo._cloned = True
+
+    # Test fetch fails (e.g. 'src_ref' does not exist)
+    mock_run_cmd.return_value = failed_fetch_return
+    stdout, stderr, exit_code, error_stage = repo.fetch(src_ref, dst_ref)
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert failed_fetch_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_FETCH
+
+    mock_run_cmd.reset_mock()
+
+    # Test successful fetch
+    mock_run_cmd.return_value = successful_fetch_return
+    stdout, stderr, exit_code, error_stage = repo.fetch(src_ref, dst_ref)
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert successful_fetch_message in stderr
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+
+    # Check run_cmd arguments
+    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
+    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
+    assert cmd == f"git fetch origin {src_ref}:{dst_ref}"
+    assert len(log_msg) > 0
+    assert working_dir == tmp_path
+    assert raise_on_error is False
