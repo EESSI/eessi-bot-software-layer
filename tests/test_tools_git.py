@@ -388,3 +388,58 @@ def test_BaseGitRepository_clone(mock_make_dirs, mock_run_cmd, tmp_path):
     assert exit_code == 0
     assert error_stage == git.ERROR_NONE
     assert repo._cloned is True
+
+
+# Test BaseGitRepository.checkout()
+@patch("tools.git.run_cmd")
+def test_BaseGitRepository_checkout(mock_run_cmd, tmp_path):
+    branch = "main"
+    # git logs to stderr by default
+    successful_checkout_message = "Checkout succeeded"
+    successful_checkout_return = ("", successful_checkout_message, 0)
+    # 'fatal' git checkout error returns exit code 128
+    failed_checkout_message = "Checkout failed"
+    failed_checkout_return = ("", failed_checkout_message, 128)
+
+    # Test pre-clone checkout - should return early with non-zero exit code and error stage ERROR_GIT_CHECKOUT
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    assert repo._cloned is False
+    stdout, stderr, exit_code, error_stage = repo.checkout(branch)
+    mock_run_cmd.assert_not_called()
+    assert stdout == ""
+    assert len(stderr) > 0
+    assert exit_code != 0
+    assert error_stage == git.ERROR_GIT_CHECKOUT
+
+    mock_run_cmd.reset_mock()
+
+    # Manually set '_cloned' property
+    repo._cloned = True
+
+    # Test checkout fails (e.g. branch does not exist)
+    mock_run_cmd.return_value = failed_checkout_return
+    stdout, stderr, exit_code, error_stage = repo.checkout(branch)
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert failed_checkout_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_CHECKOUT
+
+    mock_run_cmd.reset_mock()
+
+    # Test successful checkout
+    mock_run_cmd.return_value = successful_checkout_return
+    stdout, stderr, exit_code, error_stage = repo.checkout(branch)
+    mock_run_cmd.assert_called_once()
+    assert stdout == ""
+    assert successful_checkout_message in stderr
+    assert exit_code == 0
+    assert error_stage == git.ERROR_NONE
+
+    # Check run_cmd arguments
+    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
+    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
+    assert cmd == f"git checkout {branch}"
+    assert len(log_msg) > 0
+    assert working_dir == tmp_path
+    assert raise_on_error is False
