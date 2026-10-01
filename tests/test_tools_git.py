@@ -631,3 +631,140 @@ def test_BaseGitRepository_apply(mock_run_cmd, tmp_path):
     assert len(log_msg) > 0
     assert working_dir == tmp_path
     assert raise_on_error is False
+
+
+# Test BaseGitRepository.download_pr()
+@patch("tools.git.BaseGitRepository.clone")
+@patch("tools.git.BaseGitRepository.checkout")
+@patch("tools.git.BaseGitRepository._get_pr_diff")
+@patch("tools.git.BaseGitRepository.apply")
+def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checkout, mock_clone, tmp_path):
+    pr_number = 42
+    diff_filename = f"{pr_number}.diff"
+    base_branch = "main"
+
+    failed_clone_message = "Cloning failed"
+    failed_clone_return = ("", failed_clone_message, 128, git.ERROR_GIT_CLONE)
+    failed_checkout_message = "Checkout failed"
+    failed_checkout_return = ("", failed_checkout_message, 128, git.ERROR_GIT_CHECKOUT)
+    failed_get_pr_diff_message = "Fetch failed"
+    failed_get_pr_diff_return = ("", failed_get_pr_diff_message, 128, git.ERROR_GIT_FETCH)
+    failed_apply_message = "Apply failed"
+    failed_apply_return = ("", failed_apply_message, 128, git.ERROR_GIT_APPLY)
+
+    successful_return = ("", "", 0, git.ERROR_NONE)
+
+    # Test clone stage fails
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    mock_clone.return_value = failed_clone_return
+    mock_checkout.return_value = successful_return
+    mock_get_pr_diff.return_value = successful_return
+    mock_apply.return_value = successful_return
+
+    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
+
+    mock_clone.assert_called_once_with()
+    mock_checkout.assert_not_called()
+    mock_get_pr_diff.assert_not_called()
+    mock_apply.assert_not_called()
+
+    assert stdout == ""
+    assert failed_clone_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_CLONE
+
+    mock_clone.reset_mock()
+    mock_checkout.reset_mock()
+    mock_get_pr_diff.reset_mock()
+    mock_apply.reset_mock()
+
+    # Manually set '_cloned' property
+    repo._cloned = True
+
+    # Test checkout stage fails
+    mock_clone.return_value = successful_return
+    mock_checkout.return_value = failed_checkout_return
+    mock_get_pr_diff.return_value = successful_return
+    mock_apply.return_value = successful_return
+
+    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
+
+    # download_pr() should still call clone() if '_cloned' is true
+    mock_clone.assert_called_once_with()
+    mock_checkout.assert_called_once_with(base_branch)
+    mock_get_pr_diff.assert_not_called()
+    mock_apply.assert_not_called()
+
+    assert stdout == ""
+    assert failed_checkout_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_CHECKOUT
+
+    mock_clone.reset_mock()
+    mock_checkout.reset_mock()
+    mock_get_pr_diff.reset_mock()
+    mock_apply.reset_mock()
+
+    # Test _get_pr_diff stage fails
+    mock_clone.return_value = successful_return
+    mock_checkout.return_value = successful_return
+    mock_get_pr_diff.return_value = failed_get_pr_diff_return
+    mock_apply.return_value = successful_return
+
+    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
+
+    mock_clone.assert_called_once_with()
+    mock_checkout.assert_called_once_with(base_branch)
+    mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
+    mock_apply.assert_not_called()
+
+    assert stdout == ""
+    assert failed_get_pr_diff_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_FETCH
+
+    mock_clone.reset_mock()
+    mock_checkout.reset_mock()
+    mock_get_pr_diff.reset_mock()
+    mock_apply.reset_mock()
+
+    # Test apply stage fails
+    mock_clone.return_value = successful_return
+    mock_checkout.return_value = successful_return
+    mock_get_pr_diff.return_value = successful_return
+    mock_apply.return_value = failed_apply_return
+
+    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
+
+    mock_clone.assert_called_once_with()
+    mock_checkout.assert_called_once_with(base_branch)
+    mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
+    mock_apply.assert_called_once_with(diff_filename)
+
+    assert stdout == ""
+    assert failed_apply_message in stderr
+    assert exit_code == 128
+    assert error_stage == git.ERROR_GIT_APPLY
+
+    mock_clone.reset_mock()
+    mock_checkout.reset_mock()
+    mock_get_pr_diff.reset_mock()
+    mock_apply.reset_mock()
+
+    # Test download_pr() succeeds
+    mock_clone.return_value = successful_return
+    mock_checkout.return_value = successful_return
+    mock_get_pr_diff.return_value = successful_return
+    mock_apply.return_value = successful_return
+
+    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
+
+    mock_clone.assert_called_once_with()
+    mock_checkout.assert_called_once_with(base_branch)
+    mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
+    mock_apply.assert_called_once_with(diff_filename)
+
+    assert stdout == "Downloading PR succeeded"
+    assert stderr == ""
+    assert exit_code == git.BaseGitRepository._EC_OK
+    assert error_stage == git.ERROR_NONE
