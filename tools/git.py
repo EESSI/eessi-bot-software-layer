@@ -268,7 +268,7 @@ class GitLabGitRepository(BaseGitRepository):
         return "Obtaining PR diff succeeded", "", self._EC_OK, ERROR_NONE
 
 
-GitRepository = Union[GitHubGitRepository | GitLabGitRepository]
+GitRepository = Union[GitHubGitRepository, GitLabGitRepository]
 
 
 def create_git_repository_instance(repo_url, directory, git_host):
