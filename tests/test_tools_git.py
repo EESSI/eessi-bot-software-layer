@@ -159,6 +159,7 @@ def test_get_app_name(mock_get_git_host, mock_read_config, cfg, expected):
     mock_read_config.assert_called_once()
 
 
+# Test BaseGitRepository class
 def test_BaseGitRepository(tmp_path):
     # Creating a BaseGitRepository instance should fail
     with pytest.raises(NotImplementedError):
@@ -768,3 +769,55 @@ def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checko
     assert stderr == ""
     assert exit_code == git.BaseGitRepository._EC_OK
     assert error_stage == git.ERROR_NONE
+
+
+# Verify GitRepository type definition
+def test_GitRepository():
+    expected_git_repository_types = {git.GitHubGitRepository, git.GitLabGitRepository}
+    # Need to use __args__ for Python 3.9 compatibility
+    actual_git_repository_types = set(git.GitRepository.__args__)
+    assert actual_git_repository_types == expected_git_repository_types
+
+
+# List of constants and methods defined in BaseGitRepository - used in subclass tests
+BASE_GIT_REPOSITORY_ATTRIBUTES = [
+    # Constants
+    "_EC_OK", "_EC_NOT_OK",
+    "_MSG_REPO_ALREADY_CLONED", "_ERR_MSG_REPO_NOT_CLONED_YET",
+    "_ALREADY_CLONED", "_NOT_CLONED_YET",
+
+    # Methods
+    "__init__", "_get_pr_diff", "_make_dirs",
+    "clone", "checkout", "fetch", "diff", "apply",
+    "download_pr",
+]
+
+
+# Test GitRepository classes
+@pytest.mark.parametrize("subclass,overrides", [
+    # GitHubGitRepository should not override anything
+    (git.GitHubGitRepository, []),
+
+    # GitLabGitRepository should only override _get_pr_diff()
+    (git.GitLabGitRepository, ["_get_pr_diff"]),
+])
+def test_GitRepository_subclasses(tmp_path, subclass, overrides):
+    # The subclass should be a proper subclass of BaseGitRepository
+    assert issubclass(subclass, git.BaseGitRepository)
+    assert not issubclass(git.BaseGitRepository, subclass)
+
+    subclass_repo = subclass(REPO_URL, tmp_path)
+    base_repo = GenericGitRepository(REPO_URL, tmp_path)
+
+    # Check overrides in subclass
+    for attr in BASE_GIT_REPOSITORY_ATTRIBUTES:
+        subclass_attr = getattr(subclass_repo, attr)
+        base_attr = getattr(base_repo, attr)
+        should_be_overridden = attr in overrides
+
+        if callable(base_attr):
+            is_overridden = subclass_attr.__func__ is not base_attr.__func__
+        else:
+            is_overridden = subclass_attr is not base_attr
+
+        assert is_overridden is should_be_overridden
