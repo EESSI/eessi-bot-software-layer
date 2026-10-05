@@ -872,3 +872,14 @@ def test_GitLabGitRepository_get_pr_diff(mock_diff, mock_fetch, tmp_path, fetch_
     else:
         mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
     assert actual_output == expected_output
+
+
+# Test create_git_repository_instance()
+@pytest.mark.parametrize("git_host,expected_type", [
+    (git.GITHUB, git.GitHubGitRepository),
+    (git.GITLAB, git.GitLabGitRepository),
+    ("unknown", type(None)),
+])
+def test_create_git_repository_instance(tmp_path, git_host, expected_type):
+    repo = git.create_git_repository_instance(REPO_URL, tmp_path, git_host)
+    assert type(repo) is expected_type
