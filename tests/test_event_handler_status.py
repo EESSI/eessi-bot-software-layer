@@ -20,7 +20,7 @@ from tools.commands import EESSIBotCommand
 
 def make_handler(app_name):
     handler = eh.EESSIBotSoftwareLayer.__new__(eh.EESSIBotSoftwareLayer)
-    handler.cfg = {'github': {'app_name': app_name}}
+    handler.cfg = {}
     handler.log = MagicMock()
     return handler
 
@@ -38,7 +38,8 @@ EVENT_INFO = {'raw_request_body': {'repository': {'full_name': 'org/repo'}, 'iss
 def test_status_instance_filter(cmd, expect_comment):
     handler = make_handler('my-bot')
     table = {'arch': [], 'date': [], 'status': [], 'url': [], 'result': []}
-    with patch.object(eh, 'request_bot_build_issue_comments', return_value=table), \
+    with patch.object(eh, 'get_app_name', return_value='my-bot'), \
+            patch.object(eh, 'request_bot_build_issue_comments', return_value=table), \
             patch.object(eh, 'create_comment') as mock_create:
         mock_create.return_value.html_url = 'http://url'
         result = handler.handle_bot_command_status(EVENT_INFO, EESSIBotCommand(cmd))
