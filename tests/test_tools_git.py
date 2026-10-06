@@ -174,601 +174,469 @@ def test_BaseGitRepository(tmp_path):
 
 
 # Test BaseGitRepository._get_pr_diff()
+@pytest.mark.parametrize("fetch_return,diff_return,error_stage", [
+    # Test fetch() fails
+    (
+        ("", "Fetch failed", 128, git.ERROR_GIT_FETCH),
+        ("", "", 0, git.ERROR_NONE),
+        git.ERROR_GIT_FETCH,
+    ),
+
+    # Test diff() fails
+    (
+        ("Fetch successful", "", 0, git.ERROR_NONE),
+        ("", "Diff failed", 128, git.ERROR_GIT_DIFF),
+        git.ERROR_GIT_DIFF,
+    ),
+
+    # Test _get_pr_diff() successful
+    (
+        ("Fetch successful", "", 0, git.ERROR_NONE),
+        ("Diff successful", "", 0, git.ERROR_NONE),
+        git.ERROR_NONE,
+    ),
+])
 @patch("tools.git.BaseGitRepository.fetch")
 @patch("tools.git.BaseGitRepository.diff")
-def test_BaseGitRepository_get_pr_diff(mock_diff, mock_fetch, tmp_path):
-    repo = GenericGitRepository(REPO_URL, tmp_path)
-    pr_number = 1234
-    diff_filename = f"{pr_number}.diff"
-    src_ref = f"pull/{pr_number}/head"
-    dst_ref = f"pr{pr_number}"
-    # git logs to stderr by default
-    successful_fetch_message = "Fetch successful"
-    successful_fetch_return = ("", successful_fetch_message, 0, git.ERROR_NONE)
-    successful_diff_return = ("", "", 0, git.ERROR_NONE)
-    # Failed git fetch/diff returns exit code 128
-    failed_fetch_message = "Fetch failed"
-    failed_fetch_return = ("", failed_fetch_message, 128, git.ERROR_GIT_FETCH)
-    failed_diff_message = "Diff failed"
-    failed_diff_return = ("", failed_diff_message, 128, git.ERROR_GIT_DIFF)
-
-    # Test fetch stage fails
-    mock_fetch.return_value = failed_fetch_return
-    mock_diff.return_value = successful_diff_return
-    stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
-    mock_fetch.assert_called_once_with(src_ref, dst_ref)
-    # _get_pr_diff should return early if any stage fails
-    mock_diff.assert_not_called()
-    assert stdout == ""
-    assert failed_fetch_message in stderr
-    # _get_pr_diff should pass the exit code if any stage fails
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_FETCH
-
-    mock_fetch.reset_mock()
-    mock_diff.reset_mock()
-
-    # Test diff stage fails
-    mock_fetch.return_value = successful_fetch_return
-    mock_diff.return_value = failed_diff_return
-    stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
-    mock_fetch.assert_called_once_with(src_ref, dst_ref)
-    mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
-    assert stdout == ""
-    assert failed_diff_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_DIFF
-
-    mock_fetch.reset_mock()
-    mock_diff.reset_mock()
-
-    # Test _get_pr_diff successful
-    mock_fetch.return_value = successful_fetch_return
-    mock_diff.return_value = successful_diff_return
-    stdout, stderr, exit_code, error_stage = repo._get_pr_diff(pr_number, diff_filename)
-    mock_fetch.assert_called_once_with(src_ref, dst_ref)
-    mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
-    assert len(stdout) > 0
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-
-
-# Test BaseGitRepository._make_dirs()
-def test_BaseGitRepository_make_dirs(tmp_path):
-    repo_path = tmp_path / "software-layer"
-
-    # Test 'directory' exists as a file - should return non-zero exit code and error stage ERROR_MAKEDIRS
-    repo_path.touch()
-    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
-    assert repo_path.is_file()
-    assert stdout == ""
-    assert len(stderr) > 0
-    assert exit_code != 0
-    assert error_stage == git.ERROR_MAKE_DIRS
-    repo_path.unlink()
-
-    # Test missing write permission - should raise non-zero exit code and error stage ERROR_MAKEDIRS
-    # Skip the test if not on Linux or if running as root, otherwise it will fail
-    if sys.platform != "linux":
-        print("Not running on Linux - skipping BaseGitRepository._make_dirs missing permission test")
-    elif os.geteuid() == 0:
-        print("Running as root - skipping BaseGitRepository._make_dirs missing permission test")
-    else:
-        # Create parent directory without write permission
-        repo_path.mkdir(mode=0o500, parents=True)
-        unable_to_create_path = repo_path / "unable-to-create"
-        stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, unable_to_create_path)._make_dirs()
-        assert not unable_to_create_path.exists()
-        assert stdout == ""
-        assert len(stderr) > 0
-        assert exit_code != 0
-        assert error_stage == git.ERROR_MAKE_DIRS
-        repo_path.rmdir()
-
-    # Test lowest path level missing
-    assert not repo_path.exists()
-    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
-    assert repo_path.exists() and repo_path.is_dir()
-    assert len(stdout) > 0
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-    repo_path.rmdir()
-
-    # Test two lowest path levels missing
-    subdir = repo_path / "subdir"
-    assert not repo_path.exists()
-    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, subdir)._make_dirs()
-    assert repo_path.exists() and repo_path.is_dir()
-    assert subdir.exists() and subdir.is_dir()
-    assert len(stdout) > 0
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-    subdir.rmdir()
-
-    # Test 'directory' already exists as a directory
-    repo_path.mkdir(parents=True, exist_ok=True)
-    assert repo_path.exists() and repo_path.is_dir()
-    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
-    assert repo_path.exists() and repo_path.is_dir()
-    assert len(stdout) > 0
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-    repo_path.rmdir()
-
-    # Test 'directory' being given as a string
-    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path.as_posix())._make_dirs()
-    assert repo_path.exists() and repo_path.is_dir()
-    assert len(stdout) > 0
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-
-
-# Test BaseGitRepository.clone()
-@patch("tools.git.run_cmd")
-@patch("tools.git.BaseGitRepository._make_dirs")
-def test_BaseGitRepository_clone(mock_make_dirs, mock_run_cmd, tmp_path):
-    successful_make_dirs_message = "Creating directories succeeded"
-    successful_make_dirs_return = (successful_make_dirs_message, "", 0, git.ERROR_NONE)
-    # git logs to stderr by default
-    successful_clone_message = "Cloning succeeded"
-    successful_clone_return = ("", successful_clone_message, 0)
-
-    failed_make_dirs_message = "Creating directories failed"
-    failed_make_dirs_return = ("", failed_make_dirs_message, 1, git.ERROR_MAKE_DIRS)
-    # Failed git clone returns exit code 128
-    failed_clone_message = "Cloning failed"
-    failed_clone_return = ("", failed_clone_message, 128)
-
-    # Test _make_dirs fails
-    mock_make_dirs.return_value = failed_make_dirs_return
-    mock_run_cmd.return_value = successful_clone_return
-    repo = GenericGitRepository(REPO_URL, tmp_path)
-    stdout, stderr, exit_code, error_stage = repo.clone()
-    mock_make_dirs.assert_called_once()
-    mock_run_cmd.assert_not_called()
-    assert stdout == ""
-    assert failed_make_dirs_message in stderr
-    assert exit_code == 1
-    assert error_stage == git.ERROR_MAKE_DIRS
-    assert repo._cloned is False
-
-    mock_make_dirs.reset_mock()
-    mock_run_cmd.reset_mock()
-
-    # Test clone fails (e.g. directory is not empty)
-    mock_make_dirs.return_value = successful_make_dirs_return
-    mock_run_cmd.return_value = failed_clone_return
-    repo = GenericGitRepository(REPO_URL, tmp_path)
-    stdout, stderr, exit_code, error_stage = repo.clone()
-    mock_make_dirs.assert_called_once()
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert failed_clone_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_CLONE
-    assert repo._cloned is False
-
-    mock_make_dirs.reset_mock()
-    mock_run_cmd.reset_mock()
-
-    # Test clone succeeds
-    mock_make_dirs.return_value = successful_make_dirs_return
-    mock_run_cmd.return_value = successful_clone_return
-    repo = GenericGitRepository(REPO_URL, tmp_path)
-    stdout, stderr, exit_code, error_stage = repo.clone()
-    mock_make_dirs.assert_called_once()
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert successful_clone_message in stderr
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-    assert repo._cloned is True
-
-    # Check run_cmd arguments
-    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
-    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
-    assert cmd == f"git clone {REPO_URL} {tmp_path}"
-    assert len(log_msg) > 0
-    assert working_dir == tmp_path
-    assert raise_on_error is False
-
-    mock_make_dirs.reset_mock()
-    mock_run_cmd.reset_mock()
-
-    # Test repo already cloned (i.e. clone() has succeeded previously)
-    stdout, stderr, exit_code, error_stage = repo.clone()
-    mock_make_dirs.assert_not_called()
-    mock_run_cmd.assert_not_called()
-    assert len(stdout) > 0
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-    assert repo._cloned is True
-
-
-# Test BaseGitRepository.checkout()
-@patch("tools.git.run_cmd")
-def test_BaseGitRepository_checkout(mock_run_cmd, tmp_path):
-    branch = "main"
-    # git logs to stderr by default
-    successful_checkout_message = "Checkout succeeded"
-    successful_checkout_return = ("", successful_checkout_message, 0)
-    # 'fatal' git checkout error returns exit code 128
-    failed_checkout_message = "Checkout failed"
-    failed_checkout_return = ("", failed_checkout_message, 128)
-
-    # Test pre-clone checkout - should return early with non-zero exit code and error stage ERROR_GIT_CHECKOUT
-    repo = GenericGitRepository(REPO_URL, tmp_path)
-    assert repo._cloned is False
-    stdout, stderr, exit_code, error_stage = repo.checkout(branch)
-    mock_run_cmd.assert_not_called()
-    assert stdout == ""
-    assert len(stderr) > 0
-    assert exit_code != 0
-    assert error_stage == git.ERROR_GIT_CHECKOUT
-
-    mock_run_cmd.reset_mock()
-
-    # Manually set '_cloned' property
-    repo._cloned = True
-
-    # Test checkout fails (e.g. branch does not exist)
-    mock_run_cmd.return_value = failed_checkout_return
-    stdout, stderr, exit_code, error_stage = repo.checkout(branch)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert failed_checkout_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_CHECKOUT
-
-    mock_run_cmd.reset_mock()
-
-    # Test successful checkout
-    mock_run_cmd.return_value = successful_checkout_return
-    stdout, stderr, exit_code, error_stage = repo.checkout(branch)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert successful_checkout_message in stderr
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-
-    # Check run_cmd arguments
-    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
-    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
-    assert cmd == f"git checkout {branch}"
-    assert len(log_msg) > 0
-    assert working_dir == tmp_path
-    assert raise_on_error is False
-
-
-# Test BaseGitRepository.fetch()
-@patch("tools.git.run_cmd")
-def test_BaseGitRepository_fetch(mock_run_cmd, tmp_path):
+def test_BaseGitRepository_get_pr_diff(mock_diff, mock_fetch, tmp_path, fetch_return, diff_return, error_stage):
     pr_number = 42
     src_ref = f"pull/{pr_number}/head"
     dst_ref = f"pr{pr_number}"
-    # git logs to stderr by default
-    successful_fetch_message = "Fetch succeeded"
-    successful_fetch_return = ("", successful_fetch_message, 0)
-    # 'fatal' git fetch error returns exit code 128
-    failed_fetch_message = "Fetch failed"
-    failed_fetch_return = ("", failed_fetch_message, 128)
+    diff_filename = f"{pr_number}.diff"
 
-    # Test pre-clone fetch - should return early with non-zero exit code and error stage ERROR_GIT_FETCH
+    if error_stage == git.ERROR_GIT_FETCH:
+        expected_output = fetch_return
+    elif error_stage == git.ERROR_GIT_DIFF:
+        expected_output = diff_return
+    else:
+        expected_output = ("Obtaining PR diff succeeded", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE)
+
+    mock_fetch.return_value = fetch_return
+    mock_diff.return_value = diff_return
+
+    actual_output = GenericGitRepository(REPO_URL, tmp_path)._get_pr_diff(pr_number, diff_filename)
+
+    mock_fetch.assert_called_once_with(src_ref, dst_ref)
+    if error_stage == git.ERROR_GIT_FETCH:
+        mock_diff.assert_not_called()
+    else:
+        mock_diff.assert_called_once_with("HEAD", dst_ref, diff_filename, merge_base=True)
+    assert actual_output == expected_output
+
+
+# Test BaseGitRepository._make_dirs()
+@pytest.mark.parametrize("test_case,is_success_case", [
+    # Failure cases
+    ("exists-as-file", False),
+    pytest.param(
+        "no-write-permission", False,
+        marks=pytest.mark.skipif(
+            (sys.platform != "linux") or (os.geteuid() == 0),
+            reason="Test case must be run on Linux as non-root user."
+        )
+    ),
+
+    # Success cases
+    ("dir-missing", True),
+    ("parent-dir-missing", True),
+    ("dir-exists", True),
+    ("dir-given-as-string", True),
+])
+def test_BaseGitRepository_make_dirs(tmp_path, test_case, is_success_case):
+    repo_path = tmp_path / "software-layer"
+
+    # Set up test
+    if test_case == "exists-as-file":
+        repo_path.touch()
+    elif test_case == "no-write-permission":
+        # Create parent directory without write permission
+        repo_path.mkdir(mode=0o500)
+        repo_path = repo_path / "subdir"
+    elif test_case == "dir-missing":
+        # No extra setup required
+        pass
+    elif test_case == "parent-dir-missing":
+        repo_path = repo_path / "subdir"
+    elif test_case == "dir-exists":
+        repo_path.mkdir(parents=True, exist_ok=True)
+    elif test_case == "dir-given-as-string":
+        repo_path = repo_path.as_posix()
+    else:
+        pytest.skip(reason=f"Unknown test case: {test_case}")
+
+    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
+
+    if is_success_case:
+        assert os.path.exists(repo_path) and os.path.isdir(repo_path)
+        assert stdout == "Creating directories succeeded"
+        assert stderr == ""
+        assert exit_code == git.BaseGitRepository._EC_OK
+        assert error_stage == git.ERROR_NONE
+    else:
+        if test_case == "exists-as-file":
+            # _make_dirs should leave the existing file untouched
+            assert repo_path.is_file()
+        else:
+            assert not repo_path.exists()
+        assert stdout == ""
+        assert stderr.startswith(f"Unable to set up directory '{repo_path}' for Git repository '{REPO_URL}': ")
+        assert exit_code == git.BaseGitRepository._EC_NOT_OK
+        assert error_stage == git.ERROR_MAKE_DIRS
+
+
+# Test BaseGitRepository.clone()
+@pytest.mark.parametrize("cloned,make_dirs_return,run_cmd_return,error_stage", [
+    # Test _make_dirs() fails
+    (
+        False,
+        ("", "Failed to create directory", git.BaseGitRepository._EC_NOT_OK, git.ERROR_MAKE_DIRS),
+        ("", "", 0),
+        git.ERROR_MAKE_DIRS,
+    ),
+
+    # Test cloning fails
+    (
+        False,
+        ("Directory created successfully", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE),
+        ("", "Cloning failed", 128),
+        git.ERROR_GIT_CLONE,
+    ),
+
+    # Test clone() successful
+    (
+        False,
+        ("Directory created successfully", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE),
+        ("", "Cloning into dir...", 0),  # git logs to stderr by default
+        git.ERROR_NONE,
+    ),
+
+    # Test clone() has succeeded previously (i.e., _cloned is true)
+    (
+        True,
+        ("", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE),
+        ("", "", 0),
+        git.ERROR_NONE,
+    ),
+])
+@patch("tools.git.BaseGitRepository._make_dirs")
+@patch("tools.git.run_cmd")
+def test_BaseGitRepository_clone(mock_run_cmd, mock_make_dirs, tmp_path,
+                                 cloned, make_dirs_return, run_cmd_return, error_stage):
+    mock_make_dirs.return_value = make_dirs_return
+    mock_run_cmd.return_value = run_cmd_return
+
     repo = GenericGitRepository(REPO_URL, tmp_path)
-    assert repo._cloned is False
-    stdout, stderr, exit_code, error_stage = repo.fetch(src_ref, dst_ref)
-    mock_run_cmd.assert_not_called()
-    assert stdout == ""
-    assert len(stderr) > 0
-    assert exit_code != 0
-    assert error_stage == git.ERROR_GIT_FETCH
+    repo._cloned = cloned
+    actual_return = repo.clone()
 
-    mock_run_cmd.reset_mock()
+    # Check calls and arguments
+    if cloned:
+        mock_make_dirs.assert_not_called()
+    else:
+        mock_make_dirs.assert_called_once_with()
 
-    # Manually set '_cloned' property
-    repo._cloned = True
+    if cloned or error_stage == git.ERROR_MAKE_DIRS:
+        mock_run_cmd.assert_not_called()
+    else:
+        cmd = f"git clone {REPO_URL} {tmp_path}"
+        msg = f"Cloning repository '{REPO_URL}' to '{tmp_path}'"
+        mock_run_cmd.assert_called_once_with(cmd, msg, tmp_path, raise_on_error=False)
 
-    # Test fetch fails (e.g. 'src_ref' does not exist)
-    mock_run_cmd.return_value = failed_fetch_return
-    stdout, stderr, exit_code, error_stage = repo.fetch(src_ref, dst_ref)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert failed_fetch_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_FETCH
+    # Check output
+    if cloned:
+        expected_return = git.BaseGitRepository._ALREADY_CLONED
+    elif error_stage == git.ERROR_MAKE_DIRS:
+        expected_return = make_dirs_return
+    else:
+        # Verify that clone() uses correct logic for exit code -> error stage
+        expected_error_stage = git.ERROR_NONE if (run_cmd_return[2] == 0) else git.ERROR_GIT_CLONE
+        expected_return = *run_cmd_return, expected_error_stage
 
-    mock_run_cmd.reset_mock()
+    # _cloned should only be true if it was already true or if the cloning succeeded
+    should_be_cloned = error_stage == git.ERROR_NONE
 
-    # Test successful fetch
-    mock_run_cmd.return_value = successful_fetch_return
-    stdout, stderr, exit_code, error_stage = repo.fetch(src_ref, dst_ref)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert successful_fetch_message in stderr
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
+    assert actual_return == expected_return
+    assert repo._cloned is should_be_cloned
 
-    # Check run_cmd arguments
-    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
-    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
-    assert cmd == f"git fetch origin {src_ref}:{dst_ref}"
-    assert len(log_msg) > 0
-    assert working_dir == tmp_path
-    assert raise_on_error is False
+
+# Test BaseGitRepository.checkout()
+@pytest.mark.parametrize("cloned,run_cmd_return", [
+    # Test pre-clone checkout
+    (False, ("", "", 0)),
+
+    # Test checkout fails
+    (True, ("", "Checkout failed", 128)),
+
+    # Test checkout succeeds
+    (True, ("", "Switched to branch", 0)),
+])
+@patch("tools.git.run_cmd")
+def test_BaseGitRepository_checkout(mock_run_cmd, tmp_path, cloned, run_cmd_return):
+    branch_name = "main"
+
+    mock_run_cmd.return_value = run_cmd_return
+
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo._cloned = cloned
+    actual_return = repo.checkout(branch_name)
+
+    # Check calls and arguments
+    if not cloned:
+        mock_run_cmd.assert_not_called()
+    else:
+        cmd = f"git checkout {branch_name}"
+        msg = f"Checkout branch '{branch_name}'"
+        mock_run_cmd.assert_called_once_with(cmd, msg, tmp_path, raise_on_error=False)
+
+    # Check output
+    if not cloned:
+        expected_return = *git.BaseGitRepository._NOT_CLONED_YET, git.ERROR_GIT_CHECKOUT
+    else:
+        # Verify that checkout() uses correct logic for exit code -> error stage
+        expected_error_stage = git.ERROR_NONE if (run_cmd_return[2] == 0) else git.ERROR_GIT_CHECKOUT
+        expected_return = *run_cmd_return, expected_error_stage
+
+    assert actual_return == expected_return
+
+
+# Test BaseGitRepository.fetch()
+@pytest.mark.parametrize("cloned,run_cmd_return", [
+    # Test pre-clone fetch
+    (False, ("", "", 0)),
+
+    # Test fetch fails
+    (True, ("", "Fetch failed", 128)),
+
+    # Test fetch succeeds
+    (True, ("", "Fetched new ref", 0)),
+])
+@patch("tools.git.run_cmd")
+def test_BaseGitRepository_fetch(mock_run_cmd, tmp_path, cloned, run_cmd_return):
+    pr_number = 42
+    src_ref = f"pull/{pr_number}/head"
+    dst_ref = f"pr{pr_number}"
+
+    mock_run_cmd.return_value = run_cmd_return
+
+    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo._cloned = cloned
+    actual_return = repo.fetch(src_ref, dst_ref)
+
+    # Check calls and arguments
+    if not cloned:
+        mock_run_cmd.assert_not_called()
+    else:
+        cmd = f"git fetch origin {src_ref}:{dst_ref}"
+        msg = f"Fetching ref '{src_ref}' as '{dst_ref}'"
+        mock_run_cmd.assert_called_once_with(cmd, msg, tmp_path, raise_on_error=False)
+
+    # Check output
+    if not cloned:
+        expected_return = *git.BaseGitRepository._NOT_CLONED_YET, git.ERROR_GIT_FETCH
+    else:
+        # Verify that fetch() uses correct logic for exit code -> error stage
+        expected_error_stage = git.ERROR_NONE if (run_cmd_return[2] == 0) else git.ERROR_GIT_FETCH
+        expected_return = *run_cmd_return, expected_error_stage
+
+    assert actual_return == expected_return
 
 
 # Test BaseGitRepository.diff()
+@pytest.mark.parametrize("cloned,merge_base,run_cmd_return", [
+    # Test pre-clone diff
+    (False, False, ("", "", 0)),
+
+    # Test diff fails
+    (True, False, ("", "Unknown revision", 128)),
+
+    # Test diff succeeds
+    (True, False, ("", "", 0)),
+
+    # Test diff w/ merge-base succeeds
+    (True, True, ("", "", 0)),
+])
 @patch("tools.git.run_cmd")
-def test_BaseGitRepository_diff(mock_run_cmd, tmp_path):
+def test_BaseGitRepository_diff(mock_run_cmd, tmp_path, cloned, merge_base, run_cmd_return):
     pr_number = 42
     commit_a = "HEAD"
     commit_b = f"pr{pr_number}"
     diff_filename = f"{pr_number}.diff"
-    # On success, git diff stdout should be saved to 'diff_filename' while nothing is logged to stderr
-    successful_diff_return = ("", "", 0)
-    # 'fatal' git diff error returns exit code 128
-    failed_diff_message = "Diff failed"
-    failed_diff_return = ("", failed_diff_message, 128)
 
-    # Test pre-clone diff - should return early with non-zero exit code and error stage ERROR_GIT_DIFF
+    mock_run_cmd.return_value = run_cmd_return
+
     repo = GenericGitRepository(REPO_URL, tmp_path)
-    assert repo._cloned is False
-    stdout, stderr, exit_code, error_stage = repo.diff(commit_a, commit_b, diff_filename)
-    mock_run_cmd.assert_not_called()
-    assert stdout == ""
-    assert len(stderr) > 0
-    assert exit_code != 0
-    assert error_stage == git.ERROR_GIT_DIFF
+    repo._cloned = cloned
+    actual_return = repo.diff(commit_a, commit_b, diff_filename, merge_base=merge_base)
 
-    mock_run_cmd.reset_mock()
+    # Check calls and arguments
+    if not cloned:
+        mock_run_cmd.assert_not_called()
+    else:
+        if merge_base:
+            cmd = f"git diff --merge-base {commit_a} {commit_b} > {diff_filename}"
+            msg = f"Storing diff of '{commit_b}' compared to its merge base with '{commit_a}' in '{diff_filename}'"
+        else:
+            cmd = f"git diff {commit_a} {commit_b} > {diff_filename}"
+            msg = f"Storing diff of '{commit_b}' compared to '{commit_a}' in '{diff_filename}'"
+        mock_run_cmd.assert_called_once_with(cmd, msg, tmp_path, raise_on_error=False)
 
-    # Manually set '_cloned' property
-    repo._cloned = True
+    # Check output
+    if not cloned:
+        expected_return = *git.BaseGitRepository._NOT_CLONED_YET, git.ERROR_GIT_DIFF
+    else:
+        # Verify that diff() uses correct logic for exit code -> error stage
+        expected_error_stage = git.ERROR_NONE if (run_cmd_return[2] == 0) else git.ERROR_GIT_DIFF
+        expected_return = *run_cmd_return, expected_error_stage
 
-    # Test diff fails (e.g. commit does not exist)
-    mock_run_cmd.return_value = failed_diff_return
-    stdout, stderr, exit_code, error_stage = repo.diff(commit_a, commit_b, diff_filename)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert failed_diff_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_DIFF
-
-    mock_run_cmd.reset_mock()
-
-    # Test successful diff
-    mock_run_cmd.return_value = successful_diff_return
-    stdout, stderr, exit_code, error_stage = repo.diff(commit_a, commit_b, diff_filename)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-
-    # Check run_cmd arguments
-    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
-    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
-    # There should be no '--merge-base' by default
-    assert cmd == f"git diff {commit_a} {commit_b} > {diff_filename}"
-    assert len(log_msg) > 0
-    assert working_dir == tmp_path
-    assert raise_on_error is False
-
-    mock_run_cmd.reset_mock()
-
-    # Test successful diff with 'merge_base=True'
-    mock_run_cmd.return_value = successful_diff_return
-    stdout, stderr, exit_code, error_stage = repo.diff(commit_a, commit_b, diff_filename, merge_base=True)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-
-    # Check run_cmd arguments
-    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
-    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
-    assert cmd == f"git diff --merge-base {commit_a} {commit_b} > {diff_filename}"
-    assert len(log_msg) > 0
-    assert working_dir == tmp_path
-    assert raise_on_error is False
+    assert actual_return == expected_return
 
 
 # Test BaseGitRepository.apply()
+@pytest.mark.parametrize("cloned,run_cmd_return", [
+    # Test pre-clone apply
+    (False, ("", "", 0)),
+
+    # Test apply fails
+    (True, ("", "Apply failed", 128)),
+
+    # Test apply succeeds
+    (True, ("", "", 0)),
+])
 @patch("tools.git.run_cmd")
-def test_BaseGitRepository_apply(mock_run_cmd, tmp_path):
-    patch = "42.diff"
-    # No output on successful git apply
-    successful_apply_return = ("", "", 0)
-    # git apply error with exit code 128
-    failed_apply_message = "Apply failed"
-    failed_apply_return = ("", failed_apply_message, 128)
+def test_BaseGitRepository_apply(mock_run_cmd, tmp_path, cloned, run_cmd_return):
+    patch_file = "42.diff"
 
-    # Test pre-clone apply - should return early with non-zero exit code and error stage ERROR_GIT_APPLY
+    mock_run_cmd.return_value = run_cmd_return
+
     repo = GenericGitRepository(REPO_URL, tmp_path)
-    assert repo._cloned is False
-    stdout, stderr, exit_code, error_stage = repo.apply(patch)
-    mock_run_cmd.assert_not_called()
-    assert stdout == ""
-    assert len(stderr) > 0
-    assert exit_code != 0
-    assert error_stage == git.ERROR_GIT_APPLY
+    repo._cloned = cloned
+    actual_return = repo.apply(patch_file)
 
-    mock_run_cmd.reset_mock()
+    # Check calls and args
+    if not cloned:
+        mock_run_cmd.assert_not_called()
+    else:
+        cmd = f"git apply {patch_file}"
+        msg = f"Applying patch '{patch_file}'"
+        mock_run_cmd.assert_called_once_with(cmd, msg, tmp_path, raise_on_error=False)
 
-    # Manually set '_cloned' property
-    repo._cloned = True
+    # Check output
+    if not cloned:
+        expected_return = *git.BaseGitRepository._NOT_CLONED_YET, git.ERROR_GIT_APPLY
+    else:
+        # Verify that apply() uses correct logic for exit code -> error stage
+        expected_error_stage = git.ERROR_NONE if (run_cmd_return[2] == 0) else git.ERROR_GIT_APPLY
+        expected_return = *run_cmd_return, expected_error_stage
 
-    # Test apply fails (e.g. 'patch' does not exist)
-    mock_run_cmd.return_value = failed_apply_return
-    stdout, stderr, exit_code, error_stage = repo.apply(patch)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert failed_apply_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_APPLY
-
-    mock_run_cmd.reset_mock()
-
-    # Test successful apply
-    mock_run_cmd.return_value = successful_apply_return
-    stdout, stderr, exit_code, error_stage = repo.apply(patch)
-    mock_run_cmd.assert_called_once()
-    assert stdout == ""
-    assert stderr == ""
-    assert exit_code == 0
-    assert error_stage == git.ERROR_NONE
-
-    # Check run_cmd arguments
-    (cmd, log_msg, working_dir, *_) = mock_run_cmd.call_args.args
-    raise_on_error = mock_run_cmd.call_args.kwargs.get("raise_on_error")
-    assert cmd == f"git apply {patch}"
-    assert len(log_msg) > 0
-    assert working_dir == tmp_path
-    assert raise_on_error is False
+    assert actual_return == expected_return
 
 
 # Test BaseGitRepository.download_pr()
+@pytest.mark.parametrize("clone_return,checkout_return,get_pr_diff_return,apply_return,error_stage", [
+    # Test clone() fails
+    (
+        ("", "Cloning failed", 128, git.ERROR_GIT_CLONE),
+        ("", "", 0, git.ERROR_NONE),
+        ("", "", 0, git.ERROR_NONE),
+        ("", "", 0, git.ERROR_NONE),
+        git.ERROR_GIT_CLONE,
+    ),
+
+    # Test checkout() fails
+    (
+        ("", "Cloning into dir...", 0, git.ERROR_NONE),
+        ("", "Checkout failed", 128, git.ERROR_GIT_CHECKOUT),
+        ("", "", 0, git.ERROR_NONE),
+        ("", "", 0, git.ERROR_NONE),
+        git.ERROR_GIT_CHECKOUT,
+    ),
+
+    # Test _get_pr_diff() fetch stage fails
+    (
+        ("", "Cloning into dir...", 0, git.ERROR_NONE),
+        ("", "Switched to branch", 0, git.ERROR_NONE),
+        ("", "Fetch failed", 128, git.ERROR_GIT_FETCH),
+        ("", "", 0, git.ERROR_NONE),
+        git.ERROR_GIT_FETCH,
+    ),
+
+    # Test _get_pr_diff() diff stage fails
+    (
+        ("", "Cloning into dir...", 0, git.ERROR_NONE),
+        ("", "Switched to branch", 0, git.ERROR_NONE),
+        ("", "Diff failed", 128, git.ERROR_GIT_DIFF),
+        ("", "", 0, git.ERROR_NONE),
+        git.ERROR_GIT_DIFF,
+    ),
+
+    # Test apply() fails
+    (
+        ("", "Cloning into dir...", 0, git.ERROR_NONE),
+        ("", "Switched to branch", 0, git.ERROR_NONE),
+        ("Obtaining PR diff succeeded", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE),
+        ("", "Apply failed", 128, git.ERROR_GIT_APPLY),
+        git.ERROR_GIT_APPLY,
+    ),
+
+    # Test download_pr() succeeds
+    (
+        ("", "Cloning into dir...", 0, git.ERROR_NONE),
+        ("", "Switched to branch", 0, git.ERROR_NONE),
+        ("Obtaining PR diff succeeded", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE),
+        ("", "", 0, git.ERROR_NONE),
+        git.ERROR_NONE,
+    ),
+])
 @patch("tools.git.BaseGitRepository.clone")
 @patch("tools.git.BaseGitRepository.checkout")
 @patch("tools.git.BaseGitRepository._get_pr_diff")
 @patch("tools.git.BaseGitRepository.apply")
-def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checkout, mock_clone, tmp_path):
+def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checkout, mock_clone, tmp_path,
+                                       clone_return, checkout_return, get_pr_diff_return, apply_return, error_stage):
     pr_number = 42
     diff_filename = f"{pr_number}.diff"
     base_branch = "main"
 
-    failed_clone_message = "Cloning failed"
-    failed_clone_return = ("", failed_clone_message, 128, git.ERROR_GIT_CLONE)
-    failed_checkout_message = "Checkout failed"
-    failed_checkout_return = ("", failed_checkout_message, 128, git.ERROR_GIT_CHECKOUT)
-    failed_get_pr_diff_message = "Fetch failed"
-    failed_get_pr_diff_return = ("", failed_get_pr_diff_message, 128, git.ERROR_GIT_FETCH)
-    failed_apply_message = "Apply failed"
-    failed_apply_return = ("", failed_apply_message, 128, git.ERROR_GIT_APPLY)
+    mock_clone.return_value = clone_return
+    mock_checkout.return_value = checkout_return
+    mock_get_pr_diff.return_value = get_pr_diff_return
+    mock_apply.return_value = apply_return
 
-    successful_return = ("", "", 0, git.ERROR_NONE)
+    actual_output = GenericGitRepository(REPO_URL, tmp_path).download_pr(pr_number, base_branch)
 
-    # Test clone stage fails
-    repo = GenericGitRepository(REPO_URL, tmp_path)
-    mock_clone.return_value = failed_clone_return
-    mock_checkout.return_value = successful_return
-    mock_get_pr_diff.return_value = successful_return
-    mock_apply.return_value = successful_return
-
-    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
-
+    # Check calls and args
     mock_clone.assert_called_once_with()
-    mock_checkout.assert_not_called()
-    mock_get_pr_diff.assert_not_called()
-    mock_apply.assert_not_called()
 
-    assert stdout == ""
-    assert failed_clone_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_CLONE
+    if error_stage == git.ERROR_GIT_CLONE:
+        mock_checkout.assert_not_called()
+    else:
+        mock_checkout.assert_called_once_with(base_branch)
 
-    mock_clone.reset_mock()
-    mock_checkout.reset_mock()
-    mock_get_pr_diff.reset_mock()
-    mock_apply.reset_mock()
+    if error_stage in (git.ERROR_GIT_CLONE, git.ERROR_GIT_CHECKOUT):
+        mock_get_pr_diff.assert_not_called()
+    else:
+        mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
 
-    # Manually set '_cloned' property
-    repo._cloned = True
+    if error_stage in (git.ERROR_GIT_CLONE, git.ERROR_GIT_CHECKOUT, git.ERROR_GIT_FETCH, git.ERROR_GIT_DIFF):
+        mock_apply.assert_not_called()
+    else:
+        mock_apply.assert_called_once_with(diff_filename)
 
-    # Test checkout stage fails
-    mock_clone.return_value = successful_return
-    mock_checkout.return_value = failed_checkout_return
-    mock_get_pr_diff.return_value = successful_return
-    mock_apply.return_value = successful_return
+    # Check output
+    if error_stage == git.ERROR_GIT_CLONE:
+        expected_output = clone_return
+    elif error_stage == git.ERROR_GIT_CHECKOUT:
+        expected_output = checkout_return
+    elif error_stage in (git.ERROR_GIT_FETCH, git.ERROR_GIT_DIFF):
+        # Verify that download_pr() passes the error stage (fetch/diff)
+        # directly from _get_pr_diff() instead of returning ERROR_PR_DIFF
+        expected_output = get_pr_diff_return
+    elif error_stage == git.ERROR_GIT_APPLY:
+        expected_output = apply_return
+    else:
+        expected_output = ("Downloading PR succeeded", "", git.BaseGitRepository._EC_OK, git.ERROR_NONE)
 
-    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
-
-    # download_pr() should still call clone() if '_cloned' is true
-    mock_clone.assert_called_once_with()
-    mock_checkout.assert_called_once_with(base_branch)
-    mock_get_pr_diff.assert_not_called()
-    mock_apply.assert_not_called()
-
-    assert stdout == ""
-    assert failed_checkout_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_CHECKOUT
-
-    mock_clone.reset_mock()
-    mock_checkout.reset_mock()
-    mock_get_pr_diff.reset_mock()
-    mock_apply.reset_mock()
-
-    # Test _get_pr_diff stage fails
-    mock_clone.return_value = successful_return
-    mock_checkout.return_value = successful_return
-    mock_get_pr_diff.return_value = failed_get_pr_diff_return
-    mock_apply.return_value = successful_return
-
-    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
-
-    mock_clone.assert_called_once_with()
-    mock_checkout.assert_called_once_with(base_branch)
-    mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
-    mock_apply.assert_not_called()
-
-    assert stdout == ""
-    assert failed_get_pr_diff_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_FETCH
-
-    mock_clone.reset_mock()
-    mock_checkout.reset_mock()
-    mock_get_pr_diff.reset_mock()
-    mock_apply.reset_mock()
-
-    # Test apply stage fails
-    mock_clone.return_value = successful_return
-    mock_checkout.return_value = successful_return
-    mock_get_pr_diff.return_value = successful_return
-    mock_apply.return_value = failed_apply_return
-
-    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
-
-    mock_clone.assert_called_once_with()
-    mock_checkout.assert_called_once_with(base_branch)
-    mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
-    mock_apply.assert_called_once_with(diff_filename)
-
-    assert stdout == ""
-    assert failed_apply_message in stderr
-    assert exit_code == 128
-    assert error_stage == git.ERROR_GIT_APPLY
-
-    mock_clone.reset_mock()
-    mock_checkout.reset_mock()
-    mock_get_pr_diff.reset_mock()
-    mock_apply.reset_mock()
-
-    # Test download_pr() succeeds
-    mock_clone.return_value = successful_return
-    mock_checkout.return_value = successful_return
-    mock_get_pr_diff.return_value = successful_return
-    mock_apply.return_value = successful_return
-
-    stdout, stderr, exit_code, error_stage = repo.download_pr(pr_number, base_branch)
-
-    mock_clone.assert_called_once_with()
-    mock_checkout.assert_called_once_with(base_branch)
-    mock_get_pr_diff.assert_called_once_with(pr_number, diff_filename)
-    mock_apply.assert_called_once_with(diff_filename)
-
-    assert stdout == "Downloading PR succeeded"
-    assert stderr == ""
-    assert exit_code == git.BaseGitRepository._EC_OK
-    assert error_stage == git.ERROR_NONE
+    assert actual_output == expected_output
 
 
 # Verify GitRepository type definition
