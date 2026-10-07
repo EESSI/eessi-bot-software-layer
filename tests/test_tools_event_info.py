@@ -24,9 +24,9 @@ from tools import event_info, git
 
 # All properties to be implemented by the EventInfo classes
 EVENT_INFO_PROPERTIES = [
-    "action", "comment_id", "comment_body", "comment_created_by",
-    "event_id", "event_triggered_by", "event_type", "is_pr_comment",
-    "label_name", "pr_number", "pr_title", "pr_merged_status", "pr_url",
+    "action", "comment_id", "comment_body", "comment_created_by", "event_id",
+    "event_triggered_by", "event_type", "is_pr_comment", "label_name",
+    "pr_number", "pr_title", "pr_base_branch", "pr_merged_status", "pr_url",
     "repo_name", "repo_git_https", "repo_git_ssh",
 ]
 
@@ -84,10 +84,20 @@ class MockRequest():
         self.headers = CaseInsensitiveDict(event["headers"])
 
 
+# Mock class imitating PyGithub's PullRequestPart class
+class MockPullRequestPart():
+    def __init__(self, branch):
+        self.ref = branch.get("ref")
+
+
 # Mock class imitating PyGithub's PullRequest class
 class MockPullRequest():
-    def __init__(self, merged):
-        self.merged = merged
+    def __init__(self, pr):
+        if "base" in pr:
+            self.base = MockPullRequestPart(pr["base"])
+        else:
+            self.base = None
+        self.merged = pr.get("merged")
 
     def is_merged(self):
         return self.merged
@@ -96,7 +106,7 @@ class MockPullRequest():
 # Mock class imitating PyGithub's Repository class
 class MockRepository():
     def __init__(self, prs):
-        self._prs = {pr_number: MockPullRequest(merged) for pr_number, merged in prs.items()}
+        self._prs = {pr_number: MockPullRequest(pr) for pr_number, pr in prs.items()}
 
     def get_pull(self, number):
         pr = self._prs.get(number)
@@ -215,6 +225,7 @@ def test_GitHubEventInfo(_):
     # Test properties for pull_request events
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["pull_request"]["number"]
     assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["pull_request"]["title"]
+    assert event_info_obj.pr_base_branch == event_info_dict["raw_request_body"]["pull_request"]["base"]["ref"]
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["pull_request"]["html_url"]
 
     # Test properties for pull_request opened
@@ -250,25 +261,31 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["issue"]["title"]
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["issue"]["pull_request"]["html_url"]
 
+    repo_name = event_info_obj.repo_name
+    pr_number = event_info_obj.pr_number
+
     # Test retrieval of PR merged status for PR issue_comment event
+    # Test PR merged
     with patch("tools.event_info.github.get_instance") as mock_get_instance:
-        repo_name = event_info_obj.repo_name
-        pr_number = event_info_obj.pr_number
-
-        # Test PR merged
-        mock_get_instance.return_value = MockGithub({repo_name: {pr_number: True}})
+        mock_get_instance.return_value = MockGithub({repo_name: {pr_number: {"merged": True}}})
         assert event_info_obj.pr_merged_status is True
-        mock_get_instance.assert_called()
+        mock_get_instance.assert_called_once()
 
-        # Reset call count
-        mock_get_instance.reset_mock()
-        # Delete cached value
-        del event_info_obj.pr_merged_status
+    event_info_obj = event_info.create_event_info_instance(event_info_dict)
 
-        # Test PR not merged
-        mock_get_instance.return_value = MockGithub({repo_name: {pr_number: False}})
+    # Test PR not merged
+    with patch("tools.event_info.github.get_instance") as mock_get_instance:
+        mock_get_instance.return_value = MockGithub({repo_name: {pr_number: {"merged": False}}})
         assert event_info_obj.pr_merged_status is False
-        mock_get_instance.assert_called()
+        mock_get_instance.assert_called_once()
+
+    event_info_obj = event_info.create_event_info_instance(event_info_dict)
+
+    # Test retrieval of PR base branch for PR issue_comment event
+    with patch("tools.event_info.github.get_instance") as mock_get_instance:
+        mock_get_instance.return_value = MockGithub({repo_name: {pr_number: {"base": {"ref": "base-branch"}}}})
+        assert event_info_obj.pr_base_branch == "base-branch"
+        mock_get_instance.assert_called_once()
 
     # Test issue_comment created
     assert event_info_obj.action == "created"
@@ -292,6 +309,7 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.is_pr_comment is False
     assert event_info_obj.pr_number == -1
     assert event_info_obj.pr_title == ""
+    assert event_info_obj.pr_base_branch == ""
     assert event_info_obj.pr_merged_status is None
     assert event_info_obj.pr_url == ""
 
@@ -321,6 +339,7 @@ def test_GitLabEventInfo(_):
     # Test properties for pull_request events
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["object_attributes"]["iid"]
     assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["object_attributes"]["title"]
+    assert event_info_obj.pr_base_branch == event_info_dict["raw_request_body"]["object_attributes"]["target_branch"]
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["object_attributes"]["url"]
 
     # Test properties for pull_request opened
@@ -383,6 +402,7 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.comment_body == event_info_dict["raw_request_body"]["object_attributes"]["note"]
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["merge_request"]["iid"]
     assert event_info_obj.pr_title == event_info_dict["raw_request_body"]["merge_request"]["title"]
+    assert event_info_obj.pr_base_branch == event_info_dict["raw_request_body"]["merge_request"]["target_branch"]
     pr_merged_status = (event_info_dict["raw_request_body"]["merge_request"]["state"] == "merged")
     assert event_info_obj.pr_merged_status is pr_merged_status
     assert event_info_obj.pr_url == event_info_dict["raw_request_body"]["merge_request"]["url"]
@@ -423,6 +443,7 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.is_pr_comment is False
     assert event_info_obj.pr_number == -1
     assert event_info_obj.pr_title == ""
+    assert event_info_obj.pr_base_branch == ""
     assert event_info_obj.pr_merged_status is None
     assert event_info_obj.pr_url == ""
 
@@ -433,6 +454,7 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.is_pr_comment is False
     assert event_info_obj.pr_number == -1
     assert event_info_obj.pr_title == ""
+    assert event_info_obj.pr_base_branch == ""
     assert event_info_obj.pr_merged_status is None
     assert event_info_obj.pr_url == ""
 

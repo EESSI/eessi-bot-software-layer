@@ -90,6 +90,10 @@ class BaseEventInfo():
         raise NotImplementedError()
 
     @cached_property
+    def pr_base_branch(self):
+        raise NotImplementedError()
+
+    @cached_property
     def pr_merged_status(self):
         raise NotImplementedError()
 
@@ -117,6 +121,15 @@ class GitHubEventInfo(BaseEventInfo):
     def __init__(self, event_info):
         super().__init__(event_info)
         self._request_body = event_info["raw_request_body"]
+
+    @cached_property
+    def _pr_obj(self):
+        pr_obj = None
+        if self.event_type == "pull_request" or self.is_pr_comment:
+            gh = github.get_instance()
+            repo = gh.get_repo(self.repo_name)
+            pr_obj = repo.get_pull(self.pr_number)
+        return pr_obj
 
     @cached_property
     def action(self):
@@ -174,15 +187,24 @@ class GitHubEventInfo(BaseEventInfo):
         return pr_title
 
     @cached_property
+    def pr_base_branch(self):
+        pr_base_branch = ""
+        if self.event_type == "pull_request":
+            pr_base_branch = self._request_body["pull_request"]["base"]["ref"]
+        elif self.is_pr_comment:
+            # issue_comment events do not include base branch info - retrieve via GH API
+            pr = self._pr_obj
+            pr_base_branch = pr.base.ref
+        return pr_base_branch
+
+    @cached_property
     def pr_merged_status(self):
         state = None
         if self.event_type == "pull_request":
             state = self._request_body["pull_request"]["merged"]
         elif self.is_pr_comment:
             # issue_comment events do not include merged status - retrieve via GH API
-            gh = github.get_instance()
-            repo = gh.get_repo(self.repo_name)
-            pr = repo.get_pull(self.pr_number)
+            pr = self._pr_obj
             state = pr.merged
         return state
 
@@ -332,6 +354,15 @@ class GitLabEventInfo(BaseEventInfo):
         elif self.is_pr_comment:
             pr_title = self._request_body["merge_request"]["title"]
         return pr_title
+
+    @cached_property
+    def pr_base_branch(self):
+        pr_base_branch = ""
+        if self.event_type == "pull_request":
+            pr_base_branch = self._object_attributes["target_branch"]
+        elif self.is_pr_comment:
+            pr_base_branch = self._request_body["merge_request"]["target_branch"]
+        return pr_base_branch
 
     @cached_property
     def pr_merged_status(self):
