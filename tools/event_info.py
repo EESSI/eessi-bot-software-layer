@@ -101,6 +101,14 @@ class BaseEventInfo():
     def repo_name(self):
         raise NotImplementedError()
 
+    @cached_property
+    def repo_git_https(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def repo_git_ssh(self):
+        raise NotImplementedError()
+
 
 class GitHubEventInfo(BaseEventInfo):
     """
@@ -190,6 +198,14 @@ class GitHubEventInfo(BaseEventInfo):
     @cached_property
     def repo_name(self):
         return self._request_body["repository"]["full_name"]
+
+    @cached_property
+    def repo_git_https(self):
+        return self._request_body["repository"]["clone_url"]
+
+    @cached_property
+    def repo_git_ssh(self):
+        return self._request_body["repository"]["ssh_url"]
 
 
 class GitLabEventInfo(BaseEventInfo):
@@ -338,6 +354,14 @@ class GitLabEventInfo(BaseEventInfo):
     @cached_property
     def repo_name(self):
         return self._request_body["project"]["path_with_namespace"]
+
+    @cached_property
+    def repo_git_https(self):
+        return self._request_body["project"]["git_http_url"]
+
+    @cached_property
+    def repo_git_ssh(self):
+        return self._request_body["project"]["git_ssh_url"]
 
 
 # Type for subclasses of BaseEventInfo

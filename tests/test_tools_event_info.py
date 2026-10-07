@@ -27,7 +27,7 @@ EVENT_INFO_PROPERTIES = [
     "action", "comment_id", "comment_body", "comment_created_by",
     "event_id", "event_triggered_by", "event_type", "is_pr_comment",
     "label_name", "pr_number", "pr_title", "pr_merged_status", "pr_url",
-    "repo_name",
+    "repo_name", "repo_git_https", "repo_git_ssh",
 ]
 
 # Event type + action combinations with sample event files
@@ -209,6 +209,8 @@ def test_GitHubEventInfo(_):
     assert event_info_obj.event_type == "pull_request"
     assert event_info_obj.is_pr_comment is False
     assert event_info_obj.repo_name == event_info_dict["raw_request_body"]["repository"]["full_name"]
+    assert event_info_obj.repo_git_https == event_info_dict["raw_request_body"]["repository"]["clone_url"]
+    assert event_info_obj.repo_git_ssh == event_info_dict["raw_request_body"]["repository"]["ssh_url"]
 
     # Test properties for pull_request events
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["pull_request"]["number"]
@@ -313,6 +315,8 @@ def test_GitLabEventInfo(_):
     assert event_info_obj.event_type == "pull_request"
     assert event_info_obj.is_pr_comment is False
     assert event_info_obj.repo_name == event_info_dict["raw_request_body"]["project"]["path_with_namespace"]
+    assert event_info_obj.repo_git_https == event_info_dict["raw_request_body"]["project"]["git_http_url"]
+    assert event_info_obj.repo_git_ssh == event_info_dict["raw_request_body"]["project"]["git_ssh_url"]
 
     # Test properties for pull_request events
     assert event_info_obj.pr_number == event_info_dict["raw_request_body"]["object_attributes"]["iid"]
