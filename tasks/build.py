@@ -38,7 +38,7 @@ from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
 from tools.git import create_git_repository_instance, get_git_hosting_platform, \
-    ERROR_CURL, ERROR_GIT_APPLY, ERROR_GIT_CHECKOUT, ERROR_GIT_CLONE, ERROR_NONE, ERROR_PR_DIFF
+    ERROR_GIT_APPLY, ERROR_GIT_CHECKOUT, ERROR_GIT_CLONE, ERROR_GIT_DIFF, ERROR_GIT_FETCH, ERROR_MAKE_DIRS
 from tools.pr_comments import ChatLevels, create_comment, update_comment
 from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
 
@@ -414,10 +414,10 @@ def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, downlo
         base_repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
         pr_number (int): number of the pull request in the repository
         download_pr_exit_code (int): exit code from download_pr(). 0 if all tasks were successful,
-            otherwise it corresponds to the error codes of git clone, git checkout, git apply, or curl.
-        download_pr_error (string): none, or the output of stderr from git clone, git checkout, git apply or curl.
-        error_stage (string): a string informing the stage where download_pr() failed. Can be 'git clone',
-            'git checkout', 'curl', or 'git apply'.
+            otherwise it corresponds to the exit codes of _make_dirs or git clone/checkout/fetch/diff/apply.
+        download_pr_error (string): stderr from download_pr()
+        error_stage (string): a string informing the stage where download_pr() failed. Can be 'makedirs', 'git clone',
+            'git checkout', 'git fetch', 'git diff', or 'git apply'.
 
     Return:
         None (implicitly). A comment is created in the appropriate PR.
@@ -427,7 +427,11 @@ def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, downlo
         fn = sys._getframe().f_code.co_name
 
         download_pr_comments_cfg = config.read_config()[config.SECTION_DOWNLOAD_PR_COMMENTS]
-        if error_stage == ERROR_GIT_CLONE:
+        if error_stage == ERROR_MAKE_DIRS:
+            download_comment = (f"```{download_pr_error}```\n"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_FAILURE]}"
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_TIP]}")
+        elif error_stage == ERROR_GIT_CLONE:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP]}")
@@ -435,18 +439,15 @@ def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, downlo
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP]}")
-        elif error_stage == ERROR_CURL:
+        # Fetch or diff error indicates failure to obtain PR diff
+        elif error_stage in (ERROR_GIT_FETCH, ERROR_GIT_DIFF):
             download_comment = (f"```{download_pr_error}```\n"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE]}"
-                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP]}")
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE]}"
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP]}")
         elif error_stage == ERROR_GIT_APPLY:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
-        elif error_stage == ERROR_PR_DIFF:
-            download_comment = (f"```{download_pr_error}```\n"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE]}"
-                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP]}")
         else:
             download_comment = f"```{download_pr_error}```"
 

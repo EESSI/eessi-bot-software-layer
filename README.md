@@ -1230,7 +1230,7 @@ pr_diff_failure = Unable to obtain PR diff.
 The value of `pr_diff_failure` is shown when the `.diff` file could not be obtained.
 
 ```ini
-pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+pr_diff_tip = _Tip: This could be a problem with HTTPS/SSH access to the repository._
 ```
 
 The value of `pr_diff_tip` should guide the maintainer / bot administrator about resolving the cause for the failing procedure to obtain the `.diff` file.
