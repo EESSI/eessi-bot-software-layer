@@ -757,6 +757,96 @@ allowed_exportvars = []
 ```
 
 ```ini
+allowed_job_env_vars = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+```
+
+More advanced examples:
+
+```ini
+# allow any value for EB_ARGS (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345)
+allowed_job_env_vars = [{"key": "EB_ARGS", "value": ".*"}]
+
+# allow a specific set of install paths
+allowed_job_env_vars = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
+
+# allow unsetting a variable (empty value)
+allowed_job_env_vars = [{"key": "FOO", "value": ""}]
+```
+
+`allowed_job_env_vars` defines a list of key-value patterns that are allowed to be
+specified in a PR command with the `job_env_vars` filter (or its alias
+`exportvariable`). Each entry is a dict with `key` and `value` keys whose values
+are regular expressions. An argument `KEY=VALUE` is accepted if its key matches
+one entry's `key` regex AND its value matches that same entry's `value` regex;
+otherwise it is rejected and no jobs are prepared. Patterns are matched using
+Python's `re` module (`re.fullmatch`), so the patterns are Python regular
+expressions. These variables will be exported into the build environment before
+running the `bot/build.sh` script.
+
+If `allowed_job_env_vars` is not defined, the bot falls back to the existing
+`allowed_exportvars` setting (see above), converting each exact `KEY=VALUE`
+string into an equivalent regex pattern. This preserves backward compatibility
+for existing deployments.
+
+A reasonable default setting is
+
+```ini
+allowed_job_env_vars = []
+```
+
+```ini
+allowed_submit_args = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+```
+
+More advanced examples:
+
+```ini
+# allow a specific time format only
+allowed_submit_args = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
+
+# allow multiple options with one pattern
+allowed_submit_args = [{"value": "--(time|partition|mem)=.*"}]
+```
+
+`allowed_submit_args` defines a list of patterns that are allowed to be passed to
+the job submission command (e.g. `sbatch`) via the `submit_args` filter. Each
+entry is a dict with a `value` key whose value is a regular expression. An
+argument is accepted if it matches one entry's `value` regex; otherwise it is
+rejected and no jobs are prepared. Patterns are matched using Python's `re`
+module (`re.fullmatch`), so the patterns are Python regular expressions. Unlike
+`job_env_vars`, these options are NOT exported into the build environment -- they are
+appended to the `sbatch` command line only.
+
+**Argument ordering:** The full submit command is constructed as:
+
+```bash
+<submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_args> <script>
+```
+
+where `<slurm_params>` is the global setting from `[buildenv]`, `<slurm_opts>`
+comes from the node type's `slurm_params` in the node map, and `<submit_args>`
+are the user-supplied submit_args. Because submit_args are placed _after_
+`slurm_params` and `slurm_opts`, they can override values set by the site
+configuration (e.g. partition, time limit, memory). Site operators should be
+aware of this when defining `allowed_submit_args` patterns.
+
+A reasonable default setting is
+
+```ini
+allowed_submit_args = []
+```
+
+**Security note:** As a defence-in-depth measure, the bot sanitizes all
+`job_env_vars` and `submit_args` values and rejects any argument that contains shell
+metacharacters. For `job_env_vars`, keys and values are validated separately
+against the character allow-lists defined by tasks.build.JOB_ENV_VARS_KEY_RE
+and tasks.build.JOB_ENV_VARS_VALUE_RE. For `submit_args`, the character
+allow-list defined by tasks.build.SUBMIT_ARG_RE is used. This prevents shell
+injection even if a configured pattern is overly permissive (e.g. `value: ".*"`).
+Additionally, pattern entries that are not well-formed dicts with string `key`/`value`
+values are silently dropped at configuration read time.
+
+```ini
 clone_git_repo_via = https
 ```
 
