@@ -454,6 +454,8 @@ job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for de
 
 
 [download_pr_comments]
+make_dirs_failure = Unable to create the target directory.
+make_dirs_tip = _Tip: Check that you have write permission in the lowest existing level of the path, and that no part of the path exists as a file._
 git_clone_failure = Unable to clone the target repository. 
 git_clone_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_.
 git_checkout_failure = Unable to checkout to the correct branch.
