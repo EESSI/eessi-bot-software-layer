@@ -32,14 +32,12 @@ SUPPORTED_GIT_HOSTS = {
 _git_host = None
 
 # Error codes used to indicate failed stages in Git operations
-ERROR_CURL = "curl"
 ERROR_GIT_APPLY = "git apply"
 ERROR_GIT_CHECKOUT = "git checkout"
 ERROR_GIT_CLONE = "git clone"
 ERROR_GIT_FETCH = "git fetch"
 ERROR_GIT_DIFF = "git diff"
 ERROR_MAKE_DIRS = "makedirs"
-ERROR_PR_DIFF = "pr_diff"
 ERROR_NONE = "none"
 
 

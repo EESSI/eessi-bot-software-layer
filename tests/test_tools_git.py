@@ -628,8 +628,6 @@ def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checko
     elif error_stage == git.ERROR_GIT_CHECKOUT:
         expected_output = checkout_return
     elif error_stage in (git.ERROR_GIT_FETCH, git.ERROR_GIT_DIFF):
-        # Verify that download_pr() passes the error stage (fetch/diff)
-        # directly from _get_pr_diff() instead of returning ERROR_PR_DIFF
         expected_output = get_pr_diff_return
     elif error_stage == git.ERROR_GIT_APPLY:
         expected_output = apply_return

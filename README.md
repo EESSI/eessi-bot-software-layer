@@ -1198,18 +1198,6 @@ git_checkout_tip = _Tip: Ensure that the branch name is correct and the target b
 is shown when `git checkout` failed.
 
 ```ini
-curl_failure = Unable to download the `.diff` file.
-```
-
-`curl_failure` is shown when downloading the `PR_NUMBER.diff`
-
-```ini
-curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
-```
-
-`curl_tip` should help in how to deal with failing downloads of the `.diff` file.
-
-```ini
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 ```
 
