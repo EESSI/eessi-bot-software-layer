@@ -454,16 +454,16 @@ job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for de
 
 
 [download_pr_comments]
+make_dirs_failure = Unable to create the target directory.
+make_dirs_tip = _Tip: Check that you have write permission in the lowest existing level of the path, and that no part of the path exists as a file._
 git_clone_failure = Unable to clone the target repository. 
 git_clone_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_.
 git_checkout_failure = Unable to checkout to the correct branch.
 git_checkout_tip = _Tip: Ensure that the branch name is correct and the target branch is available._
-curl_failure = Unable to download the `.diff` file.
-curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
 pr_diff_failure = Unable to obtain PR diff.
-pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+pr_diff_tip = _Tip: This could be a problem with HTTPS/SSH access to the repository._
 
 
 [clean_up]

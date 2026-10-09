@@ -85,14 +85,14 @@ REQUIRED_CONFIG = {
         # config.DEPLOYCFG_SETTING_SIGNING,                          # optional
         config.DEPLOYCFG_SETTING_UPLOAD_POLICY],                   # required
     config.SECTION_DOWNLOAD_PR_COMMENTS: [
-        config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE,          # required
-        config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP,              # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE,     # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP,         # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE,  # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP,      # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE,     # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP,         # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_FAILURE,     # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_TIP,         # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE,       # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP],          # required
     config.SECTION_EVENT_HANDLER: [

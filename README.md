@@ -1161,6 +1161,18 @@ The `[download_pr_comments]` section sets templates for messages related to
 downloading the contents of a pull request.
 
 ```ini
+make_dirs_failure = Unable to create the target directory.
+```
+
+`make_dirs_failure` is shown when `GitRepository._make_dirs()` failed.
+
+```ini
+make_dirs_tip = _Tip: Check that you have write permission in the lowest existing level of the path, and that no part of the path exists as a file._
+```
+
+`make_dirs_tip` should contain some hint on how to deal with the issue. It is shown when `GitRepository._make_dirs()` failed.
+
+```ini
 git_clone_failure = Unable to clone the target repository.
 ```
 
@@ -1186,18 +1198,6 @@ git_checkout_tip = _Tip: Ensure that the branch name is correct and the target b
 is shown when `git checkout` failed.
 
 ```ini
-curl_failure = Unable to download the `.diff` file.
-```
-
-`curl_failure` is shown when downloading the `PR_NUMBER.diff`
-
-```ini
-curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
-```
-
-`curl_tip` should help in how to deal with failing downloads of the `.diff` file.
-
-```ini
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 ```
 
@@ -1218,7 +1218,7 @@ pr_diff_failure = Unable to obtain PR diff.
 The value of `pr_diff_failure` is shown when the `.diff` file could not be obtained.
 
 ```ini
-pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+pr_diff_tip = _Tip: This could be a problem with HTTPS/SSH access to the repository._
 ```
 
 The value of `pr_diff_tip` should guide the maintainer / bot administrator about resolving the cause for the failing procedure to obtain the `.diff` file.
