@@ -37,7 +37,7 @@ from pyghee.utils import error, log
 from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
-from tools.git import create_git_repository_instance, get_git_hosting_platform, \
+from tools.git import create_git_repository_instance, get_app_name, get_git_hosting_platform, \
     ERROR_GIT_APPLY, ERROR_GIT_CHECKOUT, ERROR_GIT_CLONE, ERROR_GIT_DIFF, ERROR_GIT_FETCH, ERROR_MAKE_DIRS
 from tools.pr_comments import ChatLevels, create_comment, update_comment
 from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
@@ -760,16 +760,15 @@ def prepare_export_vars_file(job_dir, exportvars):
     log(f"{fn}(): created exported variables file {export_vars_path}")
 
 
-def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
+def prepare_jobs(cfg, event_info, action_filter, build_params):
     """
     Prepare all jobs whose context matches the given filter. Preparation includes
     creating a working directory for a job, downloading the pull request into
     that directory and creating a job specific configuration file.
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
         cfg (ConfigParser): instance holding full configuration (typically read from 'app.cfg')
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
         build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
@@ -778,20 +777,21 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     """
     fn = sys._getframe().f_code.co_name
 
-    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
+    app_name = get_app_name(cfg)
     build_env_cfg = get_build_env_cfg(cfg)
     node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
     allowed_job_env_vars = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS)
     allowed_submit_args = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS)
 
-    base_repo_name = pr.base.repo.full_name
-    log(f"{fn}(): pr.base.repo.full_name '{base_repo_name}'")
+    base_repo_name = event_info.repo_name
+    log(f"{fn}(): Base repository: '{base_repo_name}'")
 
-    base_branch_name = pr.base.ref
-    log(f"{fn}(): pr.base.repo.ref '{base_branch_name}'")
+    base_branch_name = event_info.pr_base_branch
+    log(f"{fn}(): Base branch: '{base_branch_name}'")
 
-    job_owner = event_info['raw_request_body']['sender']['login']
+    pr_number = event_info.pr_number
+    job_owner = event_info.event_triggered_by
 
     # create run dir (base directory for potentially several jobs)
     # TODO may still be too early (before we get to any actual job being
@@ -900,7 +900,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
                 event_info, job_dir, clone_via=clone_git_repo_via,
                 )
-            comment_download_pr(base_repo_name, pr.number, download_pr_exit_code, download_pr_error, error_stage)
+            comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
             msg = f"{fn}(): node type = '{node_type_name}' => "
             msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
@@ -1285,7 +1285,7 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
     app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
-    jobs = prepare_jobs(pr, cfg, event_info, action_filter, build_params)
+    jobs = prepare_jobs(cfg, event_info, action_filter, build_params)
 
     # return if there are no jobs to be submitted
     if not jobs:
