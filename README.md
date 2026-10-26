@@ -773,15 +773,40 @@ allowed_job_env_vars = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
 allowed_job_env_vars = [{"key": "FOO", "value": ""}]
 ```
 
+**Multi-word values:** A `job_env_vars` value may contain multiple space-separated
+tokens (e.g. `EB_ARGS="--from-pr 345 --parallel=6"`). The value is split on
+spaces and grouped into argument units (a flag followed by its value, or a
+self-contained `--flag=value` token). Each unit must match at least one allowed
+pattern's `value` regex. Use `[= ]` in a pattern to match both `--flag=value`
+and `--flag value` forms with a single entry:
+
+```ini
+# allow --from-pr with a numeric argument, using either --from-pr=N or --from-pr N
+allowed_job_env_vars = [{"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"}]
+
+# allow multiple flags for EB_ARGS
+allowed_job_env_vars = [
+  {"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"},
+  {"key": "EB_ARGS", "value": "--parallel[= ][0-9]+"},
+  {"key": "EB_ARGS", "value": "--include-easyblock"}
+]
+```
+
+When quoting is used in the bot command (e.g.
+`job_env_vars:EB_ARGS="--from-pr 345 --parallel=6"`), the quotes are consumed by the
+parser and the value is re-quoted with double quotes when written to
+`export_vars.sh` (e.g. `export EB_ARGS="--from-pr 345 --parallel=6"`).
+
 `allowed_job_env_vars` defines a list of key-value patterns that are allowed to be
 specified in a PR command with the `job_env_vars` filter (or its alias
 `exportvariable`). Each entry is a dict with `key` and `value` keys whose values
 are regular expressions. An argument `KEY=VALUE` is accepted if its key matches
-one entry's `key` regex AND its value matches that same entry's `value` regex;
-otherwise it is rejected and no jobs are prepared. Patterns are matched using
-Python's `re` module (`re.fullmatch`), so the patterns are Python regular
-expressions. These variables will be exported into the build environment before
-running the `bot/build.sh` script.
+one entry's `key` regex AND every argument unit in its value matches at least
+one entry's `value` regex (for the same key); otherwise it is rejected and no
+jobs are prepared. Patterns are matched using Python's `re` module
+(`re.fullmatch`), so the patterns are Python regular expressions. These variables
+will be exported into the build environment before running the `bot/build.sh`
+script.
 
 If `allowed_job_env_vars` is not defined, the bot falls back to the existing
 `allowed_exportvars` setting (see above), converting each exact `KEY=VALUE`
@@ -808,14 +833,33 @@ allowed_submit_args = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
 allowed_submit_args = [{"value": "--(time|partition|mem)=.*"}]
 ```
 
+**Multiple Slurm arguments:** A single `submit_args` may contain multiple
+space-separated Slurm arguments (e.g. `submit_args:"--time=30 --mem=30G"`). The
+value is split on spaces and grouped into argument units, each of which must
+match at least one allowed pattern. Use `[= ]` to match both `--flag=value` and
+`--flag value` forms:
+
+```ini
+# allow --time and --mem with numeric values, using either form
+allowed_submit_args = [
+  {"value": "--time[= ][0-9]+"},
+  {"value": "--mem[= ][0-9]+G"},
+  {"value": "--ntasks[= ][0-9]+"}
+]
+```
+
+Quotes in the bot command (e.g. `submit_args:"--time 30 --mem 30G"`) are only
+used to let the parser accept multiple arguments in a single `submit_args`; the
+quotes are not retained for the `sbatch` command.
+
 `allowed_submit_args` defines a list of patterns that are allowed to be passed to
 the job submission command (e.g. `sbatch`) via the `submit_args` filter. Each
 entry is a dict with a `value` key whose value is a regular expression. An
-argument is accepted if it matches one entry's `value` regex; otherwise it is
-rejected and no jobs are prepared. Patterns are matched using Python's `re`
-module (`re.fullmatch`), so the patterns are Python regular expressions. Unlike
-`job_env_vars`, these options are NOT exported into the build environment -- they are
-appended to the `sbatch` command line only.
+argument is accepted if every argument unit matches at least one entry's `value`
+regex; otherwise it is rejected and no jobs are prepared. Patterns are matched
+using Python's `re` module (`re.fullmatch`), so the patterns are Python regular
+expressions. Unlike `job_env_vars`, these options are NOT exported into the build
+environment -- they are appended to the `sbatch` command line only.
 
 **Argument ordering:** The full submit command is constructed as:
 
@@ -838,13 +882,17 @@ allowed_submit_args = []
 
 **Security note:** As a defence-in-depth measure, the bot sanitizes all
 `job_env_vars` and `submit_args` values and rejects any argument that contains shell
-metacharacters. For `job_env_vars`, keys and values are validated separately
-against the character allow-lists defined by tasks.build.JOB_ENV_VARS_KEY_RE
-and tasks.build.JOB_ENV_VARS_VALUE_RE. For `submit_args`, the character
-allow-list defined by tasks.build.SUBMIT_ARG_RE is used. This prevents shell
-injection even if a configured pattern is overly permissive (e.g. `value: ".*"`).
-Additionally, pattern entries that are not well-formed dicts with string `key`/`value`
-values are silently dropped at configuration read time.
+metacharacters. For `job_env_vars`, keys must be valid shell identifiers that are checked against the
+pattern `tasks.build.JOB_ENV_VARS_KEY_RE`, and each space-separated value part is checked
+against the `tasks.build.JOB_ENV_VARS_VALUE_RE` charset (which allows `$` for variable references like
+`/tmp/$USER` but no other shell metacharacters). For `submit_args`, each
+space-separated part is checked against the character allow-list defined by
+`tasks.build.SUBMIT_ARG_RE`. Spaces are allowed _between_ argument units
+(after the parser splits the value) but not within a single token. This prevents
+shell injection even if a configured pattern is overly permissive (e.g.
+`value: ".*"`). Additionally, pattern entries that are not well-formed dicts
+with string `key`/`value` values are silently dropped at configuration read
+time.
 
 ```ini
 clone_git_repo_via = https

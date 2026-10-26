@@ -12,6 +12,7 @@
 # Standard library imports
 from collections import namedtuple
 import re
+import shlex
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import log
@@ -87,12 +88,17 @@ class EESSIBotActionFilter:
     corresponds to a component (see FILTER_COMPONENTS) and the value is a
     pattern used to filter commands based on the context a command is applied to.
     """
-    def __init__(self, filter_string):
+    def __init__(self, filter_string=None, filter_list=None):
         """
         EESSIBotActionFilter constructor
 
         Args:
-            filter_string (string): string containing whitespace separated filters
+            filter_string (string): string containing whitespace separated filters.
+                Ignored if filter_list is provided.
+            filter_list (list): list of pre-split filter strings (e.g.
+                ['arch:amd/zen2', 'jobargs:EB_ARGS=--from-pr 345']). Use this
+                when filter values may contain spaces (e.g. after shlex.split),
+                since splitting a joined string on whitespace would break them.
 
         Raises:
             EESSIBotActionFilterError: raised if caught when adding filter from
@@ -101,7 +107,13 @@ class EESSIBotActionFilter:
                 string
         """
         self.action_filters = []
-        for _filter in filter_string.split():
+        if filter_list is not None:
+            filters = filter_list
+        elif filter_string is not None:
+            filters = filter_string.split()
+        else:
+            filters = []
+        for _filter in filters:
             try:
                 self.add_filter_from_string(_filter)
             except EESSIBotActionFilterError:
@@ -288,6 +300,8 @@ class EESSIBotActionFilter:
         for _filter in self.action_filters:
             cm = _filter.component
             re = _filter.pattern
+            if any(char.isspace() for char in re):
+                re = shlex.quote(re)
             filter_str_list.append(f"{cm}:{re}")
         return " ".join(filter_str_list)
 

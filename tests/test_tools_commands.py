@@ -11,6 +11,7 @@
 
 # Standard library imports
 from contextlib import nullcontext
+import shlex
 from unittest.mock import patch
 
 # Third party imports (anything installed into the local Python environment)
@@ -147,7 +148,12 @@ class MockActionFilter():
         return self.action_filters == other.action_filters
 
     def to_string(self):
-        return " ".join([":".join(af) for af in self.action_filters])
+        filter_strings = []
+        for component, pattern in self.action_filters:
+            if any(char.isspace() for char in pattern):
+                pattern = shlex.quote(pattern)
+            filter_strings.append(f"{component}:{pattern}")
+        return " ".join(filter_strings)
 
 
 class MockCommand():
@@ -188,10 +194,43 @@ class MockCommand():
      nullcontext(MockCommand("build",
                              action_filters=MockActionFilter([("architecture", "icelake"),
                                                               ("repository", "eessi.io-2025.06-software")]),
-                             build_params={"architecture": "x86_64/intel/icelake", "accelerator": "nvidia/cc90"})))
+                             build_params={"architecture": "x86_64/intel/icelake", "accelerator": "nvidia/cc90"}))),
+
+    # Test 'build' command with quoted multi-word jobargs value
+    ('build job_env_vars:EB_ARGS="--from-pr 345 --parallel=6"',
+     nullcontext(MockCommand("build",
+                             action_filters=MockActionFilter(
+                                 [("exportvariable", "EB_ARGS=--from-pr 345 --parallel=6")])))),
+
+    # Test 'build' command with quoted multi-word submitargs value
+    ('build submit_args:"--time=30 --mem=30G"',
+     nullcontext(MockCommand("build",
+                             action_filters=MockActionFilter([("submit_args", "--time=30 --mem=30G")])))),
+
+    # Test 'build' command with both jobargs and submitargs (quoted)
+    ('build job_env_vars:EB_ARGS="--from-pr 345" submit_args:"--time 30 --mem 30G"',
+     nullcontext(MockCommand("build",
+                             action_filters=MockActionFilter([("exportvariable", "EB_ARGS=--from-pr 345"),
+                                                              ("submit_args", "--time 30 --mem 30G")])))),
 ])
 def test_EESSIBotCommand(cmd_str, expectation):
     with expectation as expected_command:
         command = commands.EESSIBotCommand(cmd_str)
         assert command == expected_command
         assert command.to_string() == expected_command.to_string()
+
+
+def test_unclosed_quote_raises_command_error():
+    with pytest.raises(commands.EESSIBotCommandError):
+        commands.EESSIBotCommand('build submit_args:"--time 30')
+
+
+def test_to_string_round_trips_quoted_filters():
+    cmd_str = ('build job_env_vars:EB_ARGS="--from-pr 345 --parallel=6" '
+               'submit_args:"--time 30 --mem=30G"')
+    command = commands.EESSIBotCommand(cmd_str)
+    reparsed_command = commands.EESSIBotCommand(command.to_string())
+
+    assert reparsed_command.command == command.command
+    assert reparsed_command.action_filters.action_filters == command.action_filters.action_filters
+    assert reparsed_command.build_params == command.build_params

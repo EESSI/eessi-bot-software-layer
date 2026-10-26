@@ -15,9 +15,12 @@
 #
 
 # Standard library imports
+import configparser
 import filecmp
+import json
 import os
 import re
+import subprocess
 from unittest.mock import Mock, patch
 
 # Third party imports (anything installed into the local Python environment)
@@ -26,10 +29,14 @@ from datetime import datetime
 import pytest
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from tasks.build import Job, create_pr_comment, request_bot_build_issue_comments
 from tools import run_cmd, run_subprocess
 from tools.build_params import EESSIBotBuildParams
-from tasks.build import ARG_TYPE_KEY_VALUE, ARG_TYPE_STR_VALUE
+from tasks.build import (
+    ARG_TYPE_KEY_VALUE, ARG_TYPE_STR_VALUE, EXPORT_VARS_FILE, Job,
+    check_allowed_args_config, check_argument_unit, check_patterns_wellformed, create_pr_comment,
+    get_allowed_args, pair_tokens, prepare_export_vars_file, request_bot_build_issue_comments,
+    validate_args,
+)
 from tools.job_metadata import create_metadata_file, read_metadata_file
 from tools.pr_comments import PRCommentInfo, get_submitted_job_comment
 
@@ -535,7 +542,6 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
 @pytest.mark.pr_number(1)
 def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path):
     """Tests that create_pr_comment includes commit SHA from cloned repo."""
-    import subprocess
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
 
     # Set up a git repo in tmp_path with a commit
@@ -620,14 +626,12 @@ class TestValidateArgs:
     """Tests for validate_args function in tasks/build.py"""
 
     def test_job_env_vars_exact_match(self):
-        from tasks.build import validate_args
         patterns = [{"key": "^SKIP_TESTS$", "value": "^yes$"}]
         accepted, rejected = validate_args(["SKIP_TESTS=yes"], patterns, arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == ["SKIP_TESTS=yes"]
         assert rejected == []
 
     def test_job_env_vars_regex_match(self):
-        from tasks.build import validate_args
         patterns = [{"key": "SKIP_.*", "value": "yes|no"}]
         accepted, rejected = validate_args(
             ["SKIP_TESTS=yes", "SKIP_INTEGRATION=no"], patterns, arg_type=ARG_TYPE_KEY_VALUE
@@ -636,54 +640,153 @@ class TestValidateArgs:
         assert rejected == []
 
     def test_job_env_vars_rejected_value(self):
-        from tasks.build import validate_args
         patterns = [{"key": "^SKIP_TESTS$", "value": "^yes$"}]
         accepted, rejected = validate_args(["SKIP_TESTS=maybe"], patterns, arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == []
         assert rejected == ["SKIP_TESTS=maybe"]
 
     def test_job_env_vars_rejected_key(self):
-        from tasks.build import validate_args
         patterns = [{"key": "^SKIP_TESTS$", "value": "^yes$"}]
         accepted, rejected = validate_args(["OTHER=yes"], patterns, arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == []
         assert rejected == ["OTHER=yes"]
 
     def test_job_env_vars_missing_equals(self):
-        from tasks.build import validate_args
         patterns = [{"key": ".*", "value": ".*"}]
         accepted, rejected = validate_args(["INVALID"], patterns, arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == []
         assert rejected == ["INVALID"]
 
     def test_submit_args_match(self):
-        from tasks.build import validate_args
         patterns = [{"value": "--time=.*"}]
         accepted, rejected = validate_args(["--time=01:00:00"], patterns, arg_type=ARG_TYPE_STR_VALUE)
         assert accepted == ["--time=01:00:00"]
         assert rejected == []
 
     def test_submit_args_rejected(self):
-        from tasks.build import validate_args
         patterns = [{"value": "--time=.*"}]
         accepted, rejected = validate_args(["--partition=gpu"], patterns, arg_type=ARG_TYPE_STR_VALUE)
         assert accepted == []
         assert rejected == ["--partition=gpu"]
 
     def test_empty_patterns_reject_all(self):
-        from tasks.build import validate_args
         accepted, rejected = validate_args(["SKIP_TESTS=yes"], [], arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == []
         assert rejected == ["SKIP_TESTS=yes"]
+
+    def test_job_env_vars_multiword_equals_form(self):
+        patterns = [
+            {"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"},
+            {"key": "EB_ARGS", "value": "--parallel[= ][0-9]+"},
+        ]
+        accepted, rejected = validate_args(
+            ["EB_ARGS=--from-pr=345 --parallel=6"], patterns, arg_type=ARG_TYPE_KEY_VALUE
+        )
+        assert accepted == ["EB_ARGS=--from-pr=345 --parallel=6"]
+        assert rejected == []
+
+    def test_job_env_vars_multiword_space_form(self):
+        patterns = [
+            {"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"},
+            {"key": "EB_ARGS", "value": "--parallel[= ][0-9]+"},
+        ]
+        accepted, rejected = validate_args(
+            ["EB_ARGS=--from-pr 345 --parallel 6"], patterns, arg_type=ARG_TYPE_KEY_VALUE
+        )
+        assert accepted == ["EB_ARGS=--from-pr 345 --parallel 6"]
+        assert rejected == []
+
+    def test_job_env_vars_multiword_mixed_forms(self):
+        patterns = [
+            {"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"},
+            {"key": "EB_ARGS", "value": "--parallel[= ][0-9]+"},
+            {"key": "EB_ARGS", "value": "--include-easyblock"},
+        ]
+        accepted, rejected = validate_args(
+            ["EB_ARGS=--from-pr 345 --parallel=6 --include-easyblock"], patterns, arg_type=ARG_TYPE_KEY_VALUE
+        )
+        assert accepted == ["EB_ARGS=--from-pr 345 --parallel=6 --include-easyblock"]
+        assert rejected == []
+
+    def test_job_env_vars_multiword_rejected_unit(self):
+        patterns = [
+            {"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"},
+        ]
+        accepted, rejected = validate_args(
+            ["EB_ARGS=--from-pr 345 --evil-flag"], patterns, arg_type=ARG_TYPE_KEY_VALUE
+        )
+        assert accepted == []
+        assert rejected == ["EB_ARGS=--from-pr 345 --evil-flag"]
+
+    def test_submit_args_multiword_equals_form(self):
+        patterns = [
+            {"value": "--time[= ][0-9]+"},
+            {"value": "--mem[= ][0-9]+G"},
+        ]
+        accepted, rejected = validate_args(
+            ["--time=30 --mem=30G"], patterns, arg_type=ARG_TYPE_STR_VALUE
+        )
+        assert accepted == ["--time=30 --mem=30G"]
+        assert rejected == []
+
+    def test_submit_args_multiword_space_form(self):
+        patterns = [
+            {"value": "--time[= ][0-9]+"},
+            {"value": "--mem[= ][0-9]+G"},
+            {"value": "--ntasks[= ][0-9]+"},
+        ]
+        accepted, rejected = validate_args(
+            ["--time 30 --mem 30G --ntasks 2"], patterns, arg_type=ARG_TYPE_STR_VALUE
+        )
+        assert accepted == ["--time 30 --mem 30G --ntasks 2"]
+        assert rejected == []
+
+    def test_submit_args_multiword_rejected_unit(self):
+        patterns = [
+            {"value": "--time[= ][0-9]+"},
+        ]
+        accepted, rejected = validate_args(
+            ["--time 30 --evil-flag"], patterns, arg_type=ARG_TYPE_STR_VALUE
+        )
+        assert accepted == []
+        assert rejected == ["--time 30 --evil-flag"]
+
+
+class TestPairTokens:
+    """Tests for pair_tokens function in tasks/build.py"""
+
+    def test_self_contained_units(self):
+        assert pair_tokens(["--time=30", "--mem=30G"]) == ["--time=30", "--mem=30G"]
+
+    def test_paired_units(self):
+        assert pair_tokens(["--from-pr", "345", "--parallel", "6"]) == [
+            "--from-pr 345", "--parallel 6"
+        ]
+
+    def test_mixed_forms(self):
+        assert pair_tokens(["--from-pr", "345", "--parallel=6"]) == [
+            "--from-pr 345", "--parallel=6"
+        ]
+
+    def test_bare_flag(self):
+        assert pair_tokens(["--include-easyblock"]) == ["--include-easyblock"]
+
+    def test_bare_flag_followed_by_flag(self):
+        assert pair_tokens(["--include-easyblock", "--verbose"]) == [
+            "--include-easyblock", "--verbose"
+        ]
+
+    def test_bare_flag_then_value(self):
+        assert pair_tokens(["--include-easyblock", "435"]) == ["--include-easyblock 435"]
+
+    def test_empty_list(self):
+        assert pair_tokens([]) == []
 
 
 class TestGetAllowedArgs:
     """Tests for get_allowed_args function in tasks/build.py"""
 
     def test_auto_migrate_from_exportvars(self):
-        from tasks.build import get_allowed_args
-        import json
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_exportvars": json.dumps(["SKIP_TESTS=yes", "SKIP_TESTS=no"]),
@@ -696,9 +799,6 @@ class TestGetAllowedArgs:
         assert result[1]["value"] == "^no$"
 
     def test_job_env_vars_takes_precedence_over_exportvars(self):
-        from tasks.build import get_allowed_args
-        import json
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_exportvars": json.dumps(["SKIP_TESTS=yes"]),
@@ -709,9 +809,6 @@ class TestGetAllowedArgs:
         assert result[0]["key"] == "DEBUG_.*"
 
     def test_submit_args_no_legacy_fallback(self):
-        from tasks.build import get_allowed_args
-        import json
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_exportvars": json.dumps(["SKIP_TESTS=yes"]),
@@ -720,8 +817,6 @@ class TestGetAllowedArgs:
         assert result == []
 
     def test_empty_settings(self):
-        from tasks.build import get_allowed_args
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {}
         assert get_allowed_args(cfg, "allowed_job_env_vars") == []
@@ -732,8 +827,6 @@ class TestGetAllowedArgs:
         # return [] rather than calling error() (which exits the process).
         log_msgs = []
         monkeypatch.setattr("tasks.build.log", lambda msg: log_msgs.append(msg))
-        from tasks.build import get_allowed_args
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_job_env_vars": "not valid json",
@@ -745,8 +838,6 @@ class TestGetAllowedArgs:
         # Same for the legacy allowed_exportvars auto-migration path.
         log_msgs = []
         monkeypatch.setattr("tasks.build.log", lambda msg: log_msgs.append(msg))
-        from tasks.build import get_allowed_args
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_exportvars": "not valid json",
@@ -759,9 +850,6 @@ class TestCheckAllowedArgsConfig:
     """Tests for check_allowed_args_config function in tasks/build.py"""
 
     def test_valid_json_passes(self):
-        from tasks.build import check_allowed_args_config
-        import json
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_job_env_vars": json.dumps([{"key": "SKIP_.*", "value": "yes|no"}]),
@@ -774,8 +862,6 @@ class TestCheckAllowedArgsConfig:
         # Should return False and log an error about the decode failure.
         log_msgs = []
         monkeypatch.setattr("tasks.build.log", lambda msg: log_msgs.append(msg))
-        from tasks.build import check_allowed_args_config
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_job_env_vars": "not valid json",
@@ -784,90 +870,76 @@ class TestCheckAllowedArgsConfig:
         assert any("could not be decoded" in msg for msg in log_msgs)
 
     def test_empty_settings_pass(self):
-        from tasks.build import check_allowed_args_config
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {}
         assert check_allowed_args_config(cfg) is True
 
 
-class TestSanitizeArg:
-    """Tests for check_arg function in tasks/build.py"""
+class TestCheckArgumentUnit:
+    """Tests for check_argument_unit function in tasks/build.py"""
 
     def test_safe_job_env_vars(self):
-        from tasks.build import check_arg
-        assert check_arg("SKIP_TESTS=yes", ARG_TYPE_KEY_VALUE)
+        assert check_argument_unit("SKIP_TESTS=yes", ARG_TYPE_KEY_VALUE)
 
     def test_safe_job_env_vars_with_dollar(self):
         # '$' is allowed in job_env_vars values (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345)
         # because job_env_vars are written to export_vars.sh and sourced by the shell.
-        from tasks.build import check_arg
-        assert check_arg("EB_ARGS=--installpath=/tmp/$USER/pr12345", ARG_TYPE_KEY_VALUE)
+        assert check_argument_unit("EB_ARGS=--installpath=/tmp/$USER/pr12345", ARG_TYPE_KEY_VALUE)
 
     def test_safe_job_env_vars_empty_value(self):
         # An empty value is allowed (e.g. FOO= to unset a variable).
-        from tasks.build import check_arg
-        assert check_arg("FOO=", ARG_TYPE_KEY_VALUE)
+        assert check_argument_unit("FOO=", ARG_TYPE_KEY_VALUE)
 
     def test_safe_submit_args(self):
-        from tasks.build import check_arg
-        assert check_arg("--time=01:00:00", ARG_TYPE_STR_VALUE)
-        assert check_arg("--export=ALL,FOO=bar", ARG_TYPE_STR_VALUE)
+        assert check_argument_unit("--time=01:00:00", ARG_TYPE_STR_VALUE)
+        assert check_argument_unit("--export=ALL,FOO=bar", ARG_TYPE_STR_VALUE)
 
     def test_rejects_backticks(self):
-        from tasks.build import check_arg
-        assert not check_arg("VAR=yes`echo dangerous`", ARG_TYPE_KEY_VALUE)
+        assert not check_argument_unit("VAR=yes`echo dangerous`", ARG_TYPE_KEY_VALUE)
 
     def test_rejects_dollar_paren(self):
-        from tasks.build import check_arg
-        assert not check_arg("VAR=$(malicious)", ARG_TYPE_KEY_VALUE)
+        assert not check_argument_unit("VAR=$(malicious)", ARG_TYPE_KEY_VALUE)
 
     def test_rejects_semicolon(self):
-        from tasks.build import check_arg
-        assert not check_arg("--time=01:00:00;echo dangerous", ARG_TYPE_STR_VALUE)
+        assert not check_argument_unit("--time=01:00:00;echo dangerous", ARG_TYPE_STR_VALUE)
 
     def test_rejects_pipe(self):
-        from tasks.build import check_arg
-        assert not check_arg("VAR=value|cat /etc/passwd", ARG_TYPE_KEY_VALUE)
+        assert not check_argument_unit("VAR=value|cat /etc/passwd", ARG_TYPE_KEY_VALUE)
 
     def test_rejects_ampersand(self):
-        from tasks.build import check_arg
-        assert not check_arg("VAR=value&&malicious", ARG_TYPE_KEY_VALUE)
+        assert not check_argument_unit("VAR=value&&malicious", ARG_TYPE_KEY_VALUE)
 
-    def test_rejects_spaces_in_job_env_vars_value(self):
-        # Spaces in job_env_vars values are still rejected. Note: the upstream parser
-        # (tools/commands.py) splits commands on whitespace, so a value with
-        # spaces would already be broken before reaching check_arg. Supporting
-        # quoted values with spaces would require parser changes.
-        from tasks.build import check_arg
-        assert not check_arg("VAR=with spaces", ARG_TYPE_KEY_VALUE)
+    def test_allows_spaces_in_job_env_vars_value(self):
+        # Spaces in job_env_vars values are allowed: the upstream parser
+        # (tools/commands.py) uses shlex.split() which respects quoting, so
+        # a quoted value like "--from-pr 345" reaches check_argument_unit intact.
+        assert check_argument_unit("--from-pr 345", ARG_TYPE_KEY_VALUE)
+        assert check_argument_unit("--parallel=6", ARG_TYPE_KEY_VALUE)
 
-    def test_rejects_spaces_in_submit_args(self):
-        from tasks.build import check_arg
-        assert not check_arg("--time=01:00:00 echo dangerous", ARG_TYPE_STR_VALUE)
+    def test_allows_spaces_in_submit_args(self):
+        # Spaces in submit_args are allowed between tokens (e.g.
+        # '--time 30 --mem 30G').
+        assert check_argument_unit("--time=01:00:00", ARG_TYPE_STR_VALUE)
+        assert check_argument_unit("--time 30", ARG_TYPE_STR_VALUE)
 
     def test_rejects_dollar_in_submit_args(self):
         # '$' is not allowed in submit_args because they are appended to an
         # sbatch command line executed with shell=True.
-        from tasks.build import check_arg
-        assert not check_arg("--time=$FOO", ARG_TYPE_STR_VALUE)
+        assert not check_argument_unit("--time=$FOO", ARG_TYPE_STR_VALUE)
 
     def test_rejects_injection_in_key(self):
         # A key like ${UNDEF:-rm -rf} must be rejected: keys must be valid
         # shell identifiers ([a-zA-Z_][a-zA-Z0-9_]*).
-        from tasks.build import check_arg
-        assert not check_arg("${UNDEF:-echo dangerous}=yes", ARG_TYPE_KEY_VALUE)
+        assert not check_argument_unit("${UNDEF:-echo dangerous}=yes", ARG_TYPE_KEY_VALUE)
 
     def test_rejects_newline(self):
-        from tasks.build import check_arg
-        assert not check_arg("VAR=with\nnewline", ARG_TYPE_KEY_VALUE)
+        assert not check_argument_unit("VAR=with\nnewline", ARG_TYPE_KEY_VALUE)
 
 
 class TestValidateArgsSecurity:
     """Tests that validate_args blocks shell injection even with permissive patterns"""
 
     def test_permissive_pattern_allows_safe_arg(self):
-        from tasks.build import validate_args
         patterns = [{"key": ".*", "value": ".*"}]
         accepted, rejected = validate_args(["SKIP_TESTS=yes"], patterns, arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == ["SKIP_TESTS=yes"]
@@ -876,7 +948,6 @@ class TestValidateArgsSecurity:
     def test_permissive_pattern_allows_dollar_in_job_env_vars_value(self):
         # '$' in job_env_vars values is safe (export_vars.sh is sourced by the shell)
         # and should pass even with a permissive '.*' pattern.
-        from tasks.build import validate_args
         patterns = [{"key": ".*", "value": ".*"}]
         accepted, rejected = validate_args(
             ["EB_ARGS=--installpath=/tmp/$USER/pr12345"], patterns, arg_type=ARG_TYPE_KEY_VALUE
@@ -885,14 +956,12 @@ class TestValidateArgsSecurity:
         assert rejected == []
 
     def test_permissive_pattern_blocks_injection_job_env_vars(self):
-        from tasks.build import validate_args
         patterns = [{"key": ".*", "value": ".*"}]
         accepted, rejected = validate_args(["EVIL=yes`echo dangerous`"], patterns, arg_type=ARG_TYPE_KEY_VALUE)
         assert accepted == []
         assert rejected == ["EVIL=yes`echo dangerous`"]
 
     def test_permissive_pattern_blocks_injection_submit_args(self):
-        from tasks.build import validate_args
         patterns = [{"value": ".*"}]
         accepted, rejected = validate_args(["--time=01:00:00;echo dangerous"], patterns, arg_type=ARG_TYPE_STR_VALUE)
         assert accepted == []
@@ -901,7 +970,6 @@ class TestValidateArgsSecurity:
     def test_permissive_pattern_blocks_injection_in_key(self):
         # Even with '.*' for both key and value, a key containing shell
         # metacharacters (e.g. ${UNDEF:-echo dangerous}) must be rejected.
-        from tasks.build import validate_args
         patterns = [{"key": ".*", "value": ".*"}]
         accepted, rejected = validate_args(
             ["${UNDEF:-echo dangerous}=yes"], patterns, arg_type=ARG_TYPE_KEY_VALUE
@@ -923,7 +991,6 @@ class TestCheckPatternsWellformed:
     """
 
     def test_valid_patterns_pass_through(self):
-        from tasks.build import check_patterns_wellformed
         result = check_patterns_wellformed(
             [{"key": "SKIP_.*", "value": "yes|no"}], "allowed_job_env_vars"
         )
@@ -931,33 +998,26 @@ class TestCheckPatternsWellformed:
 
     def test_non_dict_entry_dropped(self):
         # For submit_args only the 'value' field is validated (no 'key' required).
-        from tasks.build import check_patterns_wellformed
         result = check_patterns_wellformed(["notadict", {"value": "ok"}], "allowed_submit_args")
         assert len(result) == 1
 
     def test_non_string_value_dropped(self):
         # 123 is not a valid value because 'value' must be a string (regex
         # pattern), not an integer.
-        from tasks.build import check_patterns_wellformed
         result = check_patterns_wellformed([{"value": 123}], "allowed_submit_args")
         assert len(result) == 0
 
     def test_non_string_key_dropped(self):
-        from tasks.build import check_patterns_wellformed
         result = check_patterns_wellformed([{"key": 123, "value": "ok"}], "allowed_job_env_vars")
         assert len(result) == 0
 
     def test_non_list_returns_empty(self):
-        from tasks.build import check_patterns_wellformed
         assert check_patterns_wellformed("notalist", "allowed_job_env_vars") == []
 
     def test_get_allowed_args_drops_invalid_config_entries(self):
         # Config contains three entries: a valid dict, a bare string (not a
         # dict), and a dict with a non-string value (123 is an int, not a
         # regex string). Only the first entry should survive validation.
-        from tasks.build import get_allowed_args
-        import json
-        import configparser
         cfg = configparser.ConfigParser()
         cfg["buildenv"] = {
             "allowed_submit_args": json.dumps([{"value": "--time=.*"}, "badentry", {"value": 123}]),
@@ -965,3 +1025,35 @@ class TestCheckPatternsWellformed:
         result = get_allowed_args(cfg, "allowed_submit_args")
         assert len(result) == 1
         assert result[0]["value"] == "--time=.*"
+
+
+class TestPrepareExportVarsFile:
+    """Tests for prepare_export_vars_file function in tasks/build.py"""
+
+    def test_simple_var_no_spaces(self, tmp_path):
+        job_dir = str(tmp_path)
+        os.makedirs(os.path.join(job_dir, "cfg"))
+        prepare_export_vars_file(job_dir, ["SKIP_TESTS=yes"])
+        path = os.path.join(job_dir, "cfg", EXPORT_VARS_FILE)
+        with open(path) as file:
+            content = file.read()
+        assert "export SKIP_TESTS=yes" in content
+
+    def test_var_with_spaces_is_quoted(self, tmp_path):
+        job_dir = str(tmp_path)
+        os.makedirs(os.path.join(job_dir, "cfg"))
+        prepare_export_vars_file(job_dir, ["EB_ARGS=--from-pr 345 --parallel=6"])
+        path = os.path.join(job_dir, "cfg", EXPORT_VARS_FILE)
+        with open(path) as file:
+            content = file.read()
+        assert 'export EB_ARGS="--from-pr 345 --parallel=6"' in content
+
+    def test_multiple_vars(self, tmp_path):
+        job_dir = str(tmp_path)
+        os.makedirs(os.path.join(job_dir, "cfg"))
+        prepare_export_vars_file(job_dir, ["SKIP_TESTS=yes", "EB_ARGS=--from-pr 345"])
+        path = os.path.join(job_dir, "cfg", EXPORT_VARS_FILE)
+        with open(path) as file:
+            content = file.read()
+        assert "export SKIP_TESTS=yes" in content
+        assert 'export EB_ARGS="--from-pr 345"' in content

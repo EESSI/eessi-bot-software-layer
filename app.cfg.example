@@ -208,15 +208,31 @@ allow_update_submit_opts = false
 # It's safe to use the following line as default setting:
 allowed_exportvars = []
 
-# defines which key-value pairs are allowed to be exported into the build
-# environment via 'job_env_vars' (or 'exportvariable') filters. Each entry is a
-# dict with 'key' and 'value' keys whose values are regular expressions. An
-# argument 'KEY=VALUE' is accepted if its key matches one entry's 'key' regex
-# AND its value matches that same entry's 'value' regex; otherwise it is
-# rejected and no jobs are prepared.
-# Patterns are matched using Python's 're' module (re.fullmatch), so the patterns
-# are Python regular expressions.
-# If 'allowed_job_env_vars' is not defined, the bot falls back to the existing
+# For `bot:build` commands, one can add arguments (internally called _filters_)
+# with the format `job_env_vars:KEY=VALUE`. The `KEY=VALUE` pairs are added
+# to a file `export_vars.sh` which is sourced before the `bot/build.sh` script
+# runs. The `VALUE` part can contain multiple space-separated _argument units_
+# enclosed in double quotes. An example argument could look as follows
+#
+# job_env_vars:EB_ARGS="--from-pr 345 --parallel=6"
+#
+# The list `allowed_job_env_vars` defines which `KEY=VALUE` pairs in
+# `job_env_vars` filters are allowed to be added to the file `export_vars.sh`.
+# Each list element is a dictionary with 'key' and 'value' entries which define
+# regular expressions for the `KEY` and an _argument unit_ in the `VALUE`,
+# respectively. A 'KEY=VALUE' pair is accepted if each `KEY=`_`argument unit`_
+# pair matches at least one list item. That is, `KEY` part matches the list
+# item's 'key' regex and the _`argument unit`_ matches the 'value' regex of the
+# same list item. Otherwise it is rejected and no jobs are prepared.
+#
+# A pattern is a regular expression matched using Python's 're' module
+# (re.fullmatch). The _argument units_ can be a flag (also called _switch_ or
+# _boolean option_ such as `--verbose`), an option with an attached argument
+# (such as `--parallel=6`), or an option with a separate(d) argument (such as
+# `--from-pr 345`). Use '[= ]' in a pattern to match both '--flag=value' and
+# '--flag value' forms with a single list item in `allowed_job_env_vars`.
+#
+# If 'allowed_job_env_vars' is not defined, the bot falls back to the legacy
 # 'allowed_exportvars' setting (see above), converting each exact 'KEY=VALUE'
 # string into an equivalent regex pattern. This preserves backward
 # compatibility for existing deployments.
@@ -230,28 +246,49 @@ allowed_exportvars = []
 #     allowed_job_env_vars = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
 #   - allow unsetting a variable (empty value):
 #     allowed_job_env_vars = [{"key": "FOO", "value": ""}]
+#   - allow multi-word values with both '=' and space forms:
+#     allowed_job_env_vars = [
+#       {"key": "EB_ARGS", "value": "--from-pr[= ][0-9]+"},
+#       {"key": "EB_ARGS", "value": "--parallel[= ][0-9]+"},
+#       {"key": "EB_ARGS", "value": "--include-easyblock"}
+#     ]
 #
 # It's safe to use the following line as default setting:
 allowed_job_env_vars = []
 
-# SECURITY NOTE: as a defence-in-depth measure, the bot sanitizes all job_env_vars
-# and submit_args values and rejects any argument that contains shell
-# metacharacters. For job_env_vars, keys and values are validated separately
-# against the character allow-lists defined by tasks.build.JOB_ENV_VARS_KEY_RE
-# and tasks.build.JOB_ENV_VARS_VALUE_RE. For submit_args, the character
-# allow-list defined by tasks.build.SUBMIT_ARG_RE is used. This prevents shell
-# injection even if a pattern above is overly permissive (e.g. value '.*').
-# Additionally, pattern entries that are not well-formed dicts with string
+# SECURITY NOTE: as a defence-in-depth measure, the bot sanitizes all
+# job_env_vars and submit_args arguments and rejects any that contains shell
+# metacharacters. For job_env_vars, the argument key is validated against the
+# character allow-list defined by tasks.build.JOB_ENV_VARS_KEY_RE. The argument
+# values is split up into argument units and each is validated against
+# tasks.build.JOB_ENV_VARS_VALUE_RE. For submit_args, each space-separated part
+# is checked against the character allow-list defined by
+# tasks.build.SUBMIT_ARG_RE. This prevents shell injection even if a pattern
+# above is overly permissive (e.g. `"value": ".*"`).
+#
+# Additionally, list items that are not well-formed dictionaries with string
 # 'key'/'value' values are silently dropped at configuration read time.
 
-# defines which options are allowed to be passed to the job submission command
-# (e.g. sbatch) via submit_args filters. Each entry is a dict with a 'value'
-# key whose value is a regular expression. An argument is accepted if it
-# matches one entry's 'value' regex; otherwise it is rejected and no jobs are
-# prepared. Unlike job_env_vars, these options are NOT exported into the build
-# environment -- they are appended to the sbatch command line only.
-# Patterns are matched using Python's 're' module (re.fullmatch), so the patterns
-# are Python regular expressions.
+# For `bot:build` commands, one can add arguments (internally called _filters_)
+# with the format `submit_args:OPTIONS`. The `OPTIONS` contain multiple
+# space-separated _argument units_ enclosed in double quotes. An example
+# argument could look as follows
+#
+# submit_args:"--time 10 --mem=20G"
+#
+# The list `allowed_submit_args` defines which options in `submit_args` filters
+# are allowed to be passed to the job submission command (e.g. sbatch). Each
+# list item is a dictionary with a `"value": REGEX` entry where REGEX is a
+# regular expression. An option is accepted if each argument unit enclosed in
+# the option matches at least one list item. That is, the argument unit matches
+# the REGEX part. Otherwise it is rejected and no jobs are prepared. Unlike
+# 'job_env_vars', these options are NOT exported into the build environment --
+# they are appended to the sbatch command line only.
+#
+# A pattern is a regular expression matched using Python's 're' module
+# (re.fullmatch). The _argument units_ can be any option to Slurm's sbatch
+# command. Use '[= ]' to match both '--flag=value' and '--flag value' forms.
+#
 # NOTE on argument ordering: the full submit command is constructed as:
 #   <submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_args> <script>
 # where <slurm_params> is the global setting from [buildenv], <slurm_opts> comes
@@ -260,14 +297,22 @@ allowed_job_env_vars = []
 # slurm_opts, they can override values set by the site configuration (e.g.
 # partition, time limit, memory). Site operators should be aware of this when
 # defining allowed_submit_args patterns.
+#
 # NOTE, the setting is optional. If you want to enable this feature, uncomment
 # the line below and define meaningful pattern(s). For example:
 # allowed_submit_args = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+#
 # More advanced examples:
 #   - allow a specific time format only:
 #     allowed_submit_args = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
 #   - allow multiple options with one pattern:
 #     allowed_submit_args = [{"value": "--(time|partition|mem)=.*"}]
+#   - allow multi-word submitargs with both '=' and space forms:
+#     allowed_submit_args = [
+#       {"value": "--time[= ][0-9]+"},
+#       {"value": "--mem[= ][0-9]+G"},
+#       {"value": "--ntasks[= ][0-9]+"}
+#     ]
 #
 # It's safe to use the following line as default setting:
 allowed_submit_args = []
