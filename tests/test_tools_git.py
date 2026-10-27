@@ -718,7 +718,8 @@ def test_GitLabGitRepository_get_pr_src_ref(tmp_path):
 @pytest.mark.parametrize("git_host,expected_type", [
     (git.GITHUB, git.GitHubGitRepository),
     (git.GITLAB, git.GitLabGitRepository),
-    ("unknown", type(None)),
+    ("generic", git.GenericGitRepository),
+    ("unknown", git.GenericGitRepository),
 ])
 def test_create_git_repository_instance(tmp_path, git_host, expected_type):
     repo = git.create_git_repository_instance(REPO_URL, tmp_path, git_host)
