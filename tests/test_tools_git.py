@@ -653,7 +653,7 @@ def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checko
 
 # Verify GitRepository type definition
 def test_GitRepository():
-    expected_git_repository_types = {git.GitHubGitRepository, git.GitLabGitRepository}
+    expected_git_repository_types = {git.GenericGitRepository, git.GitHubGitRepository, git.GitLabGitRepository}
     # Need to use __args__ for Python 3.9 compatibility
     actual_git_repository_types = set(git.GitRepository.__args__)
     assert actual_git_repository_types == expected_git_repository_types
@@ -675,6 +675,9 @@ BASE_GIT_REPOSITORY_ATTRIBUTES = [
 
 # Test GitRepository classes
 @pytest.mark.parametrize("subclass,overrides", [
+    # GenericGitRepository should not override anything
+    (git.GenericGitRepository, []),
+
     # GitHubGitRepository should not override anything
     (git.GitHubGitRepository, []),
 
