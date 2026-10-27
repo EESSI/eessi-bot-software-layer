@@ -47,7 +47,7 @@ REPO_URL = "https://example.org/testuser/software-layer.git"
 
 
 # Subclass for use in BaseGitRepository tests
-class GenericGitRepository(git.BaseGitRepository):
+class GenericTestGitRepository(git.BaseGitRepository):
     pass
 
 
@@ -165,9 +165,9 @@ def test_BaseGitRepository(tmp_path):
     with pytest.raises(NotImplementedError):
         git.BaseGitRepository(REPO_URL, tmp_path)
 
-    # GenericGitRepository is a subclass of BaseGitRepository without any overrides
+    # GenericTestGitRepository is a subclass of BaseGitRepository without any overrides
     # Test properties
-    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo = GenericTestGitRepository(REPO_URL, tmp_path)
     assert repo._cloned is False
     assert repo._directory == tmp_path
     assert repo._repo_url == REPO_URL
@@ -177,7 +177,7 @@ def test_BaseGitRepository(tmp_path):
 def test_BaseGitRepository_get_pr_src_ref(tmp_path):
     pr_number = 42
     expected_src_ref = f"pull/{pr_number}/head"
-    actual_src_ref = GenericGitRepository(REPO_URL, tmp_path)._get_pr_src_ref(pr_number)
+    actual_src_ref = GenericTestGitRepository(REPO_URL, tmp_path)._get_pr_src_ref(pr_number)
     assert actual_src_ref == expected_src_ref
 
 
@@ -226,7 +226,7 @@ def test_BaseGitRepository_get_pr_diff(mock_diff, mock_fetch, mock_get_pr_src_re
     mock_fetch.return_value = fetch_return
     mock_diff.return_value = diff_return
 
-    actual_output = GenericGitRepository(REPO_URL, tmp_path)._get_pr_diff(pr_number, diff_filename)
+    actual_output = GenericTestGitRepository(REPO_URL, tmp_path)._get_pr_diff(pr_number, diff_filename)
 
     mock_get_pr_src_ref.assert_called_once_with(pr_number)
     mock_fetch.assert_called_once_with(src_ref, dst_ref)
@@ -277,7 +277,7 @@ def test_BaseGitRepository_make_dirs(tmp_path, test_case, is_success_case):
     else:
         pytest.skip(reason=f"Unknown test case: {test_case}")
 
-    stdout, stderr, exit_code, error_stage = GenericGitRepository(REPO_URL, repo_path)._make_dirs()
+    stdout, stderr, exit_code, error_stage = GenericTestGitRepository(REPO_URL, repo_path)._make_dirs()
 
     if is_success_case:
         assert os.path.exists(repo_path) and os.path.isdir(repo_path)
@@ -338,7 +338,7 @@ def test_BaseGitRepository_clone(mock_run_cmd, mock_make_dirs, tmp_path,
     mock_make_dirs.return_value = make_dirs_return
     mock_run_cmd.return_value = run_cmd_return
 
-    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo = GenericTestGitRepository(REPO_URL, tmp_path)
     repo._cloned = cloned
     actual_return = repo.clone()
 
@@ -389,7 +389,7 @@ def test_BaseGitRepository_checkout(mock_run_cmd, tmp_path, cloned, run_cmd_retu
 
     mock_run_cmd.return_value = run_cmd_return
 
-    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo = GenericTestGitRepository(REPO_URL, tmp_path)
     repo._cloned = cloned
     actual_return = repo.checkout(branch_name)
 
@@ -431,7 +431,7 @@ def test_BaseGitRepository_fetch(mock_run_cmd, tmp_path, cloned, run_cmd_return)
 
     mock_run_cmd.return_value = run_cmd_return
 
-    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo = GenericTestGitRepository(REPO_URL, tmp_path)
     repo._cloned = cloned
     actual_return = repo.fetch(src_ref, dst_ref)
 
@@ -477,7 +477,7 @@ def test_BaseGitRepository_diff(mock_run_cmd, tmp_path, cloned, merge_base, run_
 
     mock_run_cmd.return_value = run_cmd_return
 
-    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo = GenericTestGitRepository(REPO_URL, tmp_path)
     repo._cloned = cloned
     actual_return = repo.diff(commit_a, commit_b, diff_filename, merge_base=merge_base)
 
@@ -521,7 +521,7 @@ def test_BaseGitRepository_apply(mock_run_cmd, tmp_path, cloned, run_cmd_return)
 
     mock_run_cmd.return_value = run_cmd_return
 
-    repo = GenericGitRepository(REPO_URL, tmp_path)
+    repo = GenericTestGitRepository(REPO_URL, tmp_path)
     repo._cloned = cloned
     actual_return = repo.apply(patch_file)
 
@@ -615,7 +615,7 @@ def test_BaseGitRepository_download_pr(mock_apply, mock_get_pr_diff, mock_checko
     mock_get_pr_diff.return_value = get_pr_diff_return
     mock_apply.return_value = apply_return
 
-    actual_output = GenericGitRepository(REPO_URL, tmp_path).download_pr(pr_number, base_branch)
+    actual_output = GenericTestGitRepository(REPO_URL, tmp_path).download_pr(pr_number, base_branch)
 
     # Check calls and args
     mock_clone.assert_called_once_with()
@@ -687,7 +687,7 @@ def test_GitRepository_subclasses(tmp_path, subclass, overrides):
     assert not issubclass(git.BaseGitRepository, subclass)
 
     subclass_repo = subclass(REPO_URL, tmp_path)
-    base_repo = GenericGitRepository(REPO_URL, tmp_path)
+    base_repo = GenericTestGitRepository(REPO_URL, tmp_path)
 
     # Check overrides in subclass
     for attr in BASE_GIT_REPOSITORY_ATTRIBUTES:

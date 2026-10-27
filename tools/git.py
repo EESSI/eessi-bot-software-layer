@@ -253,6 +253,12 @@ class BaseGitRepository:
         return self._MSG_DOWNLOAD_PR_SUCCESS, "", self._EXIT_CODE_OK, ERROR_NONE
 
 
+class GenericGitRepository(BaseGitRepository):
+    # Intended for simple Git operations which are assumed not to vary between Git hosting platforms, e.g. clone
+    # No overrides needed
+    pass
+
+
 class GitHubGitRepository(BaseGitRepository):
     # No overrides needed
     pass
