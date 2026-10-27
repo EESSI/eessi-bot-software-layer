@@ -271,7 +271,7 @@ class GitLabGitRepository(BaseGitRepository):
         return f"merge-requests/{pr_number}/head"
 
 
-GitRepository = Union[GitHubGitRepository, GitLabGitRepository]
+GitRepository = Union[GenericGitRepository, GitHubGitRepository, GitLabGitRepository]
 
 
 def create_git_repository_instance(repo_url, directory, git_host):
