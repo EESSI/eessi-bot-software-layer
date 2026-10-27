@@ -13,6 +13,7 @@
 # author: Pedro Santos Neves (@Neves-P)
 # author: Thomas Roeblitz (@trz42)
 # author: Sam Moors (@smoors)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
@@ -609,17 +610,13 @@ def create_pr_dir(cfg, event_info):
     return year_month, pr_id, run_dir
 
 
-def clone_git_repo(repo, path):
+def clone_git_repo(repo_url, path):
     """
     Clone specified Git repo to specified path
     """
-    git_clone_cmd = ' '.join(['git clone', repo, path])
-    log(f'cloning with command {git_clone_cmd}')
-    clone_output, clone_error, clone_exit_code = run_cmd(
-        git_clone_cmd, "Clone repo", path, raise_on_error=False
-        )
-
-    return (clone_output, clone_error, clone_exit_code)
+    # Use the generic GitRepository class to clone the repo
+    repo = create_git_repository_instance(repo_url, path, "generic")
+    return repo.clone()
 
 
 def download_pr(event_info, arch_job_dir, clone_via=None):
@@ -1108,9 +1105,8 @@ def submit_job(job, cfg):
         if repo_subdir.endswith('.git'):
             repo_subdir = repo_subdir[:-4]
         target_dir = os.path.join(job.working_dir, repo_subdir)
-        os.makedirs(target_dir, exist_ok=True)
 
-        clone_output, clone_error, clone_exit_code = clone_git_repo(build_job_script_repo, target_dir)
+        _, clone_error, clone_exit_code, _ = clone_git_repo(build_job_script_repo, target_dir)
         if clone_exit_code == 0:
             log(f"{fn}(): repository {build_job_script_repo} cloned to {target_dir}")
         else:
