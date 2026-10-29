@@ -31,7 +31,7 @@ from tools import run_cmd, run_subprocess
 from tools.build_params import EESSIBotBuildParams
 from tasks.build import ARG_TYPE_KEY_VALUE, ARG_TYPE_STR_VALUE
 from tools.job_metadata import create_metadata_file, read_metadata_file
-from tools.pr_comments import PRCommentInfo, get_submitted_job_comment
+from tools.pr_comments import PRCommentInfo
 
 # Local tests imports (reusing code from other tests)
 from tests.test_tools_pr_comments import MockIssueComment
@@ -340,8 +340,8 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmp_path):
     assert comment.id == 1
     # check if created comment includes jobid?
     print("VERIFYING PR COMMENT")
-    comment = get_submitted_job_comment(pr, job_id)
-    assert job_id in comment.body
+    comments = pr.get_issue_comments()
+    assert any(job_id in comment.body for comment in comments)
 
 
 # case 2: create_issue_comment succeeds immediately
