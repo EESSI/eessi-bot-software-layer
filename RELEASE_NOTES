@@ -1,6 +1,39 @@
 This file contains a description of the major changes to the EESSI
 build-and-deploy bot. For more detailed information, please see the git log.
 
+
+v0.13.0 (2 November 2026)
+--------------------------
+
+This is a minor release of the EESSI build-and-deploy bot.
+Note! This release includes required configuration changes and initial,
+limited GitLab support.
+
+Improvements:
+* add initial GitLab support (#387, #390, #391, #398)
+  * currently limited to the help and show_config commands
+* report the commit SHA in initial job comments and status overviews (#386)
+* add bot.py for starting, stopping, restarting, and checking bot instances (#392)
+* add job_env_vars and submit_args filters with regex allow-lists and
+  shell-metacharacter validation (#395)
+* support instance filtering for bot: status (#397)
+* introduce EventInfo and PRComment abstractions (#387, #391)
+* introduce the GitRepository abstraction (#398)
+* expand GitHub/GitLab event test coverage and documentation (#387, #391)
+
+Changes to 'app.cfg' settings:
+* NEW (required) [git] hosting_platform
+* NEW (required for GitLab) [gitlab] api_timeout, bot_name, instance_url
+* NEW (required) [download_pr_comments] make_dirs_failure, make_dirs_tip
+* NEW (optional) [submitted_job_comments] commit_sha
+* NEW (optional) [buildenv] allowed_job_env_vars, allowed_submit_args
+* REMOVED curl_failure and curl_tip are no longer required
+
+Dependency changes:
+* add python-gitlab
+* require PyGHee >= 0.2.0
+
+
 v0.12.0 (11 June 2026)
 --------------------------
 
