@@ -30,10 +30,12 @@ from tasks.build import Job, create_pr_comment, request_bot_build_issue_comments
 from tools import run_cmd, run_subprocess
 from tools.build_params import EESSIBotBuildParams
 from tasks.build import ARG_TYPE_KEY_VALUE, ARG_TYPE_STR_VALUE
+from tools.event_info import GitHubEventInfo
 from tools.job_metadata import create_metadata_file, read_metadata_file
 from tools.pr_comments import PRCommentInfo
 
 # Local tests imports (reusing code from other tests)
+from tests.test_tools_event_info import get_event_info_from_file, GITHUB_EVENT_PATHS, COMMENT_CREATED
 from tests.test_tools_pr_comments import MockIssueComment
 
 
@@ -315,11 +317,28 @@ def mocked_github(request):
         yield mock_gh
 
 
+@pytest.fixture
+def github_pr_comment_event_info(request):
+    comment_created_event_path = GITHUB_EVENT_PATHS[COMMENT_CREATED]
+    event_info_dict = get_event_info_from_file(comment_created_event_path)
+    event_info = GitHubEventInfo(event_info_dict)
+
+    repo_name_marker = request.node.get_closest_marker("repo_name")
+    if repo_name_marker:
+        event_info.repo_name = repo_name_marker.args[0]
+
+    pr_number_marker = request.node.get_closest_marker("pr_number")
+    if pr_number_marker:
+        event_info.pr_number = pr_number_marker.args[0]
+
+    yield event_info
+
+
 # case 1: create_issue_comment succeeds immediately
 #         returns !None --> create_pr_comment returns comment (with id == 1)
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
-def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmp_path):
+def test_create_pr_comment_succeeds(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     # creating a PR comment
@@ -329,14 +348,13 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmp_path):
     job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
-    job_id = "123"
-    app_name = "pytest"
-
     repo_name = "EESSI/software-layer"
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
+
+    job_id = "123"
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+    comment = create_pr_comment(job, job_id, github_pr_comment_event_info, symlink, build_params)
     assert comment.id == 1
     # check if created comment includes jobid?
     print("VERIFYING PR COMMENT")
@@ -349,7 +367,7 @@ def test_create_pr_comment_succeeds(monkeypatch, mocked_github, tmp_path):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_fails(True)
-def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmp_path):
+def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     # creating a PR comment
@@ -360,13 +378,8 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmp_path):
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
-    app_name = "pytest"
-
-    repo_name = "EESSI/software-layer"
-    repo = mocked_github.get_repo(repo_name)
-    pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+    comment = create_pr_comment(job, job_id, github_pr_comment_event_info, symlink, build_params)
     assert comment is None
 
 
@@ -375,7 +388,7 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, tmp_path):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("1")
-def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, tmp_path):
+def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     # creating a PR comment
@@ -385,14 +398,13 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
     job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
-    job_id = "123"
-    app_name = "pytest"
-
     repo_name = "EESSI/software-layer"
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
+
+    job_id = "123"
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+    comment = create_pr_comment(job, job_id, github_pr_comment_event_info, symlink, build_params)
     assert comment.id == 1
     assert pr.create_call_count == 2
 
@@ -401,7 +413,7 @@ def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github,
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("always_raise")
-def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmp_path):
+def test_create_pr_comment_always_raises(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     # creating a PR comment
@@ -411,15 +423,14 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmp_path):
     job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
-    job_id = "123"
-    app_name = "pytest"
-
     repo_name = "EESSI/software-layer"
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
+
+    job_id = "123"
     symlink = "/symlink"
     with pytest.raises(Exception) as err:
-        create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+        create_pr_comment(job, job_id, github_pr_comment_event_info, symlink, build_params)
     assert err.type == CreateIssueCommentException
     assert pr.create_call_count == 3
 
@@ -428,7 +439,7 @@ def test_create_pr_comment_always_raises(monkeypatch, mocked_github, tmp_path):
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("3")
-def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmp_path):
+def test_create_pr_comment_three_raises(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     # creating a PR comment
@@ -438,15 +449,14 @@ def test_create_pr_comment_three_raises(monkeypatch, mocked_github, tmp_path):
     job = Job(tmp_path, "test/architecture", "EESSI", "--speed-up", ym, pr_number, "fpga/magic", "user01", "")
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
-    job_id = "123"
-    app_name = "pytest"
-
     repo_name = "EESSI/software-layer"
     repo = mocked_github.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
+
+    job_id = "123"
     symlink = "/symlink"
     with pytest.raises(Exception) as err:
-        create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+        create_pr_comment(job, job_id, github_pr_comment_event_info, symlink, build_params)
     assert err.type == CreateIssueCommentException
     assert pr.create_call_count == 3
 
@@ -533,7 +543,7 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
 
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
-def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path):
+def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
     """Tests that create_pr_comment includes commit SHA from cloned repo."""
     import subprocess
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
@@ -554,13 +564,8 @@ def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path)
     build_params = EESSIBotBuildParams("arch=amd/zen4,accel=nvidia/cc90")
 
     job_id = "123"
-    app_name = "pytest"
-
-    repo_name = "EESSI/software-layer"
-    repo = mocked_github.get_repo(repo_name)
-    pr = repo.get_pull(pr_number)
     symlink = "/symlink"
-    comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+    comment = create_pr_comment(job, job_id, github_pr_comment_event_info, symlink, build_params)
 
     # Get the actual commit SHA
     result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, capture_output=True, text=True)

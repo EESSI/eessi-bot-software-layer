@@ -1148,23 +1148,24 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
+def create_pr_comment(job, job_id, event_info, symlink, build_params):
     """
     Create a comment to the pull request for a newly submitted job
 
     Args:
         job (Job): namedtuple containing information about submitted job
         job_id (string): id of the submitted job
-        app_name (string): name of the app
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+        event_info (EventInfo): event received by event_handler
         symlink (string): symlink from main pr_<ID> dir to job dir
         build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
-        github.IssueComment.IssueComment instance or None (note, github refers to
-            PyGithub, not the github from the internal connections module)
+        PRComment instance or None
     """
     fn = sys._getframe().f_code.co_name
+
+    cfg = config.read_config()
+    app_name = get_app_name(cfg)
 
     # Obtain the architecture on which we are building from job.arch_target, which has the format OS/ARCH
     on_arch = '-'.join(job.arch_target.split('/')[1:])
@@ -1172,7 +1173,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     # Obtain the architecture to build for
     for_arch = build_params[BUILD_PARAM_ARCH]
 
-    submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
+    submitted_job_comments_cfg = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
 
     # Set string for accelerator to build on
     accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
@@ -1193,7 +1194,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     commit_sha = commit_sha.strip() if commit_sha else ''
 
     # construct initial job comment
-    buildenv = config.read_config()[config.SECTION_BUILDENV]
+    buildenv = cfg[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
     new_job_instance_repo = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
     build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
@@ -1224,7 +1225,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
         # calculate delay from poll_interval and delay_factor
-        job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
+        job_manager_cfg = cfg[config.SECTION_JOB_MANAGER]
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
@@ -1248,8 +1249,9 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         job_comment = header_lines + commit_sha_line + table
 
     # create comment to pull request
-    repo_name = pr.base.repo.full_name
-    issue_comment = create_comment(repo_name, pr.number, job_comment, ChatLevels.MINIMAL)
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+    issue_comment = create_comment(repo_name, pr_number, job_comment, ChatLevels.MINIMAL)
     if issue_comment:
         log(f"{fn}(): created PR issue comment with id {issue_comment.id}")
         return issue_comment
@@ -1278,7 +1280,6 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
     fn = sys._getframe().f_code.co_name
 
     cfg = config.read_config()
-    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
     jobs = prepare_jobs(cfg, event_info, action_filter, build_params)
@@ -1296,7 +1297,7 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+        pr_comment = create_pr_comment(job, job_id, event_info, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
         pr_comment = pr_comments.PRCommentInfo(pr.base.repo.full_name, pr.number, pr_comment.id)
