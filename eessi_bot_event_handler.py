@@ -571,14 +571,14 @@ class EESSIBotSoftwareLayer(PyGHee):
         Handles bot command 'build [ARGS*]' by parsing arguments and submitting jobs
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
             (string): immediate result of command (any jobs or no jobs being
                 submitted) and a link to the issue comment for submitted jobs
         """
-        self.log("repository: '%s'", event_info['raw_request_body']['repository']['full_name'])
+        self.log("repository: '%s'", event_info.repo_name)
         build_msg = ''
         # Require that build_params is defined, it is required. Otherwise, return early
         if bot_command.build_params is None:
@@ -597,8 +597,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                     if issue_comment and issue_comment.html_url:
                         build_msg += f", for details & status see {issue_comment.html_url}"
         else:
-            request_body = event_info['raw_request_body']
-            sender = request_body['sender']['login']
+            sender = event_info.event_triggered_by
             build_msg = f"\n  - account `{sender}` has NO permission to submit build jobs"
         return build_msg
 
