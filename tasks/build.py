@@ -1260,22 +1260,21 @@ def create_pr_comment(job, job_id, event_info, symlink, build_params):
         return None
 
 
-def submit_build_jobs(pr, event_info, action_filter, build_params):
+def submit_build_jobs(event_info, action_filter, build_params):
     """
     Create build jobs for a pull request by preparing jobs which match the given
-    filters, submitting them, adding comments to the pull request on GitHub and
-    creating a metadata file in the job's working directory
+    filters, submitting them, adding comments to the pull request and creating a
+    metadata file in the job's working directory
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
         build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
-        (dict): dictionary mapping a job id to a github.IssueComment.IssueComment
-            instance (corresponding to the pull request comment for the submitted
-            job) or an empty dictionary if there were no jobs to be submitted
+        (dict): dictionary mapping a job id to a PRComment instance (corresponding
+                to the pull request comment for the submitted job) or an empty
+                dictionary if there were no jobs to be submitted
     """
     fn = sys._getframe().f_code.co_name
 
@@ -1289,8 +1288,7 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
         log(f"{fn}(): no jobs ({len(jobs)}) to be submitted")
         return {}
 
-    # process prepared jobs: submit, create metadata file and add comment to pull
-    # request on GitHub
+    # process prepared jobs: submit job, add comment to pull request and create metadata file
     job_id_to_comment_map = {}
     for job in jobs:
         # submit job
@@ -1300,10 +1298,12 @@ def submit_build_jobs(pr, event_info, action_filter, build_params):
         pr_comment = create_pr_comment(job, job_id, event_info, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
-        pr_comment = pr_comments.PRCommentInfo(pr.base.repo.full_name, pr.number, pr_comment.id)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        pr_comment_info = pr_comments.PRCommentInfo(repo_name, pr_number, pr_comment.id)
 
         # create _bot_job<jobid>.metadata file in the job's working directory
-        job_metadata.create_metadata_file(job, job_id, pr_comment)
+        job_metadata.create_metadata_file(job, job_id, pr_comment_info)
 
     return job_id_to_comment_map
 

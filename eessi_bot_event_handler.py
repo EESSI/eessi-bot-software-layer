@@ -578,11 +578,7 @@ class EESSIBotSoftwareLayer(PyGHee):
             (string): immediate result of command (any jobs or no jobs being
                 submitted) and a link to the issue comment for submitted jobs
         """
-        gh = github.get_instance()
         self.log("repository: '%s'", event_info['raw_request_body']['repository']['full_name'])
-        repo_name = event_info['raw_request_body']['repository']['full_name']
-        pr_number = event_info['raw_request_body']['issue']['number']
-        pr = gh.get_repo(repo_name).get_pull(pr_number)
         build_msg = ''
         # Require that build_params is defined, it is required. Otherwise, return early
         if bot_command.build_params is None:
@@ -592,7 +588,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         if check_build_permission(event_info):
             # use filter from command
-            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters, bot_command.build_params)
+            submitted_jobs = submit_build_jobs(event_info, bot_command.action_filters, bot_command.build_params)
             if submitted_jobs is None or len(submitted_jobs) == 0:
                 build_msg = "\n  - no jobs were submitted"
             else:
