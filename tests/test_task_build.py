@@ -388,7 +388,8 @@ def test_create_pr_comment_succeeds_none(monkeypatch, mocked_github, github_pr_c
 @pytest.mark.repo_name("EESSI/software-layer")
 @pytest.mark.pr_number(1)
 @pytest.mark.create_raises("1")
-def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, github_pr_comment_event_info, tmp_path):
+def test_create_pr_comment_raises_once_then_succeeds(monkeypatch, mocked_github, github_pr_comment_event_info,
+                                                     tmp_path):
     """Tests for function create_pr_comment."""
     monkeypatch.setattr('tools.pr_comments.github', mocked_github)
     # creating a PR comment
