@@ -10,18 +10,24 @@ Note! This release includes required configuration changes and initial,
 limited GitLab support.
 
 Improvements:
-* add initial GitLab support (#387, #390, #391, #398)
-  * currently limited to the help and show_config commands
+* add initial GitLab support (#370, #376, #379, #382, #388, #390, #391, #398)
+  * currently limited to the 'help' and 'show_config' commands
+  * introduce GitLab connection and 'EventInfo' classes (#370)
+  * add 'PRComment' classes and GitLab support for 'bot:help' command (#376)
+  * improve test coverage (#379)
+  * update documentation regarding bot setup with GitLab support (#382)
+  * set minimum PyGHee version to 0.2.0 (#388)
+  * add GitLab support for 'bot:show_config' command (#390)
+  * improve 'issue_comment' handling (#391)
+  * introduce the 'GitRepository' abstraction (#398)
 * report the commit SHA in initial job comments and status overviews (#386)
-* add bot.py for starting, stopping, restarting, and checking bot instances (#392)
-* add job_env_vars and submit_args filters with regex allow-lists and
+* add 'bot.py' script for easy starting, stopping, restarting, and checking bot
+  instances (#392)
+* add 'job_env_vars' and 'submit_args' filters with regex allow-lists and
   shell-metacharacter validation (#395)
-* support instance filtering for bot: status (#397)
-* introduce EventInfo and PRComment abstractions (#387, #391)
-* introduce the GitRepository abstraction (#398)
-* expand GitHub/GitLab event test coverage and documentation (#387, #391)
+* support instance filtering for 'bot: status' command (#397)
 
-Changes to 'app.cfg' settings:
+Changes to bot configuration settings (app.cfg):
 * NEW (required) [git] hosting_platform
 * NEW (required for GitLab) [gitlab] api_timeout, bot_name, instance_url
 * NEW (required) [download_pr_comments] make_dirs_failure, make_dirs_tip
