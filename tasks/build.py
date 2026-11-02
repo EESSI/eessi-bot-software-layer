@@ -218,59 +218,50 @@ JOB_ENV_VARS_VALUE_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@$-]*$')
 # so they get the strictest charset (no '$', no spaces).
 SUBMIT_ARG_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@-]+$')
 
-# Arg types describe the validation mode for check_arg() and validate_args(),
-# decoupling them from the filter-component naming scheme in tools.filter.
+# Arg types describe the validation mode for check_argument_unit() and
+# validate_args(), decoupling them from the filter-component naming scheme in
+# tools.filter.
 ARG_TYPE_KEY_VALUE = 'key_eq_value'
 ARG_TYPE_STR_VALUE = 'str_value'
 
 
-def check_arg(arg, arg_type=ARG_TYPE_KEY_VALUE):
+def check_argument_unit(arg_unit, arg_type=ARG_TYPE_KEY_VALUE):
     """
-    Check that an argument does not contain shell metacharacters.
+    Check that a single argument unit does not contain shell metacharacters.
 
-    This is a defence-in-depth check applied AFTER regex allow-list matching.
-    Even if a configured pattern is overly permissive (e.g. value '.*'), this
-    function rejects any arg that contains characters which could be interpreted
-    by the shell (e.g. backticks, $(), ;, |, &, spaces, newlines).
-
-    If arg_type is ARG_TYPE_KEY_VALUE, the key and value are checked separately:
-    the key must be a valid shell identifier, and the value may be empty (e.g.
-    'FOO=' to unset a variable) or contain '$' (for variable references) but no
-    other shell metacharacters. For ARG_TYPE_STR_VALUE, the bare option string is
-    checked against a strict charset (no '$', no spaces).
+    A unit is a single token or a flag-value pair joined by a space (e.g.
+    '--from-pr 345'). For ARG_TYPE_KEY_VALUE, the unit is a value part (the key
+    is validated separately in validate_args). For ARG_TYPE_STR_VALUE, the unit
+    is a part of a space-separated option string.
 
     Args:
-        arg (string): argument to check
+        arg_unit (string): argument unit to check (may contain one space)
         arg_type (string): ARG_TYPE_KEY_VALUE or ARG_TYPE_STR_VALUE (used in log
             messages)
 
     Returns:
-        (bool): True if the argument is safe, False otherwise
+        (bool): True if the unit is safe, False otherwise
 
     Raises:
         ValueError: if arg_type is not a recognized arg type.
     """
     fn = sys._getframe().f_code.co_name
 
+    parts = arg_unit.split(' ')
     if arg_type == ARG_TYPE_KEY_VALUE:
-        if '=' not in arg:
-            log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
-            return False
-        key, value = arg.split('=', 1)
-        if not JOB_ENV_VARS_KEY_RE.fullmatch(key):
-            log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe key '{key}')")
-            return False
-        if not JOB_ENV_VARS_VALUE_RE.fullmatch(value):
-            log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe value '{value}')")
-            return False
-        return True
-    if arg_type == ARG_TYPE_STR_VALUE:
-        if not SUBMIT_ARG_RE.fullmatch(arg):
-            log(f"{fn}(): {arg_type} '{arg}' rejected (contains unsafe characters)")
-            return False
-        return True
+        for part in parts:
+            if not JOB_ENV_VARS_VALUE_RE.fullmatch(part):
+                log(f"{fn}(): {arg_type} unit '{arg_unit}' rejected (unsafe part '{part}')")
+                return False
+    elif arg_type == ARG_TYPE_STR_VALUE:
+        for part in parts:
+            if not SUBMIT_ARG_RE.fullmatch(part):
+                log(f"{fn}(): {arg_type} unit '{arg_unit}' rejected (unsafe part '{part}')")
+                return False
     else:
         raise ValueError(f"unknown arg_type '{arg_type}'")
+
+    return True
 
 
 def check_patterns_wellformed(patterns, setting_name):
@@ -423,19 +414,28 @@ def validate_args(args, allowed_patterns, arg_type=ARG_TYPE_KEY_VALUE):
     """
     Validate a list of arguments against a list of allowed patterns.
 
-    For ARG_TYPE_KEY_VALUE, each arg is a 'KEY=VALUE' string. It is accepted if
-    there is a pattern whose 'key' regex matches KEY and whose 'value' regex
-    matches VALUE (both for the same pattern entry).
+    For ARG_TYPE_KEY_VALUE, each arg is a 'KEY=VALUE' string. The VALUE is split
+    on spaces into tokens, which are grouped into units by pair_tokens (e.g.
+    '--from-pr 345 --parallel=6' becomes ['--from-pr 345', '--parallel=6']).
+    The KEY must match at least one pattern's 'key' regex, and every unit must
+    match the 'value' regex of at least one pattern whose 'key' regex also
+    matches that same KEY. An empty VALUE is accepted only if a key-matching
+    pattern explicitly allows it.
 
     For ARG_TYPE_STR_VALUE, each arg is a bare option string (e.g.
-    '--time=01:00:00'). It is accepted if there is a pattern whose 'value' regex
-    matches the arg.
+    '--time=30 --mem=30G'). It is split on spaces into tokens, grouped into
+    units by pair_tokens, and every unit must match at least one pattern's
+    'value' regex.
+
+    Patterns are matched using Python's re module (re.fullmatch). A single
+    pattern using '[= ]' can match both '--flag=value' and '--flag value' forms
+    (e.g. '--time[= ][0-9]+' matches '--time=30' and '--time 30').
 
     Args:
         args (list): list of argument strings to validate
         allowed_patterns (list): list of pattern dicts (from get_allowed_args)
-        arg_type (string): ARG_TYPE_KEY_VALUE or ARG_TYPE_STR_VALUE -- determines
-            validation mode
+        arg_type (string): ARG_TYPE_KEY_VALUE or ARG_TYPE_STR_VALUE, which
+            determines validation mode
 
     Returns:
         tuple of 2 elements containing
@@ -448,41 +448,148 @@ def validate_args(args, allowed_patterns, arg_type=ARG_TYPE_KEY_VALUE):
     rejected = []
 
     for arg in args:
-        matched = False
         if arg_type == ARG_TYPE_KEY_VALUE:
             if '=' not in arg:
                 log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
                 rejected.append(arg)
                 continue
+
             key, value = arg.split('=', 1)
+
+            # Defence-in-depth: reject keys that are not valid shell identifiers
+            #   By doing this here, we can drop arguments early and later checking
+            #   only needs to consider values (see check_argument_unit).
+            if not JOB_ENV_VARS_KEY_RE.fullmatch(key):
+                log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe key '{key}')")
+                rejected.append(arg)
+                continue
+
+            # Check that the key matches at least one pattern
+            key_matched = False
             for pattern in allowed_patterns:
                 key_re = pattern.get('key', '')
-                val_re = pattern.get('value', '')
-                if re.fullmatch(key_re, key) and re.fullmatch(val_re, value):
-                    matched = True
+                if re.fullmatch(key_re, key):
+                    key_matched = True
                     break
+            if not key_matched:
+                log(f"{fn}(): {arg_type} '{arg}' rejected (key '{key}' does not match any pattern)")
+                rejected.append(arg)
+                continue
+
+            # Split the value into tokens and pair them into units
+            tokens = value.split(' ') if value else []
+
+            # Handle empty value (e.g. 'FOO=' to unset a variable)
+            if not tokens:
+                # Empty value is valid if a pattern whose key matches allows it
+                # (e.g. value: '')
+                matched_empty_value = False
+                for pattern in allowed_patterns:
+                    pat_key_re = pattern.get('key', '')
+                    val_re = pattern.get('value', '')
+                    if re.fullmatch(pat_key_re, key) and re.fullmatch(val_re, ''):
+                        matched_empty_value = True
+                        break
+                if matched_empty_value:
+                    accepted.append(arg)
+                else:
+                    log(f"{fn}(): {arg_type} '{arg}' rejected (empty value not allowed)")
+                    rejected.append(arg)
+                continue
         elif arg_type == ARG_TYPE_STR_VALUE:
-            for pattern in allowed_patterns:
-                val_re = pattern.get('value', '')
-                if re.fullmatch(val_re, arg):
-                    matched = True
-                    break
+            tokens = arg.split(' ') if arg else []
+            if not tokens:
+                log(f"{fn}(): {arg_type} '{arg}' rejected (empty arg)")
+                rejected.append(arg)
+                continue
         else:
             raise ValueError(f"unknown arg_type '{arg_type}'")
-        if matched:
-            # Defence-in-depth: even if the regex pattern matched, reject any
-            # arg that contains shell metacharacters to prevent injection via
-            # job_env_vars (sourced by the shell) or submit_args (shell=True in run_cmd)
-            if check_arg(arg, arg_type):
+
+        # tokens should be non-empty here
+        units = pair_tokens(tokens)
+
+        # Every unit must match at least one pattern's 'value' regex
+        all_units_matched = True
+        for unit in units:
+            unit_matched = False
+            for pattern in allowed_patterns:
+                val_re = pattern.get('value', '')
+                if arg_type == ARG_TYPE_KEY_VALUE:
+                    key_re = pattern.get('key', '')
+                    if re.fullmatch(key_re, key) and re.fullmatch(val_re, unit):
+                        unit_matched = True
+                        break
+                elif arg_type == ARG_TYPE_STR_VALUE:
+                    if re.fullmatch(val_re, unit):
+                        unit_matched = True
+                        break
+            if not unit_matched:
+                all_units_matched = False
+                log(f"{fn}(): {arg_type} '{arg}' rejected (unit '{unit}' does not match any pattern)")
+                break
+
+        if all_units_matched:
+            # Defence-in-depth: check each unit for shell metacharacters
+            all_safe = True
+            for unit in units:
+                if not check_argument_unit(unit, arg_type):
+                    all_safe = False
+                    break
+            if all_safe:
                 log(f"{fn}(): {arg_type} '{arg}' accepted (passes all checks)")
                 accepted.append(arg)
             else:
                 rejected.append(arg)
         else:
-            log(f"{fn}(): {arg_type} '{arg}' rejected (no matching pattern)")
             rejected.append(arg)
 
     return accepted, rejected
+
+
+def pair_tokens(tokens):
+    """
+    Group a list of space-separated tokens into argument units.
+
+    A unit is either:
+    - a single token containing '=' (e.g. '--parallel=6') -- self-contained
+    - a flag (starting with '--') without '=' followed by a value token that
+      does not start with '--' (e.g. ('--from-pr', '345')) -- joined with a space
+    - a bare flag (starting with '--') without '=' and with no following value
+      (e.g. '--include-easyblock')
+    - any other single token (e.g. a bare value without a preceding flag)
+
+    Args:
+        tokens (list): list of token strings (already split on spaces)
+
+    Returns:
+        (list): list of unit strings; paired tokens are joined with a space
+    """
+    fn = sys._getframe().f_code.co_name
+
+    units = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if '=' in token:
+            # Self-contained unit (e.g. '--time=30' or 'KEY=VALUE')
+            units.append(token)
+            i += 1
+        elif token.startswith('--'):
+            # Flag without '=' -- check if next token is a value
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith('--'):
+                units.append(f"{token} {tokens[i + 1]}")
+                i += 2
+            else:
+                # Bare flag (no value)
+                units.append(token)
+                i += 1
+        else:
+            # Bare value without a preceding flag
+            units.append(token)
+            i += 1
+
+    log(f"{fn}(): tokens {tokens} paired into units {units}")
+    return units
 
 
 def get_repo_cfg(cfg):
@@ -751,7 +858,19 @@ def prepare_export_vars_file(job_dir, exportvars):
     """
     fn = sys._getframe().f_code.co_name
 
-    content = '\n'.join(f'export {x}' for x in exportvars)
+    # Re-quote values containing spaces so the shell interprets them correctly
+    # when export_vars.sh is sourced (e.g. EB_ARGS="--from-pr 345 --parallel=6").
+    lines = []
+    for var in exportvars:
+        if '=' in var:
+            key, value = var.split('=', 1)
+            if ' ' in value:
+                lines.append(f'export {key}="{value}"')
+            else:
+                lines.append(f'export {var}')
+        else:
+            lines.append(f'export {var}')
+    content = '\n'.join(lines)
     export_vars_path = os.path.join(job_dir, 'cfg', EXPORT_VARS_FILE)
 
     with open(export_vars_path, 'w') as file:
