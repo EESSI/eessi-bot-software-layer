@@ -17,6 +17,10 @@
 
 # Also see documentation at https://github.com/EESSI/eessi-bot-software-layer/blob/main/README.md#step5.5
 
+[git]
+# Name of the Git hosting platform (supported values are 'github' and 'gitlab')
+hosting_platform = github
+
 [github]
 # API timeout, time limit for requests to GitHub's REST API
 api_timeout = 10
@@ -43,15 +47,29 @@ installation_id = 12345678
 # path to the private key that was generated when the GitHub App was registered
 private_key = PATH_TO_PRIVATE_KEY
 
+[gitlab]
+# NOTE: Access token required for GitLab:
+# https://docs.gitlab.com/user/project/settings/project_access_tokens/#bot-users-for-projects
+# Must be stored in environment variable 'GITLAB_PROJECT_ACCESS_TOKEN'.
+
+# API timeout, time limit for requests to GitLab's REST API
+api_timeout = 10
+
+# Name used to refer to your bot instance - see comment for github.app_name config
+bot_name = MY-bot
+
+# The base URL of your GitLab instance
+instance_url = https://gitlab.com
+
 
 [bot_control]
-# which GH accounts have the permission to send commands to the bot
+# which GH/GL accounts have the permission to send commands to the bot
 # if value is left/empty everyone can send commands
-# value can be a space delimited list of GH accounts
+# value can be a space delimited list of GH/GL accounts
 #
-# NOTE, be careful to not list the bot's name (GH app name) or it may consider
-#   comments created/updated by itself as a bot command and thus enter an
-#   endless loop.
+# NOTE, be careful to not list the bot's name (GH app name or GL bot account
+#   name) or it may consider comments created/updated by itself as a bot
+#   command and thus enter an endless loop.
 command_permission =
 
 # format of the response when processing bot commands. NOTE, make sure the
@@ -175,7 +193,7 @@ no_build_permission_comment = GH account `{build_labeler}` is not authorized to 
 allow_update_submit_opts = false
 
 # defines which name-value pairs (environment variables) are allowed to be
-# exported into the build environment via 'exportvariable' filters
+# exported into the build environment via 'exportvariable' (or 'job_env_vars') filters
 # The bot build script makes use of the variable 'SKIP_TESTS' to determine if
 # ReFrame tests shall be skipped or not. Default value is 'no'. If the value is
 # 'yes' and the exportvariable filter is added to a bot build command
@@ -189,6 +207,70 @@ allow_update_submit_opts = false
 #
 # It's safe to use the following line as default setting:
 allowed_exportvars = []
+
+# defines which key-value pairs are allowed to be exported into the build
+# environment via 'job_env_vars' (or 'exportvariable') filters. Each entry is a
+# dict with 'key' and 'value' keys whose values are regular expressions. An
+# argument 'KEY=VALUE' is accepted if its key matches one entry's 'key' regex
+# AND its value matches that same entry's 'value' regex; otherwise it is
+# rejected and no jobs are prepared.
+# Patterns are matched using Python's 're' module (re.fullmatch), so the patterns
+# are Python regular expressions.
+# If 'allowed_job_env_vars' is not defined, the bot falls back to the existing
+# 'allowed_exportvars' setting (see above), converting each exact 'KEY=VALUE'
+# string into an equivalent regex pattern. This preserves backward
+# compatibility for existing deployments.
+# NOTE, the setting is optional. If you want to enable this feature, uncomment
+# the line below and define meaningful pattern(s). For example:
+# allowed_job_env_vars = [{"key": "SKIP_TESTS", "value": "yes|no"}, {"key": "DEBUG_.*", "value": "true|false"}]
+# More advanced examples:
+#   - allow any value for EB_ARGS (e.g. EB_ARGS=--installpath=/tmp/$USER/pr12345):
+#     allowed_job_env_vars = [{"key": "EB_ARGS", "value": ".*"}]
+#   - allow a specific set of install paths:
+#     allowed_job_env_vars = [{"key": "EB_ARGS", "value": "--installpath=/tmp/.*"}]
+#   - allow unsetting a variable (empty value):
+#     allowed_job_env_vars = [{"key": "FOO", "value": ""}]
+#
+# It's safe to use the following line as default setting:
+allowed_job_env_vars = []
+
+# SECURITY NOTE: as a defence-in-depth measure, the bot sanitizes all job_env_vars
+# and submit_args values and rejects any argument that contains shell
+# metacharacters. For job_env_vars, keys and values are validated separately
+# against the character allow-lists defined by tasks.build.JOB_ENV_VARS_KEY_RE
+# and tasks.build.JOB_ENV_VARS_VALUE_RE. For submit_args, the character
+# allow-list defined by tasks.build.SUBMIT_ARG_RE is used. This prevents shell
+# injection even if a pattern above is overly permissive (e.g. value '.*').
+# Additionally, pattern entries that are not well-formed dicts with string
+# 'key'/'value' values are silently dropped at configuration read time.
+
+# defines which options are allowed to be passed to the job submission command
+# (e.g. sbatch) via submit_args filters. Each entry is a dict with a 'value'
+# key whose value is a regular expression. An argument is accepted if it
+# matches one entry's 'value' regex; otherwise it is rejected and no jobs are
+# prepared. Unlike job_env_vars, these options are NOT exported into the build
+# environment -- they are appended to the sbatch command line only.
+# Patterns are matched using Python's 're' module (re.fullmatch), so the patterns
+# are Python regular expressions.
+# NOTE on argument ordering: the full submit command is constructed as:
+#   <submit_command> <slurm_params> <time_limit> <slurm_opts> [--job-name=...] <submit_args> <script>
+# where <slurm_params> is the global setting from [buildenv], <slurm_opts> comes
+# from the node type's 'slurm_params' in the node_map, and <submit_args> are the
+# user-supplied submit_args. Because submit_args are placed AFTER slurm_params and
+# slurm_opts, they can override values set by the site configuration (e.g.
+# partition, time limit, memory). Site operators should be aware of this when
+# defining allowed_submit_args patterns.
+# NOTE, the setting is optional. If you want to enable this feature, uncomment
+# the line below and define meaningful pattern(s). For example:
+# allowed_submit_args = [{"value": "--time=.*"}, {"value": "--partition=.*"}]
+# More advanced examples:
+#   - allow a specific time format only:
+#     allowed_submit_args = [{"value": "--time=[0-9]{2}:[0-9]{2}:[0-9]{2}"}]
+#   - allow multiple options with one pattern:
+#     allowed_submit_args = [{"value": "--(time|partition|mem)=.*"}]
+#
+# It's safe to use the following line as default setting:
+allowed_submit_args = []
 
 # mechanisn to use to clone Git repository
 # 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)
@@ -415,6 +497,9 @@ new_job_instance_repo = New job on instance `{app_name}` for repository `{repo_i
 build_on_arch = Building on: `{on_arch}`{on_accelerator}
 build_for_arch = Building for: `{for_arch}`{for_accelerator}
 jobdir = Job dir: `{symlink}`
+# commit_sha format for the 5th line in the initial PR comment; `{commit_sha}` is replaced with the commit SHA
+# from the cloned repository (i.e., the base branch HEAD at the time the job starts).
+commit_sha = Commit SHA: {commit_sha}
 with_accelerator = &nbsp;and accelerator `{accelerator}`
 # initial_comment = New job on instance `{app_name}` for repository `{repo_id}`\nBuilding on: `{on_arch}`{on_accelerator}\nBuilding for: `{for_arch}`{for_accelerator}\nJob dir: `{symlink}`  # no longer used
 
@@ -433,16 +518,16 @@ job_test_unknown_fmt = <details><summary>:shrug: UNKNOWN _(click triangle for de
 
 
 [download_pr_comments]
+make_dirs_failure = Unable to create the target directory.
+make_dirs_tip = _Tip: This could be a problem with write permissions or disk space._
 git_clone_failure = Unable to clone the target repository. 
 git_clone_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_.
 git_checkout_failure = Unable to checkout to the correct branch.
 git_checkout_tip = _Tip: Ensure that the branch name is correct and the target branch is available._
-curl_failure = Unable to download the `.diff` file.
-curl_tip = _Tip: This could be a connection failure. Try again and if the issue remains check if the address is correct_
 git_apply_failure = Unable to download or merge changes between the source branch and the destination branch.
 git_apply_tip = _Tip: This can usually be resolved by syncing your branch and resolving any merge conflicts._
 pr_diff_failure = Unable to obtain PR diff.
-pr_diff_tip = _Tip: This could be a problem with SSH access to the repository._
+pr_diff_tip = _Tip: This could be a problem with HTTPS/SSH access to the repository._
 
 
 [clean_up]

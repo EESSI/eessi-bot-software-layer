@@ -23,6 +23,7 @@ import sys
 # (none yet)
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
+from .git import get_git_hosting_platform, SUPPORTED_GIT_HOSTS
 from .logging import error
 
 # define configuration constants
@@ -40,6 +41,8 @@ BOT_CONTROL_SETTING_CHATLEVEL = 'chatlevel'
 
 SECTION_BUILDENV = 'buildenv'
 BUILDENV_SETTING_ALLOWED_EXPORTVARS = 'allowed_exportvars'
+BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS = 'allowed_job_env_vars'
+BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS = 'allowed_submit_args'
 BUILDENV_SETTING_ALLOW_UPDATE_SUBMIT_OPTS = 'allow_update_submit_opts'
 BUILDENV_SETTING_BUILD_JOB_SCRIPT = 'build_job_script'
 BUILDENV_SETTING_BUILD_LOGS_DIR = 'build_logs_dir'
@@ -77,14 +80,14 @@ DEPLOYCFG_SETTING_SIGNING_SCRIPT = 'script'
 DEPLOYCFG_SETTING_UPLOAD_POLICY = 'upload_policy'
 
 SECTION_DOWNLOAD_PR_COMMENTS = 'download_pr_comments'
-DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE = 'curl_failure'
-DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP = 'curl_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE = 'git_apply_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP = 'git_apply_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE = 'git_checkout_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP = 'git_checkout_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE = 'git_clone_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP = 'git_clone_tip'
+DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_FAILURE = 'make_dirs_failure'
+DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_TIP = 'make_dirs_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE = 'pr_diff_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP = 'pr_diff_tip'
 
@@ -95,12 +98,20 @@ SECTION_FINISHED_JOB_COMMENTS = 'finished_job_comments'
 FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT = 'job_result_unknown_fmt'
 FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT = 'job_test_unknown_fmt'
 
+SECTION_GIT = 'git'
+GIT_SETTING_HOSTING_PLATFORM = 'hosting_platform'
+
 SECTION_GITHUB = 'github'
 GITHUB_SETTING_API_TIMEOUT = 'api_timeout'
 GITHUB_SETTING_APP_ID = 'app_id'
 GITHUB_SETTING_APP_NAME = 'app_name'
 GITHUB_SETTING_INSTALLATION_ID = 'installation_id'
 GITHUB_SETTING_PRIVATE_KEY = 'private_key'
+
+SECTION_GITLAB = 'gitlab'
+GITLAB_SETTING_API_TIMEOUT = 'api_timeout'
+GITLAB_SETTING_BOT_NAME = 'bot_name'
+GITLAB_SETTING_INSTANCE_URL = 'instance_url'
 
 SECTION_JOB_MANAGER = 'job_manager'
 JOB_MANAGER_SETTING_LOG_PATH = 'log_path'
@@ -130,6 +141,7 @@ SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH = 'build_for_arch'
 SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR = 'jobdir'
 SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT = 'initial_comment'
 SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR = 'with_accelerator'
+SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA = 'commit_sha'
 
 SECTION_CLEAN_UP = 'clean_up'
 CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR = 'trash_bin_dir'
@@ -207,9 +219,13 @@ def check_cfg_settings(req_settings, path="app.cfg"):
     """
     # TODO argument path is not being used
     cfg = read_config()
+    git_host = get_git_hosting_platform(cfg)
     # iterate over keys in req_settings which correspond to sections ([name])
     # in the configuration file (.ini format)
     for section in req_settings.keys():
+        # Skip checking the GitLab section if the bot is configured for GitHub and vice versa
+        if git_host and (section in SUPPORTED_GIT_HOSTS) and (section != git_host):
+            continue
         if section not in cfg:
             error(f'Missing section "{section}" in configuration file {path}.')
         # iterate over list elements required for the current section

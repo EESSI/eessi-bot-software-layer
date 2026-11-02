@@ -10,15 +10,18 @@
 # author: Jonas Qvigstad (@jonas-lq)
 # author: Thomas Roeblitz (@trz42)
 # author: Sam Moors (@smoors)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
 
 # Standard library imports
+from abc import abstractmethod, ABC
 from collections import namedtuple
 from enum import Enum
 import re
 import sys
+from typing import Union
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import log
@@ -26,11 +29,12 @@ from retry import retry
 from retry.api import retry_call
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import github
+from connections import github, gitlab
 from tools import config
+from tools.git import get_git_hosting_platform, GITHUB, GITLAB
 
 
-PRComment = namedtuple('PRComment', ('repo_name', 'pr_number', 'pr_comment_id'))
+PRCommentInfo = namedtuple('PRCommentInfo', ('repo_name', 'pr_number', 'pr_comment_id'))
 
 
 class ChatLevels(Enum):
@@ -43,7 +47,7 @@ class ChatLevels(Enum):
 
 def create_comment(repo_name, pr_number, comment, req_chatlevel):
     """
-    Create a comment to a pull request on GitHub
+    Create a comment to a pull request
 
     Args:
         repo_name (string): name of the repository
@@ -52,8 +56,7 @@ def create_comment(repo_name, pr_number, comment, req_chatlevel):
         req_chatlevel (member of ChatLevels Enum): minimum required chattiness level for creating the PR comment
 
     Returns:
-        github.IssueComment.IssueComment instance or None (note, github refers to
-            PyGithub, not the github from the internal connections module)
+        PRComment instance or None
     """
     fn = sys._getframe().f_code.co_name
 
@@ -62,12 +65,12 @@ def create_comment(repo_name, pr_number, comment, req_chatlevel):
         config.BOT_CONTROL_SETTING_CHATLEVEL, ChatLevels.BASIC.name).upper()
 
     if ChatLevels[chatlevel].value >= req_chatlevel.value:
-        gh = github.get_instance()
-        repo = gh.get_repo(repo_name)
-        pull_request = repo.get_pull(pr_number)
-        issue_comment = retry_call(pull_request.create_issue_comment, fargs=[comment],
-                                   exceptions=Exception, tries=3, delay=1, backoff=2, max_delay=10)
-        return issue_comment
+        pr_comment = create_pr_comment_instance(repo_name, pr_number, body=comment)
+        pr_comment.create()
+        # If 'id' is not set, something went wrong
+        if not pr_comment.id:
+            return None
+        return pr_comment
 
     else:
         log(f"{fn}(): not creating PR comment: "
@@ -192,3 +195,209 @@ def update_pr_comment(event_info, update):
     pull_request = repo.get_pull(pr_number)
     issue_comment = pull_request.get_issue_comment(issue_id)
     issue_comment.edit(comment_new + update)
+
+
+class BasePRComment(ABC):
+    """
+    Base class to use for handling PR comments, which works differently for GitHub vs. GitLab.
+
+    Args:
+        repo_name (str): Full name of the repository (e.g. 'user/repo')
+        pr_number (int): Pull request number
+        body (str, optional): Comment body. Provide when creating a new comment.
+        id (int, optional): ID of an existing comment. Provide when referencing an existing comment.
+
+    Exactly one of body or id must be provided.
+    """
+    def __init__(self, repo_name, pr_number, body=None, id=None):
+        # Exactly one of body (new comment) or id (existing comment) must be provided
+        if (body is None) == (id is None):
+            err_msg = "Exactly one of 'body' or 'id' must be "
+            err_msg += "set when initializing a comment class."
+            raise ValueError(err_msg)
+
+        if id is not None and not str(id).strip():
+            raise ValueError("'id' must not be empty.")
+
+        self.body = body
+        self.id = id
+        self.repo_name = repo_name
+        self.pr_number = pr_number
+        self._pr_obj = None
+        self._comment_obj = None
+
+    @property
+    def body(self):
+        return self._body
+
+    @body.setter
+    def body(self, value):
+        # Ensure 'body' is not a blank string
+        if value is not None and not value.strip():
+            raise ValueError("'body' must not be empty")
+        self._body = value
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, value):
+        # Ensure 'id' is not a blank string
+        if value is not None and not str(value).strip():
+            raise ValueError("'id' must not be empty")
+        self._id = value
+
+    def _require_body(self):
+        if self.body is None:
+            raise ValueError("'body' must be set.")
+
+    def _require_id(self):
+        if self.id is None:
+            raise ValueError("'id' must be set.")
+
+    @property
+    @abstractmethod
+    def html_url(self):
+        pass
+
+    @abstractmethod
+    def get(self):
+        pass
+
+    @abstractmethod
+    def create(self):
+        pass
+
+    @abstractmethod
+    def edit(self, new_body):
+        pass
+
+    @abstractmethod
+    def append(self, text_to_append):
+        pass
+
+
+class GitHubPRComment(BasePRComment):
+    """
+    PRComment class for use with GitHub.
+    """
+    def __init__(self, repo_name, pr_number, body=None, id=None):
+        super().__init__(repo_name, pr_number, body, id)
+        gh = github.get_instance()
+        repo = gh.get_repo(self.repo_name)
+        self._pr_obj = repo.get_pull(self.pr_number)
+
+    @property
+    def html_url(self):
+        if self._comment_obj:
+            return self._comment_obj.html_url
+        return None
+
+    def get(self):
+        self._require_id()
+        self._comment_obj = retry_call(self._pr_obj.get_issue_comment, fargs=[self.id],
+                                       exceptions=Exception, tries=5, delay=1, backoff=2, max_delay=30)
+        if self._comment_obj:
+            self.body = self._comment_obj.body
+
+    def create(self):
+        self._require_body()
+        if self.id:
+            # Safeguard: id should not be set when body is initialized, but guard
+            # against accidental duplicate comments if id was set after initialization.
+            return
+        self._comment_obj = retry_call(self._pr_obj.create_issue_comment, fargs=[self.body],
+                                       exceptions=Exception, tries=3, delay=1, backoff=2, max_delay=10)
+        if self._comment_obj:
+            self.id = self._comment_obj.id
+
+    def edit(self, new_body):
+        self._require_id()
+        # Ensure comment object is present
+        if not self._comment_obj:
+            self.get()
+        self.body = new_body
+        retry_call(self._comment_obj.edit, fargs=[self.body], exceptions=Exception,
+                   tries=5, delay=1, backoff=2, max_delay=30)
+
+    def append(self, text_to_append):
+        self._require_id()
+        # Ensure comment object is present and up to date
+        self.get()
+        self.edit(self.body + text_to_append)
+
+
+class GitLabPRComment(BasePRComment):
+    """
+    PRComment class for use with GitLab.
+    """
+    def __init__(self, repo_name, pr_number, body=None, id=None):
+        super().__init__(repo_name, pr_number, body, id)
+        gl = gitlab.get_instance()
+        proj = gl.projects.get(self.repo_name)
+        self._pr_obj = proj.mergerequests.get(self.pr_number)
+
+    @property
+    def html_url(self):
+        if self._comment_obj:
+            # GitLab comment object does not include a comment URL
+            return f"{self._pr_obj.web_url}#note_{self._comment_obj.id}"
+        return None
+
+    def get(self):
+        self._require_id()
+        self._comment_obj = self._pr_obj.notes.get(self.id)
+        self.body = self._comment_obj.body
+
+    def create(self):
+        self._require_body()
+        if self.id:
+            # Safeguard: id should not be set when body is initialized, but guard
+            # against accidental duplicate comments if id was set after initialization.
+            return
+        self._comment_obj = self._pr_obj.notes.create({"body": self.body})
+        if self._comment_obj:
+            self.id = self._comment_obj.id
+
+    def edit(self, new_body):
+        self._require_id()
+        # Ensure comment object is present
+        if not self._comment_obj:
+            self.get()
+        self.body = new_body
+        self._comment_obj.body = self.body
+        self._comment_obj.save()
+
+    def append(self, text_to_append):
+        self._require_id()
+        # Ensure comment object and body are present and up to date
+        self.get()
+        self.edit(self.body + text_to_append)
+
+
+# Type for subclasses of BasePRComment
+PRComment = Union[GitHubPRComment, GitLabPRComment]
+
+
+def create_pr_comment_instance(repo_name, pr_number, body=None, id=None):
+    """
+    Creates a PRComment instance for the configured Git hosting platform.
+
+    Args:
+        repo_name (string): The name of the repository
+        pr_number (int): The number of the pull request in the repository
+        body (string): The comment body. Required when creating a new comment.
+            Cannot be set at the same time as 'id'.
+        id (int): The ID of the comment. Required when getting and/or updating
+            an existing comment. Cannot be set at the same time as 'body'.
+
+    Returns:
+        PRComment instance or None
+    """
+    git_host = get_git_hosting_platform()
+    if git_host == GITHUB:
+        return GitHubPRComment(repo_name=repo_name, pr_number=pr_number, body=body, id=id)
+    elif git_host == GITLAB:
+        return GitLabPRComment(repo_name=repo_name, pr_number=pr_number, body=body, id=id)
+    return None

@@ -1,0 +1,417 @@
+# This file is part of the EESSI build-and-deploy bot,
+# see https://github.com/EESSI/eessi-bot-software-layer
+#
+# The bot helps with requests to add software installations to the
+# EESSI software layer, see https://github.com/EESSI/software-layer
+#
+# author: Sondre Bergsvaag Risanger (@sondrebr)
+#
+# license: GPLv2
+#
+
+# Standard library imports
+from functools import cached_property
+from typing import Union
+
+# Third party imports (anything installed into the local Python environment)
+# (none)
+
+# Local application imports (anything from EESSI/eessi-bot-software-layer)
+from connections import github, gitlab
+from tools.git import get_git_hosting_platform, GITHUB, GITLAB
+
+
+class BaseEventInfo():
+    """
+    Base class to use for handling event info, which works differently
+    for GitHub vs. GitLab. Subscripting is implemented for compatibility.
+    If a new field needs to be accessed, add a new property to
+    retrieve it instead of subscripting/using the event_info dict.
+    """
+    def __init__(self, event_info):
+        if self.__class__ is BaseEventInfo:
+            err_msg = "Do not use this base class directly. "
+            err_msg += "Please use one of its subclasses instead."
+            raise NotImplementedError(err_msg)
+        self.event_info = event_info
+
+    # Prevents subclasses from overriding __getitem__
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__getitem__" in cls.__dict__:
+            raise Exception(f"{cls.__name__} must not override __getitem__")
+
+    # Do not override - implements subscripting for compatibility
+    def __getitem__(self, key):
+        return self.event_info[key]
+
+    @cached_property
+    def action(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def comment_id(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def comment_body(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def comment_created_by(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def event_id(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def event_triggered_by(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def event_type(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def is_pr_comment(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def label_name(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def pr_number(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def pr_title(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def pr_base_branch(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def pr_merged_status(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def pr_url(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def repo_name(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def repo_git_https(self):
+        raise NotImplementedError()
+
+    @cached_property
+    def repo_git_ssh(self):
+        raise NotImplementedError()
+
+
+class GitHubEventInfo(BaseEventInfo):
+    """
+    EventInfo class for use with GitHub webhooks.
+    """
+    def __init__(self, event_info):
+        super().__init__(event_info)
+        self._request_body = event_info["raw_request_body"]
+
+    @cached_property
+    def _pr_obj(self):
+        pr_obj = None
+        if self.event_type == "pull_request" or self.is_pr_comment:
+            gh = github.get_instance()
+            repo = gh.get_repo(self.repo_name)
+            pr_obj = repo.get_pull(self.pr_number)
+        return pr_obj
+
+    @cached_property
+    def action(self):
+        return self.event_info["action"]
+
+    @cached_property
+    def comment_id(self):
+        return self._request_body["comment"]["id"]
+
+    @cached_property
+    def comment_body(self):
+        return self._request_body["comment"]["body"]
+
+    @cached_property
+    def comment_created_by(self):
+        return self._request_body["comment"]["user"]["login"]
+
+    @cached_property
+    def event_id(self):
+        return self.event_info["id"]
+
+    @cached_property
+    def event_triggered_by(self):
+        return self._request_body["sender"]["login"]
+
+    @cached_property
+    def event_type(self):
+        return self.event_info["type"]
+
+    @cached_property
+    def is_pr_comment(self):
+        # Events from PR comments include a "pull_request" object in the "issue" object
+        return (self.event_type == "issue_comment") and ("pull_request" in self._request_body["issue"])
+
+    @cached_property
+    def label_name(self):
+        return self._request_body["label"]["name"]
+
+    @cached_property
+    def pr_number(self):
+        pr_number = -1
+        if self.event_type == "pull_request":
+            pr_number = self._request_body["pull_request"]["number"]
+        elif self.is_pr_comment:
+            pr_number = self._request_body["issue"]["number"]
+        return pr_number
+
+    @cached_property
+    def pr_title(self):
+        pr_title = ""
+        if self.event_type == "pull_request":
+            pr_title = self._request_body["pull_request"]["title"]
+        elif self.is_pr_comment:
+            pr_title = self._request_body["issue"]["title"]
+        return pr_title
+
+    @cached_property
+    def pr_base_branch(self):
+        pr_base_branch = ""
+        if self.event_type == "pull_request":
+            pr_base_branch = self._request_body["pull_request"]["base"]["ref"]
+        elif self.is_pr_comment:
+            # issue_comment events do not include base branch info - retrieve via GH API
+            pr = self._pr_obj
+            pr_base_branch = pr.base.ref
+        return pr_base_branch
+
+    @cached_property
+    def pr_merged_status(self):
+        state = None
+        if self.event_type == "pull_request":
+            state = self._request_body["pull_request"]["merged"]
+        elif self.is_pr_comment:
+            # issue_comment events do not include merged status - retrieve via GH API
+            pr = self._pr_obj
+            state = pr.merged
+        return state
+
+    @cached_property
+    def pr_url(self):
+        pr_url = ""
+        if self.event_type == "pull_request":
+            pr_url = self._request_body["pull_request"]["html_url"]
+        elif self.is_pr_comment:
+            pr_url = self._request_body["issue"]["pull_request"]["html_url"]
+        return pr_url
+
+    @cached_property
+    def repo_name(self):
+        return self._request_body["repository"]["full_name"]
+
+    @cached_property
+    def repo_git_https(self):
+        return self._request_body["repository"]["clone_url"]
+
+    @cached_property
+    def repo_git_ssh(self):
+        return self._request_body["repository"]["ssh_url"]
+
+
+class GitLabEventInfo(BaseEventInfo):
+    """
+    EventInfo class for use with GitLab webhooks. Converts GL terminology to
+    GH equivalents where needed, e.g. event type 'note' becomes 'issue_comment'.
+    """
+    def __init__(self, event_info):
+        super().__init__(event_info)
+        self._request_body = event_info["raw_request_body"]
+        self._object_attributes = self._request_body.get("object_attributes", {})
+
+    # Map GitLab actions to GitHub actions
+    _ACTION_MAP = {
+        # Note -> comment actions
+        "create": "created",
+        "update": "edited",
+        "delete": "deleted",
+
+        # MR -> PR actions
+        # MR 'update' handled separately
+        "open": "opened",
+        "merge": "closed",
+        "close": "closed",
+    }
+    _UNKNOWN = "UNKNOWN"
+
+    @cached_property
+    def action(self):
+        gl_action = self.event_info["action"]
+        # GL uses a single 'update' action for MRs
+        # Need to check changes to find exact action, e.g. 'labeled'
+        if self.event_type == "pull_request" and gl_action == "update":
+            changes = self._request_body["changes"]
+            if "labels" in changes:
+                action = "labeled"
+            else:
+                action = self._UNKNOWN
+        else:
+            action = self._ACTION_MAP.get(gl_action, self._UNKNOWN)
+        return action
+
+    @cached_property
+    def comment_id(self):
+        return self._object_attributes["id"]
+
+    @cached_property
+    def comment_body(self):
+        return self._object_attributes["note"]
+
+    @cached_property
+    def comment_created_by(self):
+        created_by_id = self._object_attributes["author_id"]
+        triggered_by_id = self._request_body["user"]["id"]
+        # GL events only include the username of the user who triggered the event.
+        # E.g., if a comment was updated by someone other than the original author,
+        # we need to retrieve the name of the author from the server.
+        if triggered_by_id == created_by_id:
+            created_by = self._request_body["user"]["username"]
+        else:
+            gl = gitlab.get_instance()
+            user = gl.users.get(created_by_id)
+            created_by = user.username
+        return created_by
+
+    @cached_property
+    def event_id(self):
+        return self.event_info["id"]
+
+    @cached_property
+    def event_triggered_by(self):
+        return self._request_body["user"]["username"]
+
+    # Map (relevant) GitLab events to GitHub events
+    _EVENT_TYPE_MAP = {
+        "note": "issue_comment",
+        "merge_request": "pull_request",
+    }
+
+    @cached_property
+    def event_type(self):
+        gl_event_type = self.event_info["type"]
+        return self._EVENT_TYPE_MAP.get(gl_event_type, self._UNKNOWN)
+
+    @cached_property
+    def is_pr_comment(self):
+        return (self.event_type == "issue_comment") and (self._object_attributes["noteable_type"] == "MergeRequest")
+
+    @cached_property
+    def label_name(self):
+        # GL sends a single event containing all previous and current labels.
+        # Since we currently only use one label, 'bot:deploy', we can check just for that.
+        def get_label_titles(labels):
+            return {label["title"] for label in labels}
+
+        label_changes = self._request_body["changes"]["labels"]
+        current_labels = get_label_titles(label_changes["current"])
+        previous_labels = get_label_titles(label_changes["previous"])
+
+        # The difference between the sets will yield all newly added labels
+        added_labels = current_labels - previous_labels
+        if "bot:deploy" in added_labels:
+            return "bot:deploy"
+        else:
+            return None
+
+    # GL uses the 'object_attributes' field to store data about the event object.
+    # For example, MR events store information about the MR in 'object_attributes', while
+    # events from comments on MRs store information about the MR in the 'merge_request' field.
+    @cached_property
+    def pr_number(self):
+        pr_iid = -1
+        if self.event_type == "pull_request":
+            pr_iid = self._object_attributes["iid"]
+        elif self.is_pr_comment:
+            pr_iid = self._request_body["merge_request"]["iid"]
+        return pr_iid
+
+    @cached_property
+    def pr_title(self):
+        pr_title = ""
+        if self.event_type == "pull_request":
+            pr_title = self._object_attributes["title"]
+        elif self.is_pr_comment:
+            pr_title = self._request_body["merge_request"]["title"]
+        return pr_title
+
+    @cached_property
+    def pr_base_branch(self):
+        pr_base_branch = ""
+        if self.event_type == "pull_request":
+            pr_base_branch = self._object_attributes["target_branch"]
+        elif self.is_pr_comment:
+            pr_base_branch = self._request_body["merge_request"]["target_branch"]
+        return pr_base_branch
+
+    @cached_property
+    def pr_merged_status(self):
+        state = None
+        if self.event_type == "pull_request":
+            state = self._object_attributes["state"] == "merged"
+        elif self.is_pr_comment:
+            state = self._request_body["merge_request"]["state"] == "merged"
+        return state
+
+    @cached_property
+    def pr_url(self):
+        url = ""
+        if self.event_type == "pull_request":
+            url = self._object_attributes["url"]
+        elif self.is_pr_comment:
+            url = self._request_body["merge_request"]["url"]
+        return url
+
+    @cached_property
+    def repo_name(self):
+        return self._request_body["project"]["path_with_namespace"]
+
+    @cached_property
+    def repo_git_https(self):
+        return self._request_body["project"]["git_http_url"]
+
+    @cached_property
+    def repo_git_ssh(self):
+        return self._request_body["project"]["git_ssh_url"]
+
+
+# Type for subclasses of BaseEventInfo
+EventInfo = Union[GitHubEventInfo, GitLabEventInfo]
+
+
+def create_event_info_instance(event_info):
+    """
+    Creates an EventInfo instance for the configured Git hosting platform.
+
+    Args:
+        event_info (dict): The event info dictionary created by PyGHee
+
+    Returns:
+        EventInfo instance or None
+    """
+    git_host = get_git_hosting_platform()
+    if git_host == GITHUB:
+        return GitHubEventInfo(event_info)
+    elif git_host == GITLAB:
+        return GitLabEventInfo(event_info)
+    return None

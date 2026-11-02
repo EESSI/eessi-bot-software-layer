@@ -7,11 +7,14 @@
 # author: Bob Droege (@bedroge)
 # author: Kenneth Hoste (@boegel)
 # author: Thomas Roeblitz (@trz42)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
 PyGithub
+python-gitlab==6.5.0;python_version=="3.9" # Last version with Python 3.9 support
+python-gitlab==8.3.0;python_version>="3.10" # Most recent version on 2026-05-04
 Waitress>=3.0.1 # required to fix vulnerabilities detected by scorecards
 cryptography>=44.0.1 # required to fix vulnerabilities detected by scorecards
-PyGHee>=0.0.3
+PyGHee>=0.2.0
 retry

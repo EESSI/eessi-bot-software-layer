@@ -620,41 +620,41 @@ def determine_artefacts_to_deploy(successes, upload_policy):
     return to_be_deployed
 
 
-def deploy_built_artefacts(pr, event_info):
+def deploy_built_artefacts(event_info):
     """
     Deploy built artefacts.
 
     Args:
-        pr (github.PullRequest.PullRequest): PyGithub instance for the pull request
-        event_info (dict): dictionary containing event information
+        event_info (EventInfo): dictionary containing event information
 
     Returns:
         None (implicitly)
     """
     funcname = sys._getframe().f_code.co_name
 
-    log(f"{funcname}(): deploy for PR {pr.number}")
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+    labeler = event_info.event_triggered_by
+
+    log(f"{funcname}(): deploy for PR {pr_number}")
 
     cfg = config.read_config()
     deploy_cfg = cfg[config.SECTION_DEPLOYCFG]
     deploy_permission = deploy_cfg.get(config.DEPLOYCFG_SETTING_DEPLOY_PERMISSION, '')
     log(f"{funcname}(): deploy permission '{deploy_permission}'")
 
-    labeler = event_info['raw_request_body']['sender']['login']
-
-    # verify that the GitHub account that set label bot:deploy has the
+    # verify that the account that set label bot:deploy has the
     # permission to trigger the deployment
     if labeler not in deploy_permission.split():
-        log(f"{funcname}(): GH account '{labeler}' is not authorized to deploy")
+        log(f"{funcname}(): account '{labeler}' is not authorized to deploy")
         no_deploy_permission_comment = deploy_cfg.get(config.DEPLOYCFG_SETTING_NO_DEPLOY_PERMISSION_COMMENT)
-        repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
-                                   pr.number,
+                                   pr_number,
                                    no_deploy_permission_comment.format(deploy_labeler=labeler),
                                    ChatLevels.CHATTY)
         return
     else:
-        log(f"{funcname}(): GH account '{labeler}' is authorized to deploy")
+        log(f"{funcname}(): account '{labeler}' is authorized to deploy")
 
     # get upload policy from config
     upload_policy = deploy_cfg.get(config.DEPLOYCFG_SETTING_UPLOAD_POLICY)
@@ -669,7 +669,7 @@ def deploy_built_artefacts(pr, event_info):
     # 4) call function to deploy a single artefact per software subdir
 
     # 1) determine the jobs that have been run for the PR
-    job_dirs = determine_job_dirs(pr.number)
+    job_dirs = determine_job_dirs(pr_number)
     log(f"{funcname}(): job_dirs = {','.join(job_dirs)}")
 
     # 2) for each job, check its status (SUCCESS or FAILURE)
@@ -680,10 +680,8 @@ def deploy_built_artefacts(pr, event_info):
     to_be_deployed = determine_artefacts_to_deploy(successes, upload_policy)
 
     # 4) call function to deploy a single artefact per software subdir
-    repo_name = pr.base.repo.full_name
-
     for job in to_be_deployed.values():
         job_dir = job['job_dir']
         pr_comment_id = job['pr_comment_id']
         artefact = job['artefact']
-        upload_artefact(job_dir, artefact, repo_name, pr.number, pr_comment_id)
+        upload_artefact(job_dir, artefact, repo_name, pr_number, pr_comment_id)

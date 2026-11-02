@@ -90,7 +90,7 @@ def create_metadata_file(job, job_id, pr_comment):
     Args:
         job (named tuple): key data about job that has been submitted
         job_id (string): id of submitted job
-        pr_comment (PRComment): contains repo_name, pr_number and pr_comment_id
+        pr_comment (PRCommentInfo): contains repo_name, pr_number and pr_comment_id
 
     Returns:
         None (implicitly)
