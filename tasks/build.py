@@ -1193,7 +1193,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     dt = datetime.now(timezone.utc)
 
     # Get commit SHA from cloned repo
-    commit_sha, _, _ = run_cmd('git rev-parse HEAD', 'Get commit SHA', job.working_dir, raise_on_error=False)
+    commit_sha, _, _ = run_cmd('git rev-parse FETCH_HEAD', 'Get commit SHA', job.working_dir, raise_on_error=False)
     commit_sha = commit_sha.strip() if commit_sha else ''
 
     # construct initial job comment
