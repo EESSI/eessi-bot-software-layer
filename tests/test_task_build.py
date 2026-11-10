@@ -563,7 +563,7 @@ def test_create_pr_comment_with_commit_sha(monkeypatch, mocked_github, tmp_path)
     comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
 
     # Get the actual commit SHA
-    result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, capture_output=True, text=True)
+    result = subprocess.run(['git', 'rev-parse', 'FETCH_HEAD'], cwd=tmp_path, capture_output=True, text=True)
     expected_sha = result.stdout.strip()
 
     assert comment.id == 1
