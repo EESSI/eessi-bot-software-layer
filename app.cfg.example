@@ -272,7 +272,7 @@ allowed_job_env_vars = []
 # It's safe to use the following line as default setting:
 allowed_submit_args = []
 
-# mechanisn to use to clone Git repository
+# mechanism to use to clone Git repository
 # 'https' to clone via HTTPS (git clone https://github.com/<owner>/<repo>)
 # In case of using 'ssh', one may need additional steps to ensure that the bot
 # uses the right ssh key and does not ask for a passphrase (if the key used is
