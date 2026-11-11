@@ -23,7 +23,6 @@ import sys
 # (none yet)
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from .git import get_git_hosting_platform, SUPPORTED_GIT_HOSTS
 from .logging import error
 
 # define configuration constants
@@ -217,8 +216,11 @@ def check_cfg_settings(req_settings, path="app.cfg"):
     Returns:
         None (implicitly)
     """
-    # TODO argument path is not being used
-    cfg = read_config()
+    # Import lazily to avoid a circular import: tools.git imports connection
+    # modules, which import tools.config before tools.git has initialized.
+    from tools.git import get_git_hosting_platform, SUPPORTED_GIT_HOSTS
+
+    cfg = read_config(path)
     git_host = get_git_hosting_platform(cfg)
     # iterate over keys in req_settings which correspond to sections ([name])
     # in the configuration file (.ini format)
