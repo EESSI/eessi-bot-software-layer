@@ -253,6 +253,12 @@ class BaseGitRepository:
         return self._MSG_DOWNLOAD_PR_SUCCESS, "", self._EXIT_CODE_OK, ERROR_NONE
 
 
+class GenericGitRepository(BaseGitRepository):
+    # Intended for simple Git operations which are assumed not to vary between Git hosting platforms, e.g. clone
+    # No overrides needed
+    pass
+
+
 class GitHubGitRepository(BaseGitRepository):
     # No overrides needed
     pass
@@ -265,7 +271,7 @@ class GitLabGitRepository(BaseGitRepository):
         return f"merge-requests/{pr_number}/head"
 
 
-GitRepository = Union[GitHubGitRepository, GitLabGitRepository]
+GitRepository = Union[GenericGitRepository, GitHubGitRepository, GitLabGitRepository]
 
 
 def create_git_repository_instance(repo_url, directory, git_host):
@@ -278,17 +284,19 @@ def create_git_repository_instance(repo_url, directory, git_host):
             directory will be created when calling clone() if it does not exist. If it already
             exists it must be empty, otherwise cloning will fail.
         git_host (str): The Git hosting platform the repository given as 'repo_url' is hosted on.
-            Must be either 'github' or 'gitlab'. Can be set independently of the configured Git
-            hosting platform (e.g. 'github' can be given even if the bot is configured for GitLab).
+            If either 'github' or 'gitlab' is given, an instance of the platform-specific class
+            is returned, otherwise an instance of GenericGitRepository is returned. Can be set
+            independently of the configured Git hosting platform (e.g. 'github' can be given
+            even if the bot is configured for GitLab).
 
     Returns:
-        GitRepository instance or None
+        GitRepository instance
     """
     if git_host == GITHUB:
         return GitHubGitRepository(repo_url, directory)
     elif git_host == GITLAB:
         return GitLabGitRepository(repo_url, directory)
-
-    fn = sys._getframe().f_code.co_name
-    log(f"{fn}(): No GitRepository class for '{git_host}', returning None.")
-    return None
+    else:
+        fn = sys._getframe().f_code.co_name
+        log(f"{fn}(): Git hosting platform '{git_host}' given, returning GenericGitRepository instance.")
+        return GenericGitRepository(repo_url, directory)

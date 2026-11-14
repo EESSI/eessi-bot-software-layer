@@ -13,6 +13,7 @@
 # author: Pedro Santos Neves (@Neves-P)
 # author: Thomas Roeblitz (@trz42)
 # author: Sam Moors (@smoors)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
@@ -37,7 +38,7 @@ from pyghee.utils import error, log
 from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
-from tools.git import create_git_repository_instance, get_git_hosting_platform, \
+from tools.git import create_git_repository_instance, get_app_name, get_git_hosting_platform, \
     ERROR_GIT_APPLY, ERROR_GIT_CHECKOUT, ERROR_GIT_CLONE, ERROR_GIT_DIFF, ERROR_GIT_FETCH, ERROR_MAKE_DIRS
 from tools.pr_comments import ChatLevels, create_comment, update_comment
 from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
@@ -609,17 +610,13 @@ def create_pr_dir(cfg, event_info):
     return year_month, pr_id, run_dir
 
 
-def clone_git_repo(repo, path):
+def clone_git_repo(repo_url, path):
     """
     Clone specified Git repo to specified path
     """
-    git_clone_cmd = ' '.join(['git clone', repo, path])
-    log(f'cloning with command {git_clone_cmd}')
-    clone_output, clone_error, clone_exit_code = run_cmd(
-        git_clone_cmd, "Clone repo", path, raise_on_error=False
-        )
-
-    return (clone_output, clone_error, clone_exit_code)
+    # Use the generic GitRepository class to clone the repo
+    repo = create_git_repository_instance(repo_url, path, "generic")
+    return repo.clone()
 
 
 def download_pr(event_info, arch_job_dir, clone_via=None):
@@ -760,16 +757,15 @@ def prepare_export_vars_file(job_dir, exportvars):
     log(f"{fn}(): created exported variables file {export_vars_path}")
 
 
-def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
+def prepare_jobs(cfg, event_info, action_filter, build_params):
     """
     Prepare all jobs whose context matches the given filter. Preparation includes
     creating a working directory for a job, downloading the pull request into
     that directory and creating a job specific configuration file.
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
         cfg (ConfigParser): instance holding full configuration (typically read from 'app.cfg')
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
         build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
@@ -778,20 +774,21 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
     """
     fn = sys._getframe().f_code.co_name
 
-    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
+    app_name = get_app_name(cfg)
     build_env_cfg = get_build_env_cfg(cfg)
     node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
     allowed_job_env_vars = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS)
     allowed_submit_args = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS)
 
-    base_repo_name = pr.base.repo.full_name
-    log(f"{fn}(): pr.base.repo.full_name '{base_repo_name}'")
+    base_repo_name = event_info.repo_name
+    log(f"{fn}(): Base repository: '{base_repo_name}'")
 
-    base_branch_name = pr.base.ref
-    log(f"{fn}(): pr.base.repo.ref '{base_branch_name}'")
+    base_branch_name = event_info.pr_base_branch
+    log(f"{fn}(): Base branch: '{base_branch_name}'")
 
-    job_owner = event_info['raw_request_body']['sender']['login']
+    pr_number = event_info.pr_number
+    job_owner = event_info.event_triggered_by
 
     # create run dir (base directory for potentially several jobs)
     # TODO may still be too early (before we get to any actual job being
@@ -900,7 +897,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter, build_params):
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
                 event_info, job_dir, clone_via=clone_git_repo_via,
                 )
-            comment_download_pr(base_repo_name, pr.number, download_pr_exit_code, download_pr_error, error_stage)
+            comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
             msg = f"{fn}(): node type = '{node_type_name}' => "
             msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
@@ -1108,9 +1105,8 @@ def submit_job(job, cfg):
         if repo_subdir.endswith('.git'):
             repo_subdir = repo_subdir[:-4]
         target_dir = os.path.join(job.working_dir, repo_subdir)
-        os.makedirs(target_dir, exist_ok=True)
 
-        clone_output, clone_error, clone_exit_code = clone_git_repo(build_job_script_repo, target_dir)
+        _, clone_error, clone_exit_code, _ = clone_git_repo(build_job_script_repo, target_dir)
         if clone_exit_code == 0:
             log(f"{fn}(): repository {build_job_script_repo} cloned to {target_dir}")
         else:
@@ -1152,23 +1148,24 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
+def create_pr_comment(job, job_id, event_info, symlink, build_params):
     """
     Create a comment to the pull request for a newly submitted job
 
     Args:
         job (Job): namedtuple containing information about submitted job
         job_id (string): id of the submitted job
-        app_name (string): name of the app
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+        event_info (EventInfo): event received by event_handler
         symlink (string): symlink from main pr_<ID> dir to job dir
         build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
-        github.IssueComment.IssueComment instance or None (note, github refers to
-            PyGithub, not the github from the internal connections module)
+        PRComment instance or None
     """
     fn = sys._getframe().f_code.co_name
+
+    cfg = config.read_config()
+    app_name = get_app_name(cfg)
 
     # Obtain the architecture on which we are building from job.arch_target, which has the format OS/ARCH
     on_arch = '-'.join(job.arch_target.split('/')[1:])
@@ -1176,7 +1173,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     # Obtain the architecture to build for
     for_arch = build_params[BUILD_PARAM_ARCH]
 
-    submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
+    submitted_job_comments_cfg = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
 
     # Set string for accelerator to build on
     accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
@@ -1197,7 +1194,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
     commit_sha = commit_sha.strip() if commit_sha else ''
 
     # construct initial job comment
-    buildenv = config.read_config()[config.SECTION_BUILDENV]
+    buildenv = cfg[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
     new_job_instance_repo = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
     build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
@@ -1228,7 +1225,7 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
         # calculate delay from poll_interval and delay_factor
-        job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
+        job_manager_cfg = cfg[config.SECTION_JOB_MANAGER]
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
@@ -1252,8 +1249,9 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         job_comment = header_lines + commit_sha_line + table
 
     # create comment to pull request
-    repo_name = pr.base.repo.full_name
-    issue_comment = create_comment(repo_name, pr.number, job_comment, ChatLevels.MINIMAL)
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+    issue_comment = create_comment(repo_name, pr_number, job_comment, ChatLevels.MINIMAL)
     if issue_comment:
         log(f"{fn}(): created PR issue comment with id {issue_comment.id}")
         return issue_comment
@@ -1262,51 +1260,50 @@ def create_pr_comment(job, job_id, app_name, pr, symlink, build_params):
         return None
 
 
-def submit_build_jobs(pr, event_info, action_filter, build_params):
+def submit_build_jobs(event_info, action_filter, build_params):
     """
     Create build jobs for a pull request by preparing jobs which match the given
-    filters, submitting them, adding comments to the pull request on GitHub and
-    creating a metadata file in the job's working directory
+    filters, submitting them, adding comments to the pull request and creating a
+    metadata file in the job's working directory
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
         build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
-        (dict): dictionary mapping a job id to a github.IssueComment.IssueComment
-            instance (corresponding to the pull request comment for the submitted
-            job) or an empty dictionary if there were no jobs to be submitted
+        (dict): dictionary mapping a job id to a PRComment instance (corresponding
+                to the pull request comment for the submitted job) or an empty
+                dictionary if there were no jobs to be submitted
     """
     fn = sys._getframe().f_code.co_name
 
     cfg = config.read_config()
-    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
-    jobs = prepare_jobs(pr, cfg, event_info, action_filter, build_params)
+    jobs = prepare_jobs(cfg, event_info, action_filter, build_params)
 
     # return if there are no jobs to be submitted
     if not jobs:
         log(f"{fn}(): no jobs ({len(jobs)}) to be submitted")
         return {}
 
-    # process prepared jobs: submit, create metadata file and add comment to pull
-    # request on GitHub
+    # process prepared jobs: submit job, add comment to pull request and create metadata file
     job_id_to_comment_map = {}
     for job in jobs:
         # submit job
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink, build_params)
+        pr_comment = create_pr_comment(job, job_id, event_info, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
-        pr_comment = pr_comments.PRCommentInfo(pr.base.repo.full_name, pr.number, pr_comment.id)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        pr_comment_info = pr_comments.PRCommentInfo(repo_name, pr_number, pr_comment.id)
 
         # create _bot_job<jobid>.metadata file in the job's working directory
-        job_metadata.create_metadata_file(job, job_id, pr_comment)
+        job_metadata.create_metadata_file(job, job_id, pr_comment_info)
 
     return job_id_to_comment_map
 
