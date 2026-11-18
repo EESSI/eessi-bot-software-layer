@@ -43,9 +43,9 @@ from pyghee.utils import log
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
-from tools import config, job_metadata, run_cmd
+from tools import config, git, job_metadata, run_cmd
 from tools.args import job_manager_parse
-from tools.pr_comments import get_submitted_job_comment, update_comment
+from tools.pr_comments import create_pr_comment_instance, get_submitted_job_comment, update_comment
 from tasks.build import check_allowed_args_config
 
 
@@ -57,6 +57,8 @@ REQUIRED_CONFIG = {
     config.SECTION_FINISHED_JOB_COMMENTS: [
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT,  # required
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT],   # required
+    config.SECTION_GIT: [
+        config.GIT_SETTING_HOSTING_PLATFORM],                         # required
     config.SECTION_GITHUB: [
         # config.GITHUB_SETTING_API_TIMEOUT,                            # unused
         config.GITHUB_SETTING_APP_ID,                                 # required
@@ -318,42 +320,30 @@ class EESSIBotSoftwareLayerJobManager:
             (bool): True if method completed the tasks described, False if job
                 is not a bot job
         """
+        fn = sys._getframe().f_code.co_name
+
         job_id = new_job["jobid"]
 
         # processing placeholders in scontrol command which is defined in the bot's app.cfg (setting `scontrol_command`)
         try:
             templated_scontrol_command = self.scontrol_command % new_job
         except KeyError:
-            log(f"Failed to process {self.scontrol_command}.")
-            log(f"Information on placeholder is not collected in new_job: {new_job}.")
+            msg = f"{fn}(): Failed to process {self.scontrol_command}. "
+            msg += f"Information on placeholder is not collected in new_job: {new_job}."
+            log(msg, self.logfile)
             raise
 
-        cmd = "%s --oneliner show jobid %s" % (
-            templated_scontrol_command,
-            job_id,
-        )
-        scontrol_output, scontrol_err, scontrol_exitcode = run_cmd(
-            cmd,
-            "process_new_job(): scontrol command",
-            log_file=self.logfile,
-        )
+        cmd = f"{templated_scontrol_command} --oneliner show jobid {job_id}"
+        scontrol_output, _, _ = run_cmd(cmd, f"{fn}(): scontrol command", log_file=self.logfile)
 
         # parse output of scontrol command that fetches job info
         job_info = self.parse_scontrol_show_job_output(str(scontrol_output))
 
-        # check if job_info contains 'WorkDir', if not we cannot process the job
-        # further
+        # check if job_info contains 'WorkDir', if not we cannot process the job further
         if 'WorkDir' in job_info:
-            log(
-                "process_new_job(): work dir of job %s: '%s'"
-                % (job_id, job_info['WorkDir']),
-                self.logfile,
-            )
+            log(f"{fn}(): work dir of job {job_id}: '{job_info['WorkDir']}'", self.logfile)
 
-            job_metadata_path = "%s/_bot_job%s.metadata" % (
-                job_info['WorkDir'],
-                job_id,
-            )
+            job_metadata_path = os.path.join(job_info['WorkDir'], f"_bot_job{job_id}.metadata")
 
             # assuming that a bot job's working directory contains a metadata
             # file, its existence is used to check if the job belongs to the bot
@@ -362,16 +352,24 @@ class EESSIBotSoftwareLayerJobManager:
                                                              self.logfile)
 
             if metadata_pr is None:
-                log(f"No metadata file found at {job_metadata_path} for job {job_id}, so skipping it",
+                log(f"{fn}(): No metadata file found at {job_metadata_path} for job {job_id}, so skipping it",
                     self.logfile)
                 return False
 
+            cfg = config.read_config()
+
+            # Do not process the job further if it was started from a different
+            # Git hosting platform than the job manager is configured for
+            job_git_host = metadata_pr.get(job_metadata.JOB_PR_GIT_HOST)
+            manager_git_host = git.get_git_hosting_platform(cfg)
+            if job_git_host != manager_git_host:
+                msg = f"{fn}(): git_host '{job_git_host}' of job {job_id} differs from "
+                msg += f"the job manager's configured git_host '{manager_git_host}', so skipping it"
+                log(msg, self.logfile)
+                return False
+
             symlink_source = os.path.join(self.submitted_jobs_dir, job_id)
-            log(
-                "process_new_job(): create a symlink: %s -> %s"
-                % (symlink_source, job_info['WorkDir']),
-                self.logfile,
-            )
+            log(f"{fn}(): create a symlink: {symlink_source} -> {job_info['WorkDir']}", self.logfile)
             os.symlink(job_info['WorkDir'], symlink_source)
 
             # handle different job handover protocols
@@ -382,65 +380,34 @@ class EESSIBotSoftwareLayerJobManager:
             job_status = ''
             extra_info = ''
             if self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
-                release_cmd = "%s release %s" % (
-                    templated_scontrol_command,
-                    job_id,
-                )
-
-                release_output, release_err, release_exitcode = run_cmd(
-                    release_cmd,
-                    "process_new_job(): scontrol command",
-                    log_file=self.logfile,
-                )
+                release_cmd = f"{templated_scontrol_command} release {job_id}"
+                run_cmd(release_cmd, f"{fn}(): scontrol command", log_file=self.logfile)
                 job_status = 'released'
                 extra_info = ''
             elif self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
                 job_status = 'received'
-                extra_info = " (eligible to start from {job_info['EligibleTime'})"
+                extra_info = f" (eligible to start from {job_info['EligibleTime']})"
 
-            # update PR defined by repo and pr_number stored in the job's
-            # metadata file
-            repo_name = metadata_pr.get("repo", "")
-            pr_number = metadata_pr.get("pr_number", None)
+            # update PR comment defined by 'repo', 'pr_number', and 'pr_comment_id' stored in the job's metadata file
+            repo_name = metadata_pr.get(job_metadata.JOB_PR_REPO, "")
+            pr_number = metadata_pr.get(job_metadata.JOB_PR_PR_NUMBER, "")
+            pr_comment_id = metadata_pr.get(job_metadata.JOB_PR_PR_COMMENT_ID, "")
 
-            gh = github.get_instance()
-
-            repo = gh.get_repo(repo_name)
-            pr = repo.get_pull(int(pr_number))
-
-            # find & get comment for this job
-            # only get comment if we don't know its id yet
-            if "comment_id" not in new_job:
-                new_job_cmnt = get_submitted_job_comment(pr, new_job['jobid'])
-
-                if new_job_cmnt:
-                    log(
-                        "process_new_job(): found comment with id %s"
-                        % new_job_cmnt.id,
-                        self.logfile,
-                    )
-                    new_job["comment_id"] = new_job_cmnt.id
-
-            # update status table if we found a comment
-            if "comment_id" in new_job:
-                new_job_comments_cfg = config.read_config()[config.SECTION_NEW_JOB_COMMENTS]
+            # update status table if all job metadata fields required to update the PR comment were non-empty
+            if "" not in (repo_name, pr_number, pr_comment_id):
+                new_job_comments_cfg = cfg[config.SECTION_NEW_JOB_COMMENTS]
                 dt = datetime.now(timezone.utc)
-                update = "\n|%s|%s|" % (dt.strftime("%b %d %X %Z %Y"), job_status)
+                update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|{job_status}|"
                 description_col_fmt = new_job_comments_cfg[config.NEW_JOB_COMMENTS_SETTING_AWAITS_LAUNCH]
                 update += f"{description_col_fmt.format(extra_info=extra_info)}|"
-                update_comment(new_job["comment_id"], pr, update)
+                pr_comment = create_pr_comment_instance(repo_name, int(pr_number), id=int(pr_comment_id))
+                pr_comment.append(update)
             else:
-                log(
-                    "process_new_job(): did not obtain/find a comment"
-                    " for job '%s'" % job_id,
-                    self.logfile,
-                )
+                msg = f"{fn}(): Fields required for updating PR comment ('repo', 'pr_number', 'pr_comment_id') "
+                msg += f"are missing or empty in metadata for job {job_id}"
+                log(msg, self.logfile)
         else:
-            log(
-                "process_new_job(): did not find work dir for job '%s'"
-                % job_id,
-                self.logfile,
-            )
+            log(f"{fn}(): did not find work dir for job {job_id}", self.logfile)
 
         return True
 
