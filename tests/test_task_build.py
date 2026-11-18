@@ -473,8 +473,9 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
 
     job_id = "123"
 
+    git_host = "github"
     repo_name = "test_repo"
-    pr_comment = PRCommentInfo(repo_name, pr_number, 77)
+    pr_comment = PRCommentInfo(git_host, repo_name, pr_number, 77)
     create_metadata_file(job, job_id, pr_comment)
 
     expected_file = f"_bot_job{job_id}.metadata"
@@ -484,6 +485,7 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
 
     # assert file contents =
     # [PR]
+    # git_host = github
     # repo = test_repo
     # pr_number = 999
     # pr_comment_id = 77
@@ -494,11 +496,12 @@ def test_create_read_metadata_file(mocked_github, tmp_path):
     # also check reading back of metadata file
     metadata = read_metadata_file(expected_file_path)
     assert "PR" in metadata
+    assert metadata["PR"]["git_host"] == "github"
     assert metadata["PR"]["repo"] == "test_repo"
     assert metadata["PR"]["pr_number"] == "999"
     assert metadata["PR"]["pr_comment_id"] == "77"
     assert metadata["PR"]["job_owner"] == "user01"
-    assert sorted(metadata["PR"].keys()) == ["job_owner", "pr_comment_id", "pr_number", "repo"]
+    assert sorted(metadata["PR"].keys()) == ["git_host", "job_owner", "pr_comment_id", "pr_number", "repo"]
 
     # use directory that does not exist
     dir_does_not_exist = os.path.join(tmp_path, "dir_does_not_exist")
