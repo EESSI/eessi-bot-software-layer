@@ -414,70 +414,63 @@ class EESSIBotSoftwareLayerJobManager:
     def process_running_jobs(self, running_job):
         """
         Process a running job by verifying that it is a bot job and if so
-        - determines the PR comment body and id corresponding to the job,
-        - updates the PR comment (if found)
+        - tries to retrieve the PR comment info for the job from its metadata and if found,
+        - adds a formatted running_msg to the comment if it is not already present
 
         Args:
             running_job (dict): dictionary containing data of the running jobs
 
         Returns:
             None (implicitly)
-
-        Raises:
-            Exception: if there is no metadata file or reading it failed
         """
+        fn = sys._getframe().f_code.co_name
 
-        gh = github.get_instance()
+        job_id = running_job["jobid"]
 
-        # set variable for accessing the working directory of the job
-        job_dir = os.path.join(self.submitted_jobs_dir, running_job["jobid"])
-
-        metadata_file = "_bot_job%s.metadata" % running_job["jobid"]
-        job_metadata_path = os.path.join(job_dir, metadata_file)
-
-        # check if metadata file exist
+        # Check if metadata file exists
+        job_metadata_path = os.path.join(self.submitted_jobs_dir, job_id, f"_bot_job{job_id}.metadata")
         metadata_pr = job_metadata.get_section_from_file(job_metadata_path,
                                                          job_metadata.JOB_PR_SECTION,
                                                          self.logfile)
         if metadata_pr is None:
-            raise Exception("Unable to find metadata file")
+            log(f"{fn}(): Unable to find metadata file for job {job_id}, skipping...", self.logfile)
+            return
 
-        repo_name = metadata_pr.get("repo", "")
-        pr_number = metadata_pr.get("pr_number", None)
+        cfg = config.read_config()
 
-        repo = gh.get_repo(repo_name)
-        pullrequest = repo.get_pull(int(pr_number))
+        # Do not process the job further if it was started from a different
+        # Git hosting platform than the job manager is configured for
+        job_git_host = metadata_pr.get(job_metadata.JOB_PR_GIT_HOST)
+        manager_git_host = git.get_git_hosting_platform(cfg)
+        if job_git_host != manager_git_host:
+            msg = f"{fn}(): git_host '{job_git_host}' of job {job_id} differs from "
+            msg += f"the job manager's configured git_host '{manager_git_host}', so skipping it"
+            log(msg, self.logfile)
+            return
 
-        # determine comment to be updated
-        if "comment_id" not in running_job:
-            running_job_cmnt = get_submitted_job_comment(pullrequest, running_job['jobid'])
+        # Retrieve PR comment info from the job's metadata file
+        repo_name = metadata_pr.get(job_metadata.JOB_PR_REPO, "")
+        pr_number = metadata_pr.get(job_metadata.JOB_PR_PR_NUMBER, "")
+        pr_comment_id = metadata_pr.get(job_metadata.JOB_PR_PR_COMMENT_ID, "")
 
-            if running_job_cmnt:
-                log(
-                    "process_running_job(): found comment with id %s"
-                    % running_job_cmnt.id,
-                    self.logfile,
-                )
-                running_job["comment_id"] = running_job_cmnt.id
-                running_job["comment_body"] = running_job_cmnt.body
+        if "" not in (repo_name, pr_number, pr_comment_id):
+            # Retrieve PR comment
+            pr_comment = create_pr_comment_instance(repo_name, int(pr_number), id=int(pr_comment_id))
+            pr_comment.get()
 
-        if "comment_id" in running_job:
             dt = datetime.now(timezone.utc)
-            running_job_comments_cfg = config.read_config()[config.SECTION_RUNNING_JOB_COMMENTS]
+            running_job_comments_cfg = cfg[config.SECTION_RUNNING_JOB_COMMENTS]
             running_msg_fmt = running_job_comments_cfg[config.RUNNING_JOB_COMMENTS_SETTING_RUNNING_JOB]
-            running_msg = running_msg_fmt.format(job_id=running_job['jobid'])
-            if "comment_body" in running_job and running_msg in running_job["comment_body"]:
-                log("Not updating comment, '%s' already found" % running_msg)
+            running_msg = running_msg_fmt.format(job_id=job_id)
+
+            if running_msg in pr_comment.body:
+                log(f"{fn}(): Not updating comment, '{running_msg}' already found", self.logfile)
             else:
-                update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|running|"
-                update += f"{running_msg}|"
-                update_comment(running_job["comment_id"], pullrequest, update)
+                pr_comment.append(f"\n|{dt.strftime('%b %d %X %Z %Y')}|running|{running_msg}|")
         else:
-            log(
-                "process_running_job(): did not obtain/find a comment"
-                " for job '%s'" % running_job['jobid'],
-                self.logfile,
-            )
+            msg = f"{fn}(): Fields required for updating PR comment ('repo', 'pr_number', 'pr_comment_id') "
+            msg += f"are missing or empty in metadata for job {job_id}"
+            log(msg, self.logfile)
 
     def process_finished_job(self, finished_job):
         """
