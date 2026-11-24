@@ -19,6 +19,7 @@
 #
 
 # Standard library imports
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -38,6 +39,7 @@ from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
     contains_any_bot_command, get_bot_command, get_supported_commands, ALL_COMMANDS
 from tools.event_info import create_event_info_instance
+from tools.filter import FILTER_COMPONENT_INST
 from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform, GITLAB
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
@@ -569,18 +571,14 @@ class EESSIBotSoftwareLayer(PyGHee):
         Handles bot command 'build [ARGS*]' by parsing arguments and submitting jobs
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
             (string): immediate result of command (any jobs or no jobs being
                 submitted) and a link to the issue comment for submitted jobs
         """
-        gh = github.get_instance()
-        self.log("repository: '%s'", event_info['raw_request_body']['repository']['full_name'])
-        repo_name = event_info['raw_request_body']['repository']['full_name']
-        pr_number = event_info['raw_request_body']['issue']['number']
-        pr = gh.get_repo(repo_name).get_pull(pr_number)
+        self.log("repository: '%s'", event_info.repo_name)
         build_msg = ''
         # Require that build_params is defined, it is required. Otherwise, return early
         if bot_command.build_params is None:
@@ -590,7 +588,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         if check_build_permission(event_info):
             # use filter from command
-            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters, bot_command.build_params)
+            submitted_jobs = submit_build_jobs(event_info, bot_command.action_filters, bot_command.build_params)
             if submitted_jobs is None or len(submitted_jobs) == 0:
                 build_msg = "\n  - no jobs were submitted"
             else:
@@ -599,8 +597,7 @@ class EESSIBotSoftwareLayer(PyGHee):
                     if issue_comment and issue_comment.html_url:
                         build_msg += f", for details & status see {issue_comment.html_url}"
         else:
-            request_body = event_info['raw_request_body']
-            sender = request_body['sender']['login']
+            sender = event_info.event_triggered_by
             build_msg = f"\n  - account `{sender}` has NO permission to submit build jobs"
         return build_msg
 
@@ -624,8 +621,9 @@ class EESSIBotSoftwareLayer(PyGHee):
 
     def handle_bot_command_status(self, event_info, bot_command):
         """
-        Handles bot command 'status' by querying the github API
-        for the comments in a pr.
+        Handles bot command 'status [instance:NAME]' by querying the github
+        API for the comments in a pr. If an instance filter is given and it
+        does not match the name of this bot instance, the command is ignored.
 
         Args:
             event_info (dict): event received by event_handler
@@ -633,9 +631,16 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         Returns:
             (string): list item with a link to the issue comment that was created
-                containing the status overview
+                containing the status overview, or a note that the command is not
+                addressed to this bot instance
         """
         self.log("processing bot command 'status'")
+        app_name = get_app_name(self.cfg)
+        instance_patterns = bot_command.action_filters.get_filter_by_component(FILTER_COMPONENT_INST)
+        if not all(re.search(pattern, app_name) for pattern in instance_patterns):
+            self.log(f"instance '{app_name}' does not match filter(s) {instance_patterns}, ignoring 'status'")
+            return f"\n  - instance `{app_name}` does not match the instance filter, ignoring command"
+
         repo_name = event_info['raw_request_body']['repository']['full_name']
         pr_number = event_info['raw_request_body']['issue']['number']
         status_table = request_bot_build_issue_comments(repo_name, pr_number)

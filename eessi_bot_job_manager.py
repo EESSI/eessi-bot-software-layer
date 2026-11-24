@@ -396,7 +396,7 @@ class EESSIBotSoftwareLayerJobManager:
                 extra_info = ''
             elif self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
                 job_status = 'received'
-                extra_info = " (eligible to start from {job_info['EligibleTime'})"
+                extra_info = " (eligible to start from {job_info['EligibleTime']})"
 
             # update PR defined by repo and pr_number stored in the job's
             # metadata file
