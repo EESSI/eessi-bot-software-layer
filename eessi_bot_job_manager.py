@@ -484,17 +484,33 @@ class EESSIBotSoftwareLayerJobManager:
 
         Returns:
             None (implicitly)
-
-        Raises:
-            Exception: if there is no metadata file or reading it failed
         """
         fn = sys._getframe().f_code.co_name
 
-        job_id = finished_job['jobid']
-
-        # move symlink from job_ids_dir/submitted to jobs_ids_dir/finished
+        cfg = config.read_config()
+        job_id = finished_job["jobid"]
         old_symlink = os.path.join(self.submitted_jobs_dir, job_id)
 
+        metadata_file = f"_bot_job{job_id}.metadata"
+        job_metadata_path = os.path.join(old_symlink, metadata_file)
+        metadata_pr = job_metadata.get_section_from_file(job_metadata_path,
+                                                         job_metadata.JOB_PR_SECTION,
+                                                         self.logfile)
+        if metadata_pr is None:
+            log(f"{fn}(): Unable to find metadata file for job {job_id}, skipping...", self.logfile)
+            return
+
+        # Do not process the job further if it was started from a different
+        # Git hosting platform than the job manager is configured for
+        job_git_host = metadata_pr.get(job_metadata.JOB_PR_GIT_HOST)
+        manager_git_host = git.get_git_hosting_platform(cfg)
+        if job_git_host != manager_git_host:
+            msg = f"{fn}(): git_host '{job_git_host}' of job {job_id} differs from "
+            msg += f"the job manager's configured git_host '{manager_git_host}', so skipping it"
+            log(msg, self.logfile)
+            return
+
+        # move symlink from job_ids_dir/submitted to job_ids_dir/finished
         finished_jobs_dir = os.path.join(self.job_ids_dir, "finished")
         os.makedirs(finished_jobs_dir, exist_ok=True)
 
@@ -521,9 +537,9 @@ class EESSIBotSoftwareLayerJobManager:
         #      status = {SUCCESS,FAILURE,UNKNOWN}
 
         # obtain format templates from app.cfg
-        finished_job_comments_cfg = config.read_config()[config.SECTION_FINISHED_JOB_COMMENTS]
+        finished_job_comments_cfg = cfg[config.SECTION_FINISHED_JOB_COMMENTS]
 
-        # check if _bot_jobJOBID.result exits
+        # check if _bot_jobJOBID.result exists
         job_result_file = f"_bot_job{job_id}.result"
         job_result_file_path = os.path.join(new_symlink, job_result_file)
         job_results = job_metadata.get_section_from_file(job_result_file_path,
@@ -545,19 +561,15 @@ class EESSIBotSoftwareLayerJobManager:
             f"########\n", self.logfile)
 
         dt = datetime.now(timezone.utc)
+        comment_update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|finished|{comment_description}|"
 
-        comment_update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|finished|"
-        comment_update += f"{comment_description}|"
-
-        # check if _bot_jobJOBID.test exits
+        # check if _bot_jobJOBID.test exists
         # TODO if not found, assume test was not run (or failed, or ...) and add
         # a message noting that ('not tested' + 'test suite not run or failed')
         # --> bot/test.sh and bot/check-test.sh scripts are run in job script used by bot for 'build' action
         job_test_file = f"_bot_job{job_id}.test"
         job_test_file_path = os.path.join(new_symlink, job_test_file)
-        job_tests = job_metadata.get_section_from_file(job_test_file_path,
-                                                       job_metadata.JOB_TEST_SECTION,
-                                                       self.logfile)
+        job_tests = job_metadata.get_section_from_file(job_test_file_path, job_metadata.JOB_TEST_SECTION, self.logfile)
 
         job_test_unknown_fmt = finished_job_comments_cfg[config.FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT]
         # set fallback comment_description in case no test file was found
@@ -574,32 +586,21 @@ class EESSIBotSoftwareLayerJobManager:
             f"########\n", self.logfile)
 
         dt = datetime.now(timezone.utc)
+        comment_update += f"\n|{dt.strftime('%b %d %X %Z %Y')}|test result|{comment_description}|"
 
-        comment_update += f"\n|{dt.strftime('%b %d %X %Z %Y')}|test result|"
-        comment_update += f"{comment_description}|"
+        # Retrieve PR comment info from the job's metadata file
+        repo_name = metadata_pr.get(job_metadata.JOB_PR_REPO, "")
+        pr_number = metadata_pr.get(job_metadata.JOB_PR_PR_NUMBER, "")
+        pr_comment_id = metadata_pr.get(job_metadata.JOB_PR_PR_COMMENT_ID, "")
 
-        # obtain id of PR comment to be updated (from file '_bot_jobID.metadata')
-        metadata_file = f"_bot_job{job_id}.metadata"
-        job_metadata_path = os.path.join(new_symlink, metadata_file)
-        metadata_pr = job_metadata.get_section_from_file(job_metadata_path,
-                                                         job_metadata.JOB_PR_SECTION,
-                                                         self.logfile)
-        if metadata_pr is None:
-            raise Exception("Unable to find metadata file ... skip updating PR comment")
-
-        repo_name = metadata_pr.get("repo", None)
-        pr_number = metadata_pr.get("pr_number", -1)
-        pr_comment_id = metadata_pr.get("pr_comment_id", -1)
-        log(f"{fn}(): pr comment id {pr_comment_id}", self.logfile)
-
-        gh = github.get_instance()
-
-        repo = gh.get_repo(repo_name)
-        pull_request = repo.get_pull(int(pr_number))
-
-        update_comment(int(pr_comment_id), pull_request, comment_update)
-
-        return
+        if "" not in (repo_name, pr_number, pr_comment_id):
+            log(f"{fn}(): PR comment ID {pr_comment_id}", self.logfile)
+            pr_comment = create_pr_comment_instance(repo_name, int(pr_number), id=int(pr_comment_id))
+            pr_comment.append(comment_update)
+        else:
+            msg = f"{fn}(): Fields required for updating PR comment ('repo', 'pr_number', 'pr_comment_id') "
+            msg += f"are missing or empty in metadata for job {job_id}"
+            log(msg, self.logfile)
 
 
 def main():
