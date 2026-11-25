@@ -626,23 +626,22 @@ def main():
     if not check_allowed_args_config(cfg):
         print("Configuration check: FAILED (invalid allowed_{job_env_vars,submit_args} settings)")
         sys.exit(1)
-    github.connect()
+    git.connect_to_git_hosting_platform()
 
     job_manager = EESSIBotSoftwareLayerJobManager()
     job_manager.job_filter = {}
     if opts.jobs is not None:
-        job_manager.job_filter = {jobid: None
-                                  for jobid in opts.jobs.split(",")}
+        job_manager.job_filter = {jobid: None for jobid in opts.jobs.split(",")}
 
-    log(
-        "job manager just started, logging to '%s', processing job ids '%s'"
-        % (job_manager.logfile, ",".join(job_manager.job_filter.keys())),
-        job_manager.logfile,
-    )
-    print(
-        "job manager just started, logging to '%s', processing job ids '%s'"
-        % (job_manager.logfile, ",".join(job_manager.job_filter.keys()))
-    )
+    job_filter_str = ','.join(job_manager.job_filter.keys())
+    msg = f"job manager just started, logging to '{job_manager.logfile}', processing job ids '{job_filter_str}'"
+    log(msg, job_manager.logfile)
+    print(msg)
+
+    # Return early if not running loop
+    max_iter = int(opts.max_manager_iterations)
+    if max_iter == 0:
+        return
 
     # before main loop, get list of known jobs (stored on disk)
     # main loop
@@ -657,26 +656,18 @@ def main():
     #  set known jobs to list of current jobs
     #  wait configurable period before next iteration begins
 
-    max_iter = int(opts.max_manager_iterations)
     # retrieve some settings from app.cfg
-    job_manager.job_ids_dir = ""
-    job_manager.submitted_jobs_dir = ""
-    job_manager.poll_command = "false"
-    poll_interval = 0
-    job_manager.scontrol_command = ""
-    if max_iter != 0:
-        cfg = config.read_config()
-        job_mgr = cfg[config.SECTION_JOB_MANAGER]
-        job_manager.job_ids_dir = job_mgr.get(config.JOB_MANAGER_SETTING_JOB_IDS_DIR)
-        job_manager.submitted_jobs_dir = os.path.join(
-            job_manager.job_ids_dir, "submitted"
-        )
-        job_manager.poll_command = job_mgr.get(config.JOB_MANAGER_SETTING_POLL_COMMAND) or False
-        poll_interval = int(job_mgr.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL) or 0)
-        if poll_interval <= 0:
-            poll_interval = 60
-        job_manager.scontrol_command = job_mgr.get(config.JOB_MANAGER_SETTING_SCONTROL_COMMAND) or False
-        os.makedirs(job_manager.submitted_jobs_dir, exist_ok=True)
+    job_mgr = cfg[config.SECTION_JOB_MANAGER]
+    job_manager.job_ids_dir = job_mgr.get(config.JOB_MANAGER_SETTING_JOB_IDS_DIR)
+    job_manager.submitted_jobs_dir = os.path.join(job_manager.job_ids_dir, "submitted")
+    job_manager.poll_command = job_mgr.get(config.JOB_MANAGER_SETTING_POLL_COMMAND) or False
+    poll_interval = int(job_mgr.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL) or 0)
+    if poll_interval <= 0:
+        log("The poll_interval setting is unset or non-positive. Falling back to the default value (60).",
+            job_manager.logfile)
+        poll_interval = 60
+    job_manager.scontrol_command = job_mgr.get(config.JOB_MANAGER_SETTING_SCONTROL_COMMAND) or False
+    os.makedirs(job_manager.submitted_jobs_dir, exist_ok=True)
 
     # max_iter
     #   < 0: run loop indefinitely
@@ -684,22 +675,15 @@ def main():
     #   > 0: run loop max_iter times
     # processing may be limited to a list of job ids (see parameter -j --jobs)
     i = 0
-    if max_iter != 0:
-        known_jobs = job_manager.get_known_jobs()
+    known_jobs = job_manager.get_known_jobs()
     while max_iter < 0 or i < max_iter:
         # sleep poll_interval seconds (not for the first iteration)
         if i != 0:
-            log(
-                "job manager main loop: sleep %d seconds" % poll_interval,
-                job_manager.logfile,
-            )
+            log(f"job manager main loop: sleep {poll_interval} seconds", job_manager.logfile)
             time.sleep(poll_interval)
-        log("job manager main loop: iteration %d" % i, job_manager.logfile)
-        log(
-            "job manager main loop: known_jobs='%s'" % ",".join(
-                known_jobs.keys()),
-            job_manager.logfile,
-        )
+        log(f"job manager main loop: iteration {i}", job_manager.logfile)
+        known_jobs_str = ','.join(known_jobs.keys())
+        log(f"job manager main loop: known_jobs='{known_jobs_str}'", job_manager.logfile)
 
         try:
             current_jobs = job_manager.get_current_jobs()
@@ -707,17 +691,12 @@ def main():
             i = i + 1
             continue
 
-        log(
-            "job manager main loop: current_jobs='%s'" % ",".join(
-                current_jobs.keys()),
-            job_manager.logfile,
-        )
+        current_jobs_str = ','.join(current_jobs.keys())
+        log(f"job manager main loop: current_jobs='{current_jobs_str}'", job_manager.logfile)
 
         new_jobs = job_manager.determine_new_jobs(known_jobs, current_jobs)
-        log(
-            "job manager main loop: new_jobs='%s'" % ",".join(new_jobs),
-            job_manager.logfile,
-        )
+        new_jobs_str = ','.join(new_jobs)
+        log(f"job manager main loop: new_jobs='{new_jobs_str}'", job_manager.logfile)
         # process new jobs
         non_bot_jobs = []
         for nj in new_jobs:
@@ -735,24 +714,17 @@ def main():
             current_jobs.pop(job)
 
         running_jobs = job_manager.determine_running_jobs(current_jobs)
-        log(
-            "job manager main loop: running_jobs='%s'" %
-            ",".join(running_jobs),
-            job_manager.logfile,
-        )
+        running_jobs_str = ','.join(running_jobs)
+        log(f"job manager main loop: running_jobs='{running_jobs_str}'", job_manager.logfile)
 
         for rj in running_jobs:
             # apply filtering of job ids
             if not job_manager.job_filter or rj in job_manager.job_filter:
                 job_manager.process_running_jobs(current_jobs[rj])
 
-        finished_jobs = job_manager.determine_finished_jobs(
-                        known_jobs, current_jobs)
-        log(
-            "job manager main loop: finished_jobs='%s'" %
-            ",".join(finished_jobs),
-            job_manager.logfile,
-        )
+        finished_jobs = job_manager.determine_finished_jobs(known_jobs, current_jobs)
+        finished_jobs_str = ','.join(finished_jobs)
+        log(f"job manager main loop: finished_jobs='{finished_jobs_str}'", job_manager.logfile)
         # process finished jobs
         for fj in finished_jobs:
             # apply filtering of job ids
