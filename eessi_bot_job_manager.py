@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 #
-# (Slurm) job manager for the GitHub App for the EESSI project
+# (Slurm) job manager component of the EESSI bot
 #
 # This tool monitors EESSI build jobs and acts on state changes of
 # these jobs. It releases jobs initially held, it processes running and
 # finished jobs and reports status changes/results back to the
-# corresponding GitHub pull request to a target software-layer repository.
+# corresponding pull request to a target software-layer repository.
 #
 # EESSI build jobs are recognised by
 #  - being submitted in JobUserHeld status (sbatch parameter --hold)
@@ -27,6 +27,7 @@
 # author: Lara Ramona Peeters (@laraPPr)
 # author: Richard Topouchian (@TopRichard)
 # author: Thomas Roeblitz (@trz42)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
@@ -42,10 +43,9 @@ import time
 from pyghee.utils import log
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import github
 from tools import config, git, job_metadata, run_cmd
 from tools.args import job_manager_parse
-from tools.pr_comments import create_pr_comment_instance, get_submitted_job_comment, update_comment
+from tools.pr_comments import create_pr_comment_instance
 from tasks.build import check_allowed_args_config
 
 
@@ -61,10 +61,14 @@ REQUIRED_CONFIG = {
         config.GIT_SETTING_HOSTING_PLATFORM],                         # required
     config.SECTION_GITHUB: [
         # config.GITHUB_SETTING_API_TIMEOUT,                            # unused
-        config.GITHUB_SETTING_APP_ID,                                 # required
+        config.GITHUB_SETTING_APP_ID,                                 # required for github
         # config.GITHUB_SETTING_APP_NAME,                               # unused
-        config.GITHUB_SETTING_INSTALLATION_ID,                        # required
-        config.GITHUB_SETTING_PRIVATE_KEY],                           # required
+        config.GITHUB_SETTING_INSTALLATION_ID,                        # required for github
+        config.GITHUB_SETTING_PRIVATE_KEY],                           # required for github
+    config.SECTION_GITLAB: [
+        config.GITLAB_SETTING_API_TIMEOUT,                            # required for gitlab
+        # config.GITLAB_SETTING_BOT_NAME,                               # unused
+        config.GITLAB_SETTING_INSTANCE_URL],                          # required for gitlab
     config.SECTION_JOB_MANAGER: [
         config.JOB_MANAGER_SETTING_LOG_PATH,                          # required
         config.JOB_MANAGER_SETTING_JOB_IDS_DIR,                       # required
