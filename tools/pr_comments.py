@@ -34,7 +34,7 @@ from tools import config
 from tools.git import get_git_hosting_platform, GITHUB, GITLAB
 
 
-PRCommentInfo = namedtuple('PRCommentInfo', ('repo_name', 'pr_number', 'pr_comment_id'))
+PRCommentInfo = namedtuple('PRCommentInfo', ('git_host', 'repo_name', 'pr_number', 'pr_comment_id'))
 
 
 class ChatLevels(Enum):

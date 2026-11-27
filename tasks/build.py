@@ -1298,9 +1298,10 @@ def submit_build_jobs(event_info, action_filter, build_params):
         pr_comment = create_pr_comment(job, job_id, event_info, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
+        git_host = get_git_hosting_platform(cfg)
         repo_name = event_info.repo_name
         pr_number = event_info.pr_number
-        pr_comment_info = pr_comments.PRCommentInfo(repo_name, pr_number, pr_comment.id)
+        pr_comment_info = pr_comments.PRCommentInfo(git_host, repo_name, pr_number, pr_comment.id)
 
         # create _bot_job<jobid>.metadata file in the job's working directory
         job_metadata.create_metadata_file(job, job_id, pr_comment_info)
