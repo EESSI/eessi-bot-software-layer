@@ -870,6 +870,7 @@ def prepare_jobs(cfg, event_info, action_filter, build_params):
             #   false --> log & continue to next iteration of for loop
             if action_filter:
                 log(f"{fn}(): checking filter {action_filter.to_string()}")
+                # TODO should we make the context configurable?
                 context = {
                     "architecture": partition_info['cpu_subdir'],
                     "repository": repo_id,
