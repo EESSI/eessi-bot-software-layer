@@ -297,7 +297,7 @@ def test_arch_filter_no_context_no_component():
     context = {}
     components = []
     actual = af.check_filters(context, components)
-    expected = True
+    expected = False  # due to check two "all filters have to be present in context"
     assert expected == actual
 
 
@@ -358,7 +358,7 @@ def test_complex_filter_no_context_other_component(complex_filter):
 def test_complex_filter_no_context_no_component(complex_filter):
     context = {}
     components = []
-    expected = True
+    expected = False  # due to check two "all filters have to be present in context"
     actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
@@ -366,7 +366,7 @@ def test_complex_filter_no_context_no_component(complex_filter):
 def test_complex_filter_arch_context_arch_component(complex_filter):
     context = {"architecture": ".*intel.*"}
     components = [FILTER_COMPONENT_ARCH]
-    expected = True
+    expected = False  # due to check two "all filters have to be present in context"
     actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
@@ -374,7 +374,7 @@ def test_complex_filter_arch_context_arch_component(complex_filter):
 def test_complex_filter_job_context_arch_component(complex_filter):
     context = {"architecture": ".*intel.*", "job": 1234}
     components = [FILTER_COMPONENT_ARCH]
-    expected = True
+    expected = False  # due to check two "all filters have to be present in context"
     actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
@@ -382,7 +382,7 @@ def test_complex_filter_job_context_arch_component(complex_filter):
 def test_complex_filter_repo_context_arch_and_repo_components(complex_filter):
     context = {"architecture": ".*intel.*", "repository": "EESSI"}
     components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_REPO]
-    expected = False
+    expected = False  # due to check two "all filters have to be present in context"
     actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
@@ -399,7 +399,7 @@ def test_match_sparse_context(complex_filter):
 def test_matching_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A"}
     components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_REPO]
-    expected = True
+    expected = False  # because pattern as defined in complex_filter are not supported anymore
     actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
@@ -434,7 +434,7 @@ def test_match_additional_context(complex_filter):
     context = {"architecture": "x86_64/intel/cascadelake", "repository": "nessi.no-2022.A", "instance": "A",
                "job": 1234}
     components = [FILTER_COMPONENT_ARCH, FILTER_COMPONENT_INST, FILTER_COMPONENT_REPO]
-    expected = True
+    expected = False  # exact value match is preventing success as complex_filter uses pattern
     actual = complex_filter.check_filters(context, components)
     assert expected == actual
 
@@ -686,12 +686,12 @@ def test_exportvariable_with_colon_in_value():
 
 def test_check_filters_skips_submit_args():
     af = EESSIBotActionFilter("arch:amd/zen2 submit_args:--time=01:00:00")
-    assert af.check_filters({"architecture": "amd/zen2"})
+    assert af.check_filters({"architecture": "amd/zen2"}, [FILTER_COMPONENT_ARCH])
 
 
 def test_check_filters_skips_job_env_vars():
     af = EESSIBotActionFilter("arch:amd/zen2 job_env_vars:SKIP_TESTS=yes")
-    assert af.check_filters({"architecture": "amd/zen2"})
+    assert af.check_filters({"architecture": "amd/zen2"}, [FILTER_COMPONENT_ARCH])
 
 
 def test_multiple_submit_args():
