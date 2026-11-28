@@ -870,6 +870,7 @@ def prepare_jobs(cfg, event_info, action_filter, build_params):
             #   false --> log & continue to next iteration of for loop
             if action_filter:
                 log(f"{fn}(): checking filter {action_filter.to_string()}")
+                # TODO should we make the context configurable?
                 context = {
                     "architecture": partition_info['cpu_subdir'],
                     "repository": repo_id,
@@ -879,8 +880,7 @@ def prepare_jobs(cfg, event_info, action_filter, build_params):
                 if 'accel' in partition_info:
                     context['accelerator'] = partition_info['accel']
                 log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
-
-                if not action_filter.check_filters(context):
+                if not action_filter.check_build_filters(context):
                     log(f"{fn}(): context does NOT satisfy filter(s), skipping")
                     continue
                 else:
