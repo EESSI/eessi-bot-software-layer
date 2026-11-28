@@ -19,6 +19,7 @@
 #
 
 # Standard library imports
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -29,21 +30,24 @@ import waitress
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
 from connections import github
-from tasks.build import check_build_permission, get_architecture_targets, get_repo_cfg, \
-    request_bot_build_issue_comments, submit_build_jobs
+from tasks.build import cancel_jobs, check_build_permission, get_job_ids, get_node_types, \
+    get_work_dirs, request_bot_build_issue_comments, submit_build_jobs, check_allowed_args_config
 from tasks.deploy import deploy_built_artefacts, determine_job_dirs
 from tasks.clean_up import move_to_trash_bin
 from tools import config
 from tools.args import event_handler_parse
 from tools.commands import EESSIBotCommand, EESSIBotCommandError, \
-    contains_any_bot_command, get_bot_command
+    contains_any_bot_command, get_bot_command, get_supported_commands, ALL_COMMANDS
+from tools.event_info import create_event_info_instance
+from tools.filter import FILTER_COMPONENT_INST
+from tools.git import connect_to_git_hosting_platform, get_app_name, get_git_hosting_platform, GITLAB
 from tools.permissions import check_command_permission
 from tools.pr_comments import ChatLevels, create_comment
 
 
 REQUIRED_CONFIG = {
     config.SECTION_ARCHITECTURETARGETS: [
-        config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP],       # required
+        config.NODE_TYPE_MAP],       # required
     config.SECTION_BOT_CONTROL: [
         # config.BOT_CONTROL_SETTING_CHATLEVEL,                      # optional
         config.BOT_CONTROL_SETTING_COMMAND_PERMISSION,             # required
@@ -53,7 +57,9 @@ REQUIRED_CONFIG = {
         config.BUILDENV_SETTING_BUILD_JOB_SCRIPT,                  # required
         config.BUILDENV_SETTING_BUILD_LOGS_DIR,                    # optional+recommended
         config.BUILDENV_SETTING_BUILD_PERMISSION,                  # optional+recommended
+        config.BUILDENV_SETTING_CANCEL_COMMAND,                    # required
         config.BUILDENV_SETTING_CONTAINER_CACHEDIR,                # optional+recommended
+        # config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA,                # optional
         # config.BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS,              # optional
         # config.BUILDENV_SETTING_HTTPS_PROXY,                       # optional
         # config.BUILDENV_SETTING_HTTP_PROXY,                        # optional
@@ -81,30 +87,42 @@ REQUIRED_CONFIG = {
         # config.DEPLOYCFG_SETTING_SIGNING,                          # optional
         config.DEPLOYCFG_SETTING_UPLOAD_POLICY],                   # required
     config.SECTION_DOWNLOAD_PR_COMMENTS: [
-        config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE,          # required
-        config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP,              # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE,     # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP,         # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE,  # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP,      # required
         config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE,     # required
-        config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP],        # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP,         # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_FAILURE,     # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_TIP,         # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE,       # required
+        config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP],          # required
     config.SECTION_EVENT_HANDLER: [
         config.EVENT_HANDLER_SETTING_LOG_PATH],                    # required
+    config.SECTION_GIT: [
+        config.GIT_SETTING_HOSTING_PLATFORM],                      # required
     config.SECTION_GITHUB: [
-        config.GITHUB_SETTING_APP_ID,                              # required
-        config.GITHUB_SETTING_APP_NAME,                            # required
-        config.GITHUB_SETTING_INSTALLATION_ID,                     # required
-        config.GITHUB_SETTING_PRIVATE_KEY],                        # required
+        config.GITHUB_SETTING_API_TIMEOUT,                         # required for github
+        config.GITHUB_SETTING_APP_ID,                              # required for github
+        config.GITHUB_SETTING_APP_NAME,                            # required for github
+        config.GITHUB_SETTING_INSTALLATION_ID,                     # required for github
+        config.GITHUB_SETTING_PRIVATE_KEY],                        # required for github
+    config.SECTION_GITLAB: [
+        config.GITLAB_SETTING_API_TIMEOUT,                         # required for gitlab
+        config.GITLAB_SETTING_BOT_NAME,                            # required for gitlab
+        config.GITLAB_SETTING_INSTANCE_URL],                       # required for gitlab
     # the poll interval setting is required for the alternative job handover
     # protocol (delayed_begin)
     config.SECTION_JOB_MANAGER: [
+        config.JOB_MANAGER_SETTING_POLL_COMMAND,                   # required
         config.JOB_MANAGER_SETTING_POLL_INTERVAL],                 # required
     config.SECTION_REPO_TARGETS: [
-        config.REPO_TARGETS_SETTING_REPO_TARGET_MAP,               # required
         config.REPO_TARGETS_SETTING_REPOS_CFG_DIR],                # required
     config.SECTION_SUBMITTED_JOB_COMMENTS: [
-        config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,     # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO,       # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH,       # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH,      # required
+        config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR,              # required
         # config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE,      # optional
         config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG,  # required
         config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG,   # required
@@ -125,7 +143,8 @@ class EESSIBotSoftwareLayer(PyGHee):
         EESSIBotSoftwareLayer constructor. Calls constructor of PyGHee and
         initializes some configuration settings.
         """
-        super(EESSIBotSoftwareLayer, self).__init__(*args, **kwargs)
+        event_source = get_git_hosting_platform()
+        super(EESSIBotSoftwareLayer, self).__init__(event_source, *args, **kwargs)
 
         self.cfg = config.read_config()
         event_handler_cfg = self.cfg[config.SECTION_EVENT_HANDLER]
@@ -149,13 +168,29 @@ class EESSIBotSoftwareLayer(PyGHee):
         msg = "[%s]: %s" % (funcname, msg)
         log(msg, log_file=self.logfile)
 
+    def handle_event(self, event_info, log_file=None):
+        """
+        Override of PyGHee's handle_event method.
+        Create EventInfo instance using event_info,
+        then pass that to PyGHee's handle_event method.
+
+        Args:
+            event_info (dict): event received by event_handler
+            log_file (string): path to log messages to
+
+        Returns:
+            None (implicit)
+        """
+        event_info_object = create_event_info_instance(event_info)
+        super().handle_event(event_info_object, log_file)
+
     def handle_issue_comment_event(self, event_info, log_file=None):
         """
         Handle events of type issue_comment. Main action is to parse new issue
         comments for any bot command and execute it if one is found.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             log_file (string): path to log messages to
 
         Returns:
@@ -164,19 +199,23 @@ class EESSIBotSoftwareLayer(PyGHee):
         Raises:
             Exception: raises any exception that is not of type EESSIBotCommandError
         """
-        request_body = event_info['raw_request_body']
-        issue_url = request_body['issue']['url']
-        action = request_body['action']
-        sender = request_body['sender']['login']
-        owner = request_body['comment']['user']['login']
-        repo_name = request_body['repository']['full_name']
-        pr_number = request_body['issue']['number']
+        # The bot only handles comments on PRs, skip issue comments etc.
+        if not event_info.is_pr_comment:
+            self.log("Received non-PR comment - skipping")
+            return
+
+        action = event_info.action
+        sender = event_info.event_triggered_by
+        owner = event_info.comment_created_by
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        pr_url = event_info.pr_url
 
         # TODO add request body text (['comment']['body']) to log message when
         #      log level is set to debug
-        self.log(f"Comment in {issue_url} (owned by @{owner}) {action} by @{sender}")
+        self.log(f"Comment in {pr_url} (owned by @{owner}) {action} by @{sender}")
 
-        app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+        app_name = get_app_name(self.cfg)
         command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
 
         # currently, only commands in new comments are supported
@@ -184,7 +223,7 @@ class EESSIBotSoftwareLayer(PyGHee):
 
         # only scan for commands in newly created comments
         if action == 'created':
-            comment_received = request_body['comment']['body']
+            comment_received = event_info.comment_body
             self.log(f"comment action '{action}' is handled")
         else:
             # NOTE we do not respond to an updated PR comment with yet another
@@ -333,7 +372,10 @@ class EESSIBotSoftwareLayer(PyGHee):
             )
             issue_comment.edit(comment_body)
 
-            self.log(f"issue_comment event (url {issue_url}) handled!")
+            self.log(f"issue_comment event (url {pr_url}) handled!")
+
+    # PyGHee gets the event type by subscripting event_info, i.e., it gets 'note' for GL comment events
+    handle_note_event = handle_issue_comment_event
 
     def handle_installation_event(self, event_info, log_file=None):
         """
@@ -352,31 +394,29 @@ class EESSIBotSoftwareLayer(PyGHee):
         self.log("App installation event by user %s with action '%s'", user, action)
         self.log("installation event handled!")
 
-    def handle_pull_request_labeled_event(self, event_info, pr):
+    def handle_pull_request_labeled_event(self, event_info):
         """
         Handle events of type pull_request with the action labeled. Main action
         is to process the label 'bot:deploy'.
 
         Args:
-            event_info (dict): event received by event_handler
-            pr (github.PullRequest.PullRequest): instance representing the pull request
+            event_info (EventInfo): event received by event_handler
 
         Returns:
             None (implicitly)
         """
 
         # determine label
-        label = event_info['raw_request_body']['label']['name']
-        self.log("Process PR labeled event: PR#%s, label '%s'", pr.number, label)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        label = event_info.label_name
+        self.log("Process PR labeled event: PR#%s, label '%s'", pr_number, label)
 
         if label == "bot:build":
             msg = "Handling the label 'bot:build' is disabled. Use the command `bot: build [FILTER]*` instead."
             self.log(msg)
 
-            request_body = event_info['raw_request_body']
-            repo_name = request_body['repository']['full_name']
-            pr_number = request_body['pull_request']['number']
-            app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+            app_name = get_app_name(self.cfg)
             command_response_fmt = self.cfg[config.SECTION_BOT_CONTROL][config.BOT_CONTROL_SETTING_COMMAND_RESPONSE_FMT]
             comment_body = command_response_fmt.format(
                 app_name=app_name,
@@ -385,52 +425,55 @@ class EESSIBotSoftwareLayer(PyGHee):
             )
             create_comment(repo_name, pr_number, comment_body, ChatLevels.BASIC)
         elif label == "bot:deploy":
+            if get_git_hosting_platform(self.cfg) == GITLAB:
+                GL_PR_LABELED_NOT_SUPPORTED = "The `bot:deploy` label was added to this MR. " \
+                                              "Deployment is not yet supported on GitLab."
+                create_comment(repo_name, pr_number, GL_PR_LABELED_NOT_SUPPORTED, ChatLevels.BASIC)
+                return
+
             # run function to deploy built artefacts
-            deploy_built_artefacts(pr, event_info)
+            deploy_built_artefacts(event_info)
         else:
             self.log("handle_pull_request_labeled_event: no handler for label '%s'", label)
 
-    def handle_pull_request_opened_event(self, event_info, pr, req_chatlevel=ChatLevels.CHATTY):
+    def handle_pull_request_opened_event(self, event_info, req_chatlevel=ChatLevels.CHATTY):
         """
         Handle events of type pull_request with the action opened. Main action
         is to report for which architectures and repositories a bot instance is
         configured to build for.
 
         Args:
-            event_info (dict): event received by event_handler
-            pr (github.PullRequest.PullRequest): instance representing the pull request
+            event_info (EventInfo): event received by event_handler
 
         Returns:
-            github.IssueComment.IssueComment instance or None (note, github refers to
-                PyGithub, not the github from the internal connections module)
+            PRComment instance or None
         """
         self.log("PR opened: waiting for label bot:build")
-        app_name = self.cfg[config.SECTION_GITHUB][config.GITHUB_SETTING_APP_NAME]
+        app_name = get_app_name(self.cfg)
         # TODO check if PR already has a comment with arch targets and
         # repositories
-        arch_map = get_architecture_targets(self.cfg)
-        repo_cfg = get_repo_cfg(self.cfg)
+        node_map = get_node_types(self.cfg)
 
-        comment = f"Instance `{app_name}` is configured to build for:"
-        architectures = ['/'.join(arch.split('/')[1:]) for arch in arch_map.keys()]
-        comment += "\n- architectures: "
-        if len(architectures) > 0:
-            comment += f"{', '.join([f'`{arch}`' for arch in architectures])}"
-        else:
-            comment += "none"
-        repositories = list(set([repo_id for repo_ids in repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP].values()
-                            for repo_id in repo_ids]))
-        comment += "\n- repositories: "
-        if len(repositories) > 0:
-            comment += f"{', '.join([f'`{repo_id}`' for repo_id in repositories])}"
-        else:
-            comment += "none"
+        comment = f"Instance `{app_name}` is configured to build on:"
+        for node in node_map:
+            comment += f"\n- Node type `{node}`:"
+            current_node_type = node_map[node]
+            if "os" in current_node_type:
+                comment += f"\n  - OS: `{current_node_type['os']}`"
+            if "cpu_subdir" in current_node_type:
+                comment += f"\n  - CPU architecture: `{current_node_type['cpu_subdir']}`"
+            if "repo_targets" in current_node_type:
+                comment += f"\n  - Repositories: `{current_node_type['repo_targets']}`"
+            if "accel" in current_node_type:
+                comment += f"\n  - Accelerators: `{current_node_type['accel']}`"
+            comment += "\n"
 
         self.log(f"PR opened: comment '{comment}'")
 
         # create comment to pull request
-        repo_name = pr.base.repo.full_name
-        issue_comment = create_comment(repo_name, pr.number, comment, req_chatlevel)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        issue_comment = create_comment(repo_name, pr_number, comment, req_chatlevel)
         return issue_comment
 
     def handle_pull_request_event(self, event_info, log_file=None):
@@ -439,26 +482,28 @@ class EESSIBotSoftwareLayer(PyGHee):
         determining a handler for it.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             log_file (string): path to log messages to
 
         Returns:
             None (implicitly)
         """
-        action = event_info['action']
-        gh = github.get_instance()
-        self.log("repository: '%s'", event_info['raw_request_body']['repository']['full_name'])
-        pr = gh.get_repo(event_info['raw_request_body']['repository']
-                         ['full_name']).get_pull(event_info['raw_request_body']['pull_request']['number'])
-        self.log("PR data: %s", pr)
+        action = event_info.action
+        pr_number = event_info.pr_number
+        self.log(f"Repository: '{event_info.repo_name}'")
+        self.log(f"PR title: '{event_info.pr_title}'")
+        self.log(f"PR number: {pr_number}")
 
         handler_name = 'handle_pull_request_%s_event' % action
         if hasattr(self, handler_name):
             handler = getattr(self, handler_name)
-            self.log("Handling PR action '%s' for PR #%d...", action, pr.number)
-            handler(event_info, pr)
+            self.log("Handling PR action '%s' for PR #%d...", action, pr_number)
+            handler(event_info)
         else:
             self.log("No handler for PR action '%s'", action)
+
+    # PyGHee gets the event type by subscripting event_info, i.e., it gets 'merge_request' for GL PR events
+    handle_merge_request_event = handle_pull_request_event
 
     def handle_bot_command(self, event_info, bot_command, log_file=None):
         """
@@ -466,7 +511,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         specific bot_command given.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
             log_file (string): path to log messages to
 
@@ -481,9 +526,13 @@ class EESSIBotSoftwareLayer(PyGHee):
         cmd = bot_command.command
         handler_name = f"handle_bot_command_{cmd}"
         if hasattr(self, handler_name):
-            handler = getattr(self, handler_name)
-            self.log(f"Handling bot command {cmd}")
-            return handler(event_info, bot_command)
+            if cmd in get_supported_commands(self.cfg):
+                handler = getattr(self, handler_name)
+                self.log(f"Handling bot command {cmd}")
+                return handler(event_info, bot_command)
+            else:
+                self.log(f"Command '{cmd}' is not supported on the configured Git hosting platform.")
+                raise EESSIBotCommandError(f"Unsupported command `{cmd}`; use `bot: help` for usage information")
         else:
             self.log(f"No handler for command '{cmd}'")
             raise EESSIBotCommandError(f"unknown command `{cmd}`; use `bot: help` for usage information")
@@ -494,17 +543,25 @@ class EESSIBotSoftwareLayer(PyGHee):
         commands.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
             (string): basic information about sending commands to the bot
         """
+        # Create comma-separated lists of supported and unsupported commands
+        supported_commands = get_supported_commands(self.cfg)
+        unsupported_commands = [cmd for cmd in ALL_COMMANDS if cmd not in supported_commands]
+        supported_commands_str = ", ".join([f"`{cmd}`" for cmd in supported_commands])
+        unsupported_commands_str = ", ".join([f"`{cmd}`" for cmd in unsupported_commands])
+
         help_msg = "\n  **How to send commands to bot instances**"
         help_msg += "\n  - Commands must be sent with a **new** comment (edits of existing comments are ignored)."
         help_msg += "\n  - A comment may contain multiple commands, one per line."
         help_msg += "\n  - Every command begins at the start of a line and has the syntax `bot: COMMAND [ARGUMENTS]*`"
-        help_msg += "\n  - Currently supported COMMANDs are: `help`, `build`, `show_config`, `status`"
+        help_msg += "\n  - Currently supported COMMANDs are: " + supported_commands_str
+        if unsupported_commands_str:
+            help_msg += "\n  - The following COMMANDs are not yet supported: " + unsupported_commands_str
         help_msg += "\n"
         help_msg += "\n  For more information, see https://www.eessi.io/docs/bot"
         return help_msg
@@ -514,32 +571,33 @@ class EESSIBotSoftwareLayer(PyGHee):
         Handles bot command 'build [ARGS*]' by parsing arguments and submitting jobs
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
             (string): immediate result of command (any jobs or no jobs being
                 submitted) and a link to the issue comment for submitted jobs
         """
-        gh = github.get_instance()
-        self.log("repository: '%s'", event_info['raw_request_body']['repository']['full_name'])
-        repo_name = event_info['raw_request_body']['repository']['full_name']
-        pr_number = event_info['raw_request_body']['issue']['number']
-        pr = gh.get_repo(repo_name).get_pull(pr_number)
+        self.log("repository: '%s'", event_info.repo_name)
         build_msg = ''
-        if check_build_permission(pr, event_info):
+        # Require that build_params is defined, it is required. Otherwise, return early
+        if bot_command.build_params is None:
+            build_msg = "No 'for:' argument was passed to the bot:build command. This argument is required, so "
+            build_msg += "not submitting build jobs"
+            return build_msg
+
+        if check_build_permission(event_info):
             # use filter from command
-            submitted_jobs = submit_build_jobs(pr, event_info, bot_command.action_filters)
+            submitted_jobs = submit_build_jobs(event_info, bot_command.action_filters, bot_command.build_params)
             if submitted_jobs is None or len(submitted_jobs) == 0:
                 build_msg = "\n  - no jobs were submitted"
             else:
                 for job_id, issue_comment in submitted_jobs.items():
                     build_msg += f"\n  - submitted job `{job_id}`"
-                    if issue_comment:
+                    if issue_comment and issue_comment.html_url:
                         build_msg += f", for details & status see {issue_comment.html_url}"
         else:
-            request_body = event_info['raw_request_body']
-            sender = request_body['sender']['login']
+            sender = event_info.event_triggered_by
             build_msg = f"\n  - account `{sender}` has NO permission to submit build jobs"
         return build_msg
 
@@ -549,7 +607,7 @@ class EESSIBotSoftwareLayer(PyGHee):
         type pull_request with the action opened.
 
         Args:
-            event_info (dict): event received by event_handler
+            event_info (EventInfo): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
@@ -557,46 +615,183 @@ class EESSIBotSoftwareLayer(PyGHee):
                 by the handler for events of type pull_request with the action opened
         """
         self.log("processing bot command 'show_config'")
-        gh = github.get_instance()
-        repo_name = event_info['raw_request_body']['repository']['full_name']
-        pr_number = event_info['raw_request_body']['issue']['number']
-        pr = gh.get_repo(repo_name).get_pull(pr_number)
-        issue_comment = self.handle_pull_request_opened_event(event_info, pr, req_chatlevel=ChatLevels.MINIMAL)
+        issue_comment = self.handle_pull_request_opened_event(event_info, req_chatlevel=ChatLevels.MINIMAL)
         if issue_comment:
             return f"\n  - added comment {issue_comment.html_url} to show configuration"
 
     def handle_bot_command_status(self, event_info, bot_command):
         """
-        Handles bot command 'status' by querying the github API
-        for the comments in a pr.
+        Handles bot command 'status [instance:NAME]' by querying the github
+        API for the comments in a pr. If an instance filter is given and it
+        does not match the name of this bot instance, the command is ignored.
 
         Args:
             event_info (dict): event received by event_handler
             bot_command (EESSIBotCommand): command to be handled
 
         Returns:
-            github.IssueComment.IssueComment (note, github refers to
-                 PyGithub, not the github from the internal connections module)
+            (string): list item with a link to the issue comment that was created
+                containing the status overview, or a note that the command is not
+                addressed to this bot instance
         """
         self.log("processing bot command 'status'")
+        app_name = get_app_name(self.cfg)
+        instance_patterns = bot_command.action_filters.get_filter_by_component(FILTER_COMPONENT_INST)
+        if not all(re.search(pattern, app_name) for pattern in instance_patterns):
+            self.log(f"instance '{app_name}' does not match filter(s) {instance_patterns}, ignoring 'status'")
+            return f"\n  - instance `{app_name}` does not match the instance filter, ignoring command"
+
         repo_name = event_info['raw_request_body']['repository']['full_name']
         pr_number = event_info['raw_request_body']['issue']['number']
         status_table = request_bot_build_issue_comments(repo_name, pr_number)
+        self.log(f"Retrieved status table from issue comments: {status_table}")
+
+        if 'last_build' in bot_command.general_args:
+            # If the bot command is something like 'bot:status =last_build', then only retain the last build for each
+            # architecture in the status_table
+            # To do this, we first insert a timestamp to facilitate sorting by time
+            # Then, we obtain sorting indices that first sort by architecture, then by build time
+            # Then, we reverse the sorting, so that the last build (highest timestamp) for each archictecture occurs
+            # first.
+            # Finally, we copy the table, but each time we encounter an entry for an architecture that we've already
+            # copied, we ignore it, since - as a result of the sorting - the second entry is always older than the
+            # first
+            dates = status_table['date']
+            status = status_table['status']
+            timestamps = []
+            for date, state in zip(dates, status):
+                if state == 'finished':
+                    date_object = datetime.strptime(date, "%b %d %X %Z %Y")
+                    timestamps.append(int(date_object.timestamp()))
+                else:
+                    # Add the oldest date possible, so that ongoing builds only show up if there was no other
+                    # completed build yet
+                    timestamps.append(0)
+
+            status_table['timestamp'] = timestamps
+
+            # Figure out the sorting indices, so that things are sorted first by the 'for arch', and then by 'date'
+            sorted_indices = sorted(
+                range(len(status_table['for arch'])),
+                key=lambda x: (status_table['for arch'][x], status_table['timestamp'][x])
+            )
+            # Reverse, so that the newest builds are first
+            sorted_indices.reverse()
+            # Apply the sorted indices to get a sorted table
+            sorted_table = {key: [status_table[key][i] for i in sorted_indices] for key in status_table}
+            self.log(f"Sorted status table: {sorted_table}")
+
+            # Keep only the first entry for each 'for arch', as that is now the newest
+            status_table_last = {
+                'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [], 'result': [],
+                'commit sha': []
+            }
+            for x in range(0, len(sorted_table['date'])):
+                # Check if the current 'for arch' AND 'for repo' are already in the status_table_last. If not, add it
+                already_present = False
+                for y in range(0, len(status_table_last['for arch'])):
+                    if (
+                        sorted_table['for arch'][x] == status_table_last['for arch'][y]
+                        and sorted_table['for repo'][x] == status_table_last['for repo'][y]
+                    ):
+                        already_present = True
+                        # One match is enough, we don't append in this case, no need to look further
+                        break
+                if not already_present:
+                    self.log(f"arch: {sorted_table['for arch'][x]} not yet in status_table_last")
+                    for key in status_table_last:
+                        self.log(f"Adding to '{key}' and the value {sorted_table[key][x]}")
+                        status_table_last[key].append(sorted_table[key][x])
+
+            # Re-sort, now only on 'for arch', for nicer viewing
+            sorted_indices = sorted(
+                range(len(status_table_last['for arch'])),
+                key=lambda x: status_table_last['for arch'][x]
+            )
+            sorted_table_last = {key: [status_table_last[key][i] for i in sorted_indices] for key in status_table_last}
+
+            # overwrite the original status_table
+            status_table = sorted_table_last
 
         comment_status = ''
         comment_status += "\nThis is the status of all the `bot: build` commands:"
-        comment_status += "\n|arch|result|date|status|url|"
-        comment_status += "\n|----|------|----|------|---|"
+
+        # Build header
+        all_columns = ['on', 'for', 'repo', 'result', 'commit SHA', 'date', 'status', 'url']
+        comment_status += f"\n|{'|'.join(all_columns)}|"
+        comment_status += f"\n|{'|'.join(['----'] * len(all_columns))}|"
+
         for x in range(0, len(status_table['date'])):
-            comment_status += f"\n|{status_table['arch'][x]}|"
+            comment_status += f"\n|{status_table['on arch'][x]}|"
+            comment_status += f"{status_table['for arch'][x]}|"
+            comment_status += f"{status_table['for repo'][x]}|"
             comment_status += f"{status_table['result'][x]}|"
+            comment_status += f"{status_table['commit sha'][x]}|"
             comment_status += f"{status_table['date'][x]}|"
             comment_status += f"{status_table['status'][x]}|"
             comment_status += f"{status_table['url'][x]}|"
 
         self.log(f"Overview of finished builds: comment '{comment_status}'")
         issue_comment = create_comment(repo_name, pr_number, comment_status, ChatLevels.MINIMAL)
-        return issue_comment
+        if issue_comment:
+            return f"\n  - added status comment {issue_comment.html_url}"
+        else:
+            return "\n  - failed to create status comment"
+
+    def handle_bot_command_cancel(self, event_info, bot_command):
+        """
+        Handles bot command 'cancel' by parsing 'jobid:' arguments and
+        cancelling the jobs.
+
+        Args:
+            event_info (dict): event received by event_handler
+            bot_command (EESSIBotCommand): command to be handled
+
+        Returns:
+            comment (string): list of cancelled jobs if any, error message if not
+        """
+        self.log("processing bot command 'cancel'")
+
+        request_body = event_info["raw_request_body"]
+        repo_name = request_body["repository"]["full_name"]
+        pr_number = request_body["issue"]["number"]
+        user = request_body["comment"]["user"]["login"]
+
+        gh = github.get_instance()
+        pr = gh.get_repo(repo_name).get_pull(pr_number)
+
+        # Jobs can only be cancelled by the user who submitted the job
+        # -> No need to proceed if user cannot submit jobs
+        if not check_build_permission(event_info):
+            self.log(f"User '{user}' does not have build permission - skipping cancellation.")
+            return f"\n  - User `{user}` cannot submit or cancel build jobs."
+
+        # Get valid 'jobid:' arguments
+        job_ids = get_job_ids(bot_command.action_filters)
+        if len(job_ids) == 0:
+            self.log("Got no valid job IDs")
+            return "\n  - No valid job IDs were given."
+
+        # Get working directories of jobs
+        work_dirs = get_work_dirs(job_ids, self.cfg)
+        if len(work_dirs) == 0:
+            self.log("None of the given jobs are cancellable")
+            return "\n  - No cancellable jobs were given."
+
+        # Log skipped jobs
+        for job_id in job_ids:
+            if job_id not in work_dirs.keys():
+                log(f"Skipping job {job_id} - not found")
+
+        # Cancel jobs
+        cancelled_jobs = cancel_jobs(work_dirs, user, pr, self.cfg)
+        if len(cancelled_jobs) == 0:
+            return "\n  - No jobs were cancelled."
+        else:
+            comment = ""
+            for job_id in cancelled_jobs:
+                comment += f"\n  - cancelled job `{job_id}`"
+            return comment
 
     def start(self, app, port=3000):
         """
@@ -623,40 +818,43 @@ class EESSIBotSoftwareLayer(PyGHee):
         self.log(log_file_info)
         waitress.serve(app, listen='*:%s' % port)
 
-    def handle_pull_request_closed_event(self, event_info, pr):
+    def handle_pull_request_closed_event(self, event_info):
         """
         Handle events of type pull_request with the action 'closed'. It
         determines used by the PR and moves them to the trash_bin. It also adds
         information to the logs and a comment to the PR.
 
         Args:
-        event_info (dict): event received by event_handler
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+            event_info (EventInfo): event received by event_handler
 
         Returns:
-        github.IssueComment.IssueComment instance or None (note, github refers to
-        PyGithub, not the github from the internal connections module)
+            PRComment instance or None
         """
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+
+        if get_git_hosting_platform(self.cfg) == GITLAB:
+            GL_PR_CLOSED_NOT_SUPPORTED = "The MR was closed. Job directory cleanup is not yet supported on GitLab."
+            create_comment(repo_name, pr_number, GL_PR_CLOSED_NOT_SUPPORTED, ChatLevels.CHATTY)
+            return
 
         # Detect event and report if PR was merged or closed
-        request_body = event_info['raw_request_body']
         # next value: True -> PR merged, False -> PR closed
-        mergedOrClosed = request_body['pull_request']['merged']
+        mergedOrClosed = event_info.pr_merged_status
         status = "merged" if mergedOrClosed else "closed"
 
-        self.log(f"PR {pr.number}: PR got {status} (json value: {mergedOrClosed})")
+        self.log(f"PR {pr_number}: PR got {status} (json value: {mergedOrClosed})")
 
         # 1) determine the jobs that have been run for the PR
-        self.log(f"PR {pr.number}: determining directories to be moved to trash bin")
-        job_dirs = determine_job_dirs(pr.number)
+        self.log(f"PR {pr_number}: determining directories to be moved to trash bin")
+        job_dirs = determine_job_dirs(pr_number)
 
         if job_dirs == []:
-            self.log(f"PR {pr.number}: No job directories found; nothing to move.")
+            self.log(f"PR {pr_number}: No job directories found; nothing to move.")
         else:
             # 2) Get trash_bin_dir from configs
             trash_bin_root_dir = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR]
 
-            repo_name = request_body['repository']['full_name']
             dt_start = datetime.now(timezone.utc)
             trash_bin_dir = "/".join([trash_bin_root_dir, repo_name, dt_start.strftime('%Y.%m.%d')])
 
@@ -664,19 +862,17 @@ class EESSIBotSoftwareLayer(PyGHee):
             # cron job deletes symlinks?
 
             # 3) move the directories to the trash_bin
-            self.log(f"PR {pr.number}: moving directories to trash bin {trash_bin_dir}")
+            self.log(f"PR {pr_number}: moving directories to trash bin {trash_bin_dir}")
             move_to_trash_bin(trash_bin_dir, job_dirs)
             dt_end = datetime.now(timezone.utc)
             dt_delta = dt_end - dt_start
             seconds_elapsed = dt_delta.days * 24 * 3600 + dt_delta.seconds
-            self.log(f"PR {pr.number}: moved directories to trash bin {trash_bin_dir} (took {seconds_elapsed} seconds)")
+            self.log(f"PR {pr_number}: moved directories to trash bin {trash_bin_dir} (took {seconds_elapsed} seconds)")
 
             # 4) report move to pull request
-
-            repo_name = pr.base.repo.full_name
             clean_up_comment = self.cfg[config.SECTION_CLEAN_UP][config.CLEAN_UP_SETTING_MOVED_JOB_DIRS_COMMENT]
             moved_comment = clean_up_comment.format(job_dirs=job_dirs, trash_bin_dir=trash_bin_dir)
-            issue_comment = create_comment(repo_name, pr.number, moved_comment, ChatLevels.CHATTY)
+            issue_comment = create_comment(repo_name, pr_number, moved_comment, ChatLevels.CHATTY)
             return issue_comment
 
 
@@ -689,12 +885,20 @@ def main():
     opts = event_handler_parse()
 
     # config is read and checked for settings to raise an exception early when the event_handler starts.
-    if config.check_required_cfg_settings(REQUIRED_CONFIG):
+    if config.check_cfg_settings(REQUIRED_CONFIG):
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")
         sys.exit(1)
-    github.connect()
+
+    # Verify that allowed_job_env_vars/submit_args/exportvars settings are valid JSON
+    cfg = config.read_config()
+    if not check_allowed_args_config(cfg):
+        print("Configuration check: FAILED (invalid allowed_{job_env_vars,submit_args} settings)")
+        sys.exit(1)
+
+    # Verify that the event handler is able to connect to the Git hosting platform
+    connect_to_git_hosting_platform()
 
     if opts.file:
         app = create_app(klass=EESSIBotSoftwareLayer)

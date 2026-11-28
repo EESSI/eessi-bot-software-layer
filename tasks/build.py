@@ -13,6 +13,7 @@
 # author: Pedro Santos Neves (@Neves-P)
 # author: Thomas Roeblitz (@trz42)
 # author: Sam Moors (@smoors)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
@@ -23,32 +24,35 @@ import configparser
 from datetime import datetime, timezone
 import json
 import os
+import re
+import requests
 import shutil
+import string
 import sys
+import time
 
 # Third party imports (anything installed into the local Python environment)
 from pyghee.utils import error, log
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
+from connections import github
 from tools import config, cvmfs_repository, job_metadata, pr_comments, run_cmd
 import tools.filter as tools_filter
-from tools.pr_comments import ChatLevels, create_comment
-
+from tools.git import create_git_repository_instance, get_app_name, get_git_hosting_platform, \
+    ERROR_GIT_APPLY, ERROR_GIT_CHECKOUT, ERROR_GIT_CLONE, ERROR_GIT_DIFF, ERROR_GIT_FETCH, ERROR_MAKE_DIRS
+from tools.pr_comments import ChatLevels, create_comment, update_comment
+from tools.build_params import BUILD_PARAM_ARCH, BUILD_PARAM_ACCEL
 
 # defaults (used if not specified via, eg, 'app.cfg')
 DEFAULT_JOB_TIME_LIMIT = "24:00:00"
 
-# error codes used in this file
-_ERROR_CURL = "curl"
-_ERROR_GIT_APPLY = "git apply"
-_ERROR_GIT_CHECKOUT = "git checkout"
-_ERROR_GIT_CLONE = "curl"
-_ERROR_NONE = "none"
-
 # other constants
 EXPORT_VARS_FILE = 'export_vars.sh'
 
-Job = namedtuple('Job', ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator'))
+
+Job = namedtuple('Job',
+                 ('working_dir', 'arch_target', 'repo_id', 'slurm_opts', 'year_month', 'pr_id', 'accelerator', 'owner',
+                  'submit_args'))
 
 # global repo_cfg
 repo_cfg = {}
@@ -104,6 +108,10 @@ def get_build_env_cfg(cfg):
     submit_command = buildenv.get(config.BUILDENV_SETTING_SUBMIT_COMMAND)
     log(f"{fn}(): submit_command '{submit_command}'")
     config_data[config.BUILDENV_SETTING_SUBMIT_COMMAND] = submit_command
+
+    cancel_command = buildenv.get(config.BUILDENV_SETTING_CANCEL_COMMAND)
+    log(f"{fn}(): cancel_command '{cancel_command}'")
+    config_data[config.BUILDENV_SETTING_CANCEL_COMMAND] = cancel_command
 
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
     slurm_params = buildenv.get(config.BUILDENV_SETTING_SLURM_PARAMS)
@@ -171,57 +179,311 @@ def get_build_env_cfg(cfg):
     log(f"{fn}(): load_modules '{load_modules}'")
     config_data[config.BUILDENV_SETTING_LOAD_MODULES] = load_modules
 
+    clone_git_repo_via = buildenv.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA, None)
+    log(f"{fn}(): clone_git_repo_via '{clone_git_repo_via}'")
+    config_data[config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA] = clone_git_repo_via
+
     return config_data
 
 
-def get_architecture_targets(cfg):
-    """
-    Obtain mappings of architecture targets to Slurm parameters
+def get_node_types(cfg):
+    """Obtain mappings of node types to Slurm parameters
 
     Args:
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
 
     Returns:
-        (dict): dictionary mapping architecture targets (format
-            OS/SOFTWARE_SUBDIR) to architecture specific Slurm job submission
-            parameters
+        (dict): Dictionary mapping node types names (arbitrary text) node properties
+        such as the OS, CPU software subdir, supported repositories, accelerator (optionally)
+        as well as the slurm parameters to allocate such a type of node
     """
     fn = sys._getframe().f_code.co_name
 
-    architecture_targets = cfg[config.SECTION_ARCHITECTURETARGETS]
+    node_types = cfg[config.SECTION_ARCHITECTURETARGETS]
 
-    arch_target_map = json.loads(architecture_targets.get(config.ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP))
-    log(f"{fn}(): arch target map '{json.dumps(arch_target_map)}'")
-    return arch_target_map
+    node_type_map = json.loads(node_types.get(config.NODE_TYPE_MAP))
+    log(f"{fn}(): node type map '{json.dumps(node_type_map)}'")
+    return node_type_map
 
 
-def get_allowed_exportvars(cfg):
+# --- Defence-in-depth character allow-lists ---
+# job_env_vars are written to export_vars.sh and sourced by the shell, so '$' is
+# legitimate in values (e.g. EB_ARGS="/tmp/$USER/pr12345"). Keys must be
+# valid shell identifiers. Injection metacharacters (backticks, $(), ;, |, &,
+# spaces, newlines, etc.) are always rejected.
+JOB_ENV_VARS_KEY_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+# An empty value is allowed (e.g. FOO= to unset a variable), hence '*' not '+'.
+JOB_ENV_VARS_VALUE_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@$-]*$')
+# submit_args are appended to an sbatch command line executed with shell=True,
+# so they get the strictest charset (no '$', no spaces).
+SUBMIT_ARG_RE = re.compile(r'^[a-zA-Z0-9_=:./+,@-]+$')
+
+# Arg types describe the validation mode for check_arg() and validate_args(),
+# decoupling them from the filter-component naming scheme in tools.filter.
+ARG_TYPE_KEY_VALUE = 'key_eq_value'
+ARG_TYPE_STR_VALUE = 'str_value'
+
+
+def check_arg(arg, arg_type=ARG_TYPE_KEY_VALUE):
     """
-    Obtain list of allowed export variables
+    Check that an argument does not contain shell metacharacters.
+
+    This is a defence-in-depth check applied AFTER regex allow-list matching.
+    Even if a configured pattern is overly permissive (e.g. value '.*'), this
+    function rejects any arg that contains characters which could be interpreted
+    by the shell (e.g. backticks, $(), ;, |, &, spaces, newlines).
+
+    If arg_type is ARG_TYPE_KEY_VALUE, the key and value are checked separately:
+    the key must be a valid shell identifier, and the value may be empty (e.g.
+    'FOO=' to unset a variable) or contain '$' (for variable references) but no
+    other shell metacharacters. For ARG_TYPE_STR_VALUE, the bare option string is
+    checked against a strict charset (no '$', no spaces).
+
+    Args:
+        arg (string): argument to check
+        arg_type (string): ARG_TYPE_KEY_VALUE or ARG_TYPE_STR_VALUE (used in log
+            messages)
+
+    Returns:
+        (bool): True if the argument is safe, False otherwise
+
+    Raises:
+        ValueError: if arg_type is not a recognized arg type.
+    """
+    fn = sys._getframe().f_code.co_name
+
+    if arg_type == ARG_TYPE_KEY_VALUE:
+        if '=' not in arg:
+            log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
+            return False
+        key, value = arg.split('=', 1)
+        if not JOB_ENV_VARS_KEY_RE.fullmatch(key):
+            log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe key '{key}')")
+            return False
+        if not JOB_ENV_VARS_VALUE_RE.fullmatch(value):
+            log(f"{fn}(): {arg_type} '{arg}' rejected (unsafe value '{value}')")
+            return False
+        return True
+    if arg_type == ARG_TYPE_STR_VALUE:
+        if not SUBMIT_ARG_RE.fullmatch(arg):
+            log(f"{fn}(): {arg_type} '{arg}' rejected (contains unsafe characters)")
+            return False
+        return True
+    else:
+        raise ValueError(f"unknown arg_type '{arg_type}'")
+
+
+def check_patterns_wellformed(patterns, setting_name):
+    """
+    Validate the structure of allowed-args patterns read from configuration.
+
+    Each entry must be a dict. For job_env_vars, each entry must have 'key' and
+    'value' keys with string values. For submit_args, each entry must have a
+    'value' key with a string value. Entries that do not conform are dropped
+    with a log message. A warning is logged for patterns whose 'value' regex
+    is '.*' (matches anything), as these effectively disable the allow-list
+    restriction for that entry.
+
+    Args:
+        patterns (list): list of pattern dicts parsed from configuration
+        setting_name (string): config setting name (used in log messages)
+
+    Returns:
+        (list): list of valid pattern dicts
+    """
+    fn = sys._getframe().f_code.co_name
+
+    if not isinstance(patterns, list):
+        log(f"{fn}(): {setting_name} is not a list, ignoring")
+        return []
+
+    valid = []
+    for entry in patterns:
+        if not isinstance(entry, dict):
+            log(f"{fn}(): {setting_name} entry {entry} is not a dict, ignoring")
+            continue
+        if 'value' not in entry or not isinstance(entry['value'], str):
+            log(f"{fn}(): {setting_name} entry {entry} has missing or non-string 'value', ignoring")
+            continue
+        if setting_name == config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS:
+            if 'key' not in entry or not isinstance(entry['key'], str):
+                log(f"{fn}(): {setting_name} entry {entry} has missing or non-string 'key', ignoring")
+                continue
+        if entry.get('value') == '.*':
+            log(f"{fn}(): WARNING {setting_name} entry {entry} uses '.*' for value, "
+                "which accepts any value -- ensure this is intentional")
+        valid.append(entry)
+
+    return valid
+
+
+def check_allowed_args_config(cfg):
+    """
+    Check at start-up that the allowed_job_env_vars, allowed_submit_args and
+    allowed_exportvars settings, if present, contain valid JSON. Logs an error
+    and returns False if any setting cannot be decoded so the caller can refuse
+    to start the bot.
 
     Args:
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
 
     Returns:
-        (list): list of allowed export variable-value pairs of the format VARIABLE=VALUE
+        (bool): True if all present settings are valid JSON, False otherwise
     """
     fn = sys._getframe().f_code.co_name
 
     buildenv = cfg[config.SECTION_BUILDENV]
-    allowed_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
+    settings = [
+        config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS,
+        config.BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS,
+        config.BUILDENV_SETTING_ALLOWED_EXPORTVARS,
+    ]
+    ok = True
+    for setting_name in settings:
+        setting_str = buildenv.get(setting_name)
+        if setting_str:
+            try:
+                json.loads(setting_str)
+            except json.JSONDecodeError as err:
+                log(f"{fn}(): ERROR Value for {setting_name} ({setting_str}) "
+                    f"could not be decoded: {err}")
+                ok = False
+    return ok
+
+
+def get_allowed_args(cfg, setting_name):
+    """
+    Obtain list of allowed key-value patterns for job_env_vars or submit_args.
+
+    Each entry in the list is a dict with 'key' and 'value' keys whose values
+    are regular expressions. An argument 'KEY=VALUE' (for job_env_vars) or a bare
+    option string (for submit_args) is accepted if it matches one of the
+    patterns. For job_env_vars, the key must match the 'key' regex AND the value
+    must match the 'value' regex of the same entry.
+
+    Auto-migration: for the job_env_vars setting, if 'allowed_job_env_vars' is not
+    defined in the configuration, the function falls back to the
+    'allowed_exportvars' setting. Each of these entries (an exact 'KEY=VALUE'
+    string) is converted into a pattern {'key': '^KEY$', 'value': '^VALUE$'}
+    so that existing exact-match behaviour is preserved.
+
+    Args:
+        cfg (ConfigParser): ConfigParser instance holding full configuration
+            (typically read from 'app.cfg')
+        setting_name (string): config setting name, one of
+            config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS or
+            config.BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS
+
+    Returns:
+        (list): list of allowed pattern dicts, each with 'key' and 'value'
+            keys (for job_env_vars) or 'value' key only (for submit_args)
+    """
+    fn = sys._getframe().f_code.co_name
+
+    buildenv = cfg[config.SECTION_BUILDENV]
+    allowed_str = buildenv.get(setting_name)
     allowed = []
+
+    # If allowed_job_env_vars is not set, fall back to allowed_exportvars and
+    # convert each exact 'KEY=VALUE' string into a regex pattern.
+    if (setting_name == config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS
+            and not allowed_str):
+        fallback_str = buildenv.get(config.BUILDENV_SETTING_ALLOWED_EXPORTVARS)
+        if fallback_str:
+            try:
+                fallback = json.loads(fallback_str)
+            except json.JSONDecodeError as err:
+                print(err)
+                log(f"{fn}(): ERROR Value for allowed_exportvars ({fallback_str}) could not be decoded: {err}")
+                return []
+            for item in fallback:
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    allowed.append({'key': f'^{re.escape(key)}$', 'value': f'^{re.escape(value)}$'})
+                else:
+                    allowed.append({'value': f'^{re.escape(item)}$'})
+            log(f"{fn}(): migrated allowed_exportvars to allowed_job_env_vars '{json.dumps(allowed)}'")
+            return check_patterns_wellformed(allowed, setting_name)
 
     if allowed_str:
         try:
             allowed = json.loads(allowed_str)
         except json.JSONDecodeError as err:
             print(err)
-            error(f"{fn}(): Value for allowed_exportvars ({allowed_str}) could not be decoded.")
+            log(f"{fn}(): ERROR Value for {setting_name} ({allowed_str}) could not be decoded: {err}")
+            return []
 
-    log(f"{fn}(): allowed_exportvars '{json.dumps(allowed)}'")
+    allowed = check_patterns_wellformed(allowed, setting_name)
+    log(f"{fn}(): {setting_name} '{json.dumps(allowed)}'")
     return allowed
+
+
+def validate_args(args, allowed_patterns, arg_type=ARG_TYPE_KEY_VALUE):
+    """
+    Validate a list of arguments against a list of allowed patterns.
+
+    For ARG_TYPE_KEY_VALUE, each arg is a 'KEY=VALUE' string. It is accepted if
+    there is a pattern whose 'key' regex matches KEY and whose 'value' regex
+    matches VALUE (both for the same pattern entry).
+
+    For ARG_TYPE_STR_VALUE, each arg is a bare option string (e.g.
+    '--time=01:00:00'). It is accepted if there is a pattern whose 'value' regex
+    matches the arg.
+
+    Args:
+        args (list): list of argument strings to validate
+        allowed_patterns (list): list of pattern dicts (from get_allowed_args)
+        arg_type (string): ARG_TYPE_KEY_VALUE or ARG_TYPE_STR_VALUE -- determines
+            validation mode
+
+    Returns:
+        tuple of 2 elements containing
+        - (list): list of accepted arguments
+        - (list): list of rejected arguments
+    """
+    fn = sys._getframe().f_code.co_name
+
+    accepted = []
+    rejected = []
+
+    for arg in args:
+        matched = False
+        if arg_type == ARG_TYPE_KEY_VALUE:
+            if '=' not in arg:
+                log(f"{fn}(): {arg_type} '{arg}' rejected (missing '=')")
+                rejected.append(arg)
+                continue
+            key, value = arg.split('=', 1)
+            for pattern in allowed_patterns:
+                key_re = pattern.get('key', '')
+                val_re = pattern.get('value', '')
+                if re.fullmatch(key_re, key) and re.fullmatch(val_re, value):
+                    matched = True
+                    break
+        elif arg_type == ARG_TYPE_STR_VALUE:
+            for pattern in allowed_patterns:
+                val_re = pattern.get('value', '')
+                if re.fullmatch(val_re, arg):
+                    matched = True
+                    break
+        else:
+            raise ValueError(f"unknown arg_type '{arg_type}'")
+        if matched:
+            # Defence-in-depth: even if the regex pattern matched, reject any
+            # arg that contains shell metacharacters to prevent injection via
+            # job_env_vars (sourced by the shell) or submit_args (shell=True in run_cmd)
+            if check_arg(arg, arg_type):
+                log(f"{fn}(): {arg_type} '{arg}' accepted (passes all checks)")
+                accepted.append(arg)
+            else:
+                rejected.append(arg)
+        else:
+            log(f"{fn}(): {arg_type} '{arg}' rejected (no matching pattern)")
+            rejected.append(arg)
+
+    return accepted, rejected
 
 
 def get_repo_cfg(cfg):
@@ -236,8 +498,6 @@ def get_repo_cfg(cfg):
     Returns:
         (dict): dictionary containing repository settings as follows
            - {config.REPO_TARGETS_SETTING_REPOS_CFG_DIR: path to repository config directory as defined in 'app.cfg'}
-           - {config.REPO_TARGETS_SETTING_REPO_TARGET_MAP: json of
-               config.REPO_TARGETS_SETTING_REPO_TARGET_MAP value as defined in 'app.cfg'}
            - for all sections [repo_id] defined in config.REPO_TARGETS_SETTING_REPOS_CFG_DIR/repos.cfg add a
              mapping {repo_id: dictionary containing settings of that section}
     """
@@ -253,21 +513,6 @@ def get_repo_cfg(cfg):
     repo_cfg = {}
     settings_repos_cfg_dir = config.REPO_TARGETS_SETTING_REPOS_CFG_DIR
     repo_cfg[settings_repos_cfg_dir] = repo_cfg_org.get(settings_repos_cfg_dir, None)
-
-    repo_map = {}
-    try:
-        repo_map_str = repo_cfg_org.get(config.REPO_TARGETS_SETTING_REPO_TARGET_MAP)
-        log(f"{fn}(): repo_map '{repo_map_str}'")
-
-        if repo_map_str is not None:
-            repo_map = json.loads(repo_map_str)
-
-        log(f"{fn}(): repo_map '{json.dumps(repo_map)}'")
-    except json.JSONDecodeError as err:
-        print(err)
-        error(f"{fn}(): Value for repo_map ({repo_map_str}) could not be decoded.")
-
-    repo_cfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP] = repo_map
 
     if repo_cfg[config.REPO_TARGETS_SETTING_REPOS_CFG_DIR] is None:
         return repo_cfg
@@ -312,7 +557,7 @@ def get_repo_cfg(cfg):
     return repo_cfg
 
 
-def create_pr_dir(pr, cfg, event_info):
+def create_pr_dir(cfg, event_info):
     """
     Create working directory for job to be submitted. Full path to the working
     directory has the format
@@ -323,10 +568,9 @@ def create_pr_dir(pr, cfg, event_info):
     contains four digits, and month contains two digits
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
         cfg (ConfigParser): ConfigParser instance holding full configuration
             (typically read from 'app.cfg')
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
 
     Returns:
         tuple of 3 elements containing
@@ -348,8 +592,8 @@ def create_pr_dir(pr, cfg, event_info):
     jobs_base_dir = build_env_cfg[config.BUILDENV_SETTING_JOBS_BASE_DIR]
 
     year_month = datetime.today().strftime('%Y.%m')
-    pr_id = 'pr_%s' % pr.number
-    event_id = 'event_%s' % event_info['id']
+    pr_id = 'pr_%s' % event_info.pr_number
+    event_id = 'event_%s' % event_info.event_id
     event_dir = os.path.join(jobs_base_dir, year_month, pr_id, event_id)
     # NOTE the first call of os.makedirs cannot be deferred (i.e., to only
     # after it has been determined that any job will be created due to the
@@ -366,96 +610,62 @@ def create_pr_dir(pr, cfg, event_info):
     return year_month, pr_id, run_dir
 
 
-def clone_git_repo(repo, path):
+def clone_git_repo(repo_url, path):
     """
     Clone specified Git repo to specified path
     """
-    git_clone_cmd = ' '.join(['git clone', repo, path])
-    log(f'cloning with command {git_clone_cmd}')
-    clone_output, clone_error, clone_exit_code = run_cmd(
-        git_clone_cmd, "Clone repo", path, raise_on_error=False
-        )
-
-    return (clone_output, clone_error, clone_exit_code)
+    # Use the generic GitRepository class to clone the repo
+    repo = create_git_repository_instance(repo_url, path, "generic")
+    return repo.clone()
 
 
-def download_pr(repo_name, branch_name, pr, arch_job_dir):
+def download_pr(event_info, arch_job_dir, clone_via=None):
     """
     Download pull request to job working directory
 
     Args:
-        repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
-        branch_name (string): name of the base branch of the pull request
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+        event_info (EventInfo): event received by event_handler
         arch_job_dir (string): working directory of the job to be submitted
+        clone_via (string): mechanism to clone Git repository, should be 'https' (default) or 'ssh'
 
     Returns:
-        None (implicitly), in case an error is caught in the git clone, git checkout, curl,
-            or git apply commands, returns the output, stderror, exit code and a string
-            stating which of these commands failed.
+        None (implicitly) or, in case an error is caught in _make_dirs() or git clone/checkout/fetch/diff/apply,
+            returns the output, stderr, exit code and a string stating which of these commands failed.
     """
-    # download pull request to arch_job_dir
-    # - 'git clone' repository into arch_job_dir (NOTE 'git clone' requires that
-    #    destination is an empty directory)
-    # - 'git checkout' base branch of pull request
-    # - 'curl' diff for pull request
-    # - 'git apply' diff file
-    clone_output, clone_error, clone_exit_code = clone_git_repo(f'https://github.com/{repo_name}', arch_job_dir)
-    if clone_exit_code != 0:
-        error_stage = _ERROR_GIT_CLONE
+    pr_number = event_info.pr_number
+    base_branch = event_info.pr_base_branch
+
+    log(f"Cloning Git repo via: {clone_via}")
+    if clone_via in (None, 'https'):
+        repo_url = event_info.repo_git_https
+    elif clone_via == 'ssh':
+        repo_url = event_info.repo_git_ssh
+    else:
+        clone_output = ''
+        clone_error = f"Unknown mechanism to clone Git repo: {clone_via}"
+        clone_exit_code = 1
+        error_stage = ERROR_GIT_CLONE
         return clone_output, clone_error, clone_exit_code, error_stage
 
-    git_checkout_cmd = ' '.join([
-        'git checkout',
-        branch_name,
-    ])
-    log(f'checking out with command {git_checkout_cmd}')
-    checkout_output, checkout_err, checkout_exit_code = run_cmd(
-        git_checkout_cmd, "checkout branch '%s'" % branch_name, arch_job_dir, raise_on_error=False
-        )
-    if checkout_exit_code != 0:
-        error_stage = _ERROR_GIT_CHECKOUT
-        return checkout_output, checkout_err, checkout_exit_code, error_stage
+    git_host = get_git_hosting_platform()
+    repo = create_git_repository_instance(repo_url, arch_job_dir, git_host)
 
-    curl_cmd = ' '.join([
-        'curl -L',
-        '-H "Accept: application/vnd.github.diff"',
-        '-H "X-GitHub-Api-Version: 2022-11-28"',
-        f'https://api.github.com/repos/{repo_name}/pulls/{pr.number} > {pr.number}.diff',
-    ])
-    log(f'curl with command {curl_cmd}')
-    curl_output, curl_error, curl_exit_code = run_cmd(
-        curl_cmd, "Obtain patch", arch_job_dir, raise_on_error=False
-        )
-    if curl_exit_code != 0:
-        error_stage = _ERROR_CURL
-        return curl_output, curl_error, curl_exit_code, error_stage
-
-    git_apply_cmd = f'git apply {pr.number}.diff'
-    log(f'git apply with command {git_apply_cmd}')
-    git_apply_output, git_apply_error, git_apply_exit_code = run_cmd(
-        git_apply_cmd, "Apply patch", arch_job_dir, raise_on_error=False
-        )
-    if git_apply_exit_code != 0:
-        error_stage = _ERROR_GIT_APPLY
-        return git_apply_output, git_apply_error, git_apply_exit_code, error_stage
-
-    # need to return four items also in case everything went fine
-    return 'downloading PR succeeded', 'no error while downloading PR', 0, _ERROR_NONE
+    # Return download_pr() output directly
+    return repo.download_pr(pr_number, base_branch)
 
 
-def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage):
+def comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, download_pr_error, error_stage):
     """
     Handle download_pr() exit code and write helpful comment to PR in case of failure
 
     Args:
         base_repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+        pr_number (int): number of the pull request in the repository
         download_pr_exit_code (int): exit code from download_pr(). 0 if all tasks were successful,
-            otherwise it corresponds to the error codes of git clone, git checkout, git apply, or curl.
-        download_pr_error (string): none, or the output of stderr from git clone, git checkout, git apply or curl.
-        error_stage (string): a string informing the stage where download_pr() failed. Can be 'git clone',
-            'git checkout', 'curl', or 'git apply'.
+            otherwise it corresponds to the exit codes of _make_dirs or git clone/checkout/fetch/diff/apply.
+        download_pr_error (string): stderr from download_pr()
+        error_stage (string): a string informing the stage where download_pr() failed. Can be 'makedirs', 'git clone',
+            'git checkout', 'git fetch', 'git diff', or 'git apply'.
 
     Return:
         None (implicitly). A comment is created in the appropriate PR.
@@ -465,25 +675,32 @@ def comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_e
         fn = sys._getframe().f_code.co_name
 
         download_pr_comments_cfg = config.read_config()[config.SECTION_DOWNLOAD_PR_COMMENTS]
-        if error_stage == _ERROR_GIT_CLONE:
+        if error_stage == ERROR_MAKE_DIRS:
+            download_comment = (f"```{download_pr_error}```\n"
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_FAILURE]}"
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_TIP]}")
+        elif error_stage == ERROR_GIT_CLONE:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP]}")
-        elif error_stage == _ERROR_GIT_CHECKOUT:
+        elif error_stage == ERROR_GIT_CHECKOUT:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP]}")
-        elif error_stage == _ERROR_CURL:
+        # Fetch or diff error indicates failure to obtain PR diff
+        elif error_stage in (ERROR_GIT_FETCH, ERROR_GIT_DIFF):
             download_comment = (f"```{download_pr_error}```\n"
-                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE]}"
-                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP]}")
-        elif error_stage == _ERROR_GIT_APPLY:
+                                f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE]}"
+                                f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP]}")
+        elif error_stage == ERROR_GIT_APPLY:
             download_comment = (f"```{download_pr_error}```\n"
                                 f"{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE]}"
                                 f"\n{download_pr_comments_cfg[config.DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP]}")
+        else:
+            download_comment = f"```{download_pr_error}```"
 
         download_comment = pr_comments.create_comment(
-            repo_name=base_repo_name, pr_number=pr.number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
+            repo_name=base_repo_name, pr_number=pr_number, comment=download_comment, req_chatlevel=ChatLevels.MINIMAL
             )
         if download_comment:
             log(f"{fn}(): created PR issue comment with id {download_comment.id}")
@@ -540,34 +757,38 @@ def prepare_export_vars_file(job_dir, exportvars):
     log(f"{fn}(): created exported variables file {export_vars_path}")
 
 
-def prepare_jobs(pr, cfg, event_info, action_filter):
+def prepare_jobs(cfg, event_info, action_filter, build_params):
     """
     Prepare all jobs whose context matches the given filter. Preparation includes
     creating a working directory for a job, downloading the pull request into
     that directory and creating a job specific configuration file.
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
         cfg (ConfigParser): instance holding full configuration (typically read from 'app.cfg')
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
         (list): list of the prepared jobs
     """
     fn = sys._getframe().f_code.co_name
 
-    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
+    app_name = get_app_name(cfg)
     build_env_cfg = get_build_env_cfg(cfg)
-    arch_map = get_architecture_targets(cfg)
+    node_map = get_node_types(cfg)
     repocfg = get_repo_cfg(cfg)
-    allowed_exportvars = get_allowed_exportvars(cfg)
+    allowed_job_env_vars = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS)
+    allowed_submit_args = get_allowed_args(cfg, config.BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS)
 
-    base_repo_name = pr.base.repo.full_name
-    log(f"{fn}(): pr.base.repo.full_name '{base_repo_name}'")
+    base_repo_name = event_info.repo_name
+    log(f"{fn}(): Base repository: '{base_repo_name}'")
 
-    base_branch_name = pr.base.ref
-    log(f"{fn}(): pr.base.repo.ref '{base_branch_name}'")
+    base_branch_name = event_info.pr_base_branch
+    log(f"{fn}(): Base branch: '{base_branch_name}'")
+
+    pr_number = event_info.pr_number
+    job_owner = event_info.event_triggered_by
 
     # create run dir (base directory for potentially several jobs)
     # TODO may still be too early (before we get to any actual job being
@@ -575,7 +796,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     #      instead of using a run_dir, maybe just create a unique dir for each
     #      job to be submitted? thus we could easily postpone the create_pr_dir
     #      call to just before download_pr
-    year_month, pr_id, run_dir = create_pr_dir(pr, cfg, event_info)
+    year_month, pr_id, run_dir = create_pr_dir(cfg, event_info)
 
     # determine accelerator from action_filter argument
     accelerators = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_ACCEL)
@@ -588,24 +809,55 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
         log(f"{fn}(): found no accelerator requirement")
         accelerator = None
 
-    # determine exportvars from action_filter argument
-    exportvars = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
+    # determine job_env_vars from action_filter argument (job_env_vars is an alias for
+    # exportvariable, so both are retrieved via FILTER_COMPONENT_EXPORT)
+    job_env_vars = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_EXPORT)
 
-    # all exportvar filters must be allowed in order to run any jobs
-    if exportvars:
-        not_allowed = [x for x in exportvars if x not in allowed_exportvars]
-        if not_allowed:
-            log(f"{fn}(): exportvariable(s) {not_allowed} not allowed")
+    # all job_env_vars must be allowed in order to run any jobs
+    if job_env_vars:
+        accepted_job_env_vars, rejected_job_env_vars = validate_args(
+            job_env_vars,
+            allowed_job_env_vars,
+            arg_type=ARG_TYPE_KEY_VALUE
+        )
+        if rejected_job_env_vars:
+            log(f"{fn}(): job_env_vars(s) {rejected_job_env_vars} not allowed")
             return []
+        job_env_vars = accepted_job_env_vars
+
+    # determine submit_args from action_filter argument
+    submit_args = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_SUBMIT_ARGS)
+
+    # all submit_args must be allowed in order to run any jobs
+    if submit_args:
+        accepted_submit_args, rejected_submit_args = validate_args(
+            submit_args, allowed_submit_args, arg_type=ARG_TYPE_STR_VALUE
+        )
+        if rejected_submit_args:
+            log(f"{fn}(): submit_args(s) {rejected_submit_args} not allowed")
+            return []
+        submit_args = accepted_submit_args
 
     jobs = []
-    for arch, slurm_opt in arch_map.items():
-        arch_dir = arch.replace('/', '_')
-        # check if repo_target_map contains an entry for {arch}
-        if arch not in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP]:
-            log(f"{fn}(): skipping arch {arch} because repo target map does not define repositories to build for")
+    # Looping over all node types in the node_map to create a context for each node type and repository
+    # configured there. Then, check the action filters against these configs to find matching ones.
+    # If there is a match, prepare the job dir and create the Job object
+    for node_type_name, partition_info in node_map.items():
+        log(f"{fn}(): node_type_name is {node_type_name}, partition_info is {partition_info}")
+        # Unpack for convenience
+        arch_dir = build_params[BUILD_PARAM_ARCH]
+        if BUILD_PARAM_ACCEL in build_params:
+            arch_dir += f"/{build_params[BUILD_PARAM_ACCEL]}"
+            build_for_accel = build_params[BUILD_PARAM_ACCEL]
+        else:
+            build_for_accel = ''
+        arch_dir.replace('/', '_')
+        # check if repo_targets is defined for this virtual partition
+        if 'repo_targets' not in partition_info:
+            log(f"{fn}(): skipping arch {node_type_name}, "
+                "because no repo_targets were defined for this (virtual) partition")
             continue
-        for repo_id in repocfg[config.REPO_TARGETS_SETTING_REPO_TARGET_MAP][arch]:
+        for repo_id in partition_info['repo_targets']:
             # ensure repocfg contains information about the repository repo_id if repo_id != EESSI
             # Note, EESSI is a bad/misleading name, it should be more like AS_IN_CONTAINER
             if (repo_id != "EESSI" and repo_id != "EESSI-pilot") and repo_id not in repocfg:
@@ -618,7 +870,14 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
             #   false --> log & continue to next iteration of for loop
             if action_filter:
                 log(f"{fn}(): checking filter {action_filter.to_string()}")
-                context = {"architecture": arch, "repository": repo_id, "instance": app_name}
+                context = {
+                    "architecture": partition_info['cpu_subdir'],
+                    "repository": repo_id,
+                    "instance": app_name
+                }
+                # Optionally add accelerator to the context
+                if 'accel' in partition_info:
+                    context['accelerator'] = partition_info['accel']
                 log(f"{fn}(): context is '{json.dumps(context, indent=4)}'")
                 if not action_filter.check_build_filters(context):
                     log(f"{fn}(): context does NOT satisfy filter(s), skipping")
@@ -627,36 +886,36 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
                     log(f"{fn}(): context DOES satisfy filter(s), going on with job")
             # we reached this point when the filter matched (otherwise we
             # 'continue' with the next repository)
-            # for each match of the filter we create a specific job directory
-            #   however, matching CPU architectures works differently to handling
-            #   accelerators; multiple CPU architectures defined in arch_target_map
-            #   can match the (CPU) architecture component of a filter; in
-            #   contrast, the value of the accelerator filter is just passed down
-            #   to scripts in bot/ directory of the pull request (see function
-            #   prepare_job_cfg and creation of Job tuple below)
+            # We create a specific job directory for the architecture that is going to be build 'for:'
             job_dir = os.path.join(run_dir, arch_dir, repo_id)
             os.makedirs(job_dir, exist_ok=True)
             log(f"{fn}(): job_dir '{job_dir}'")
 
             # TODO optimisation? download once, copy and cleanup initial copy?
+            clone_git_repo_via = build_env_cfg.get(config.BUILDENV_SETTING_CLONE_GIT_REPO_VIA)
             download_pr_output, download_pr_error, download_pr_exit_code, error_stage = download_pr(
-                base_repo_name, base_branch_name, pr, job_dir
+                event_info, job_dir, clone_via=clone_git_repo_via,
                 )
-            comment_download_pr(base_repo_name, pr, download_pr_exit_code, download_pr_error, error_stage)
+            comment_download_pr(base_repo_name, pr_number, download_pr_exit_code, download_pr_error, error_stage)
             # prepare job configuration file 'job.cfg' in directory <job_dir>/cfg
-            cpu_target = '/'.join(arch.split('/')[1:])
-            os_type = arch.split('/')[0]
+            msg = f"{fn}(): node type = '{node_type_name}' => "
+            msg += f"requested cpu_target = '{partition_info['cpu_subdir']}, "
+            msg += f"build cpu_target = '{build_params[BUILD_PARAM_ARCH]}', "
+            msg += f"configured os = '{partition_info['os']}', "
+            if 'accel' in partition_info:
+                msg += f"requested accelerator(s) = '{partition_info['accel']}, "
+            msg += f"build accelerator = '{build_for_accel}'"
+            log(msg)
 
-            log(f"{fn}(): arch = '{arch}' => cpu_target = '{cpu_target}' , os_type = '{os_type}'"
-                f", accelerator = '{accelerator}'")
+            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, build_params[BUILD_PARAM_ARCH],
+                            partition_info['os'], build_for_accel, node_type_name)
 
-            prepare_job_cfg(job_dir, build_env_cfg, repocfg, repo_id, cpu_target, os_type, accelerator)
-
-            if exportvars:
-                prepare_export_vars_file(job_dir, exportvars)
+            if job_env_vars:
+                prepare_export_vars_file(job_dir, job_env_vars)
 
             # enlist jobs to proceed
-            job = Job(job_dir, arch, repo_id, slurm_opt, year_month, pr_id, accelerator)
+            job = Job(job_dir, partition_info['cpu_subdir'], repo_id, partition_info['slurm_params'], year_month,
+                      pr_id, accelerator, job_owner, ' '.join(submit_args))
             jobs.append(job)
 
     log(f"{fn}(): {len(jobs)} jobs to proceed after applying white list")
@@ -666,7 +925,7 @@ def prepare_jobs(pr, cfg, event_info, action_filter):
     return jobs
 
 
-def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator):
+def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir, os_type, accelerator, node_type_name):
     """
     Set up job configuration file 'job.cfg' in directory <job_dir>/cfg
 
@@ -678,6 +937,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
         software_subdir (string): software subdirectory to build for (e.g., 'x86_64/generic')
         os_type (string): type of the os (e.g., 'linux')
         accelerator (string): defines accelerator to build for (e.g., 'nvidia/cc80')
+        node_type_name (string): the node type name, as configured in app.cfg
 
     Returns:
         None (implicitly)
@@ -748,6 +1008,7 @@ def prepare_job_cfg(job_dir, build_env_cfg, repos_cfg, repo_id, software_subdir,
 
     job_cfg_arch_section = job_metadata.JOB_CFG_ARCHITECTURE_SECTION
     job_cfg[job_cfg_arch_section] = {}
+    job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_NODE_TYPE] = node_type_name
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_SOFTWARE_SUBDIR] = software_subdir
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_OS_TYPE] = os_type
     job_cfg[job_cfg_arch_section][job_metadata.JOB_CFG_ARCHITECTURE_ACCELERATOR] = accelerator if accelerator else ''
@@ -843,9 +1104,8 @@ def submit_job(job, cfg):
         if repo_subdir.endswith('.git'):
             repo_subdir = repo_subdir[:-4]
         target_dir = os.path.join(job.working_dir, repo_subdir)
-        os.makedirs(target_dir, exist_ok=True)
 
-        clone_output, clone_error, clone_exit_code = clone_git_repo(build_job_script_repo, target_dir)
+        _, clone_error, clone_exit_code, _ = clone_git_repo(build_job_script_repo, target_dir)
         if clone_exit_code == 0:
             log(f"{fn}(): repository {build_job_script_repo} cloned to {target_dir}")
         else:
@@ -864,6 +1124,7 @@ def submit_job(job, cfg):
         time_limit,
         job.slurm_opts] +
         ([f"--job-name='{job_name}'"] if job_name else []) +
+        ([job.submit_args] if job.submit_args else []) +
         [build_job_script_path])
 
     cmdline_output, cmdline_error, cmdline_exit_code = run_cmd(command_line,
@@ -886,80 +1147,110 @@ def submit_job(job, cfg):
     return job_id, symlink
 
 
-def create_pr_comment(job, job_id, app_name, pr, symlink):
+def create_pr_comment(job, job_id, event_info, symlink, build_params):
     """
     Create a comment to the pull request for a newly submitted job
 
     Args:
         job (Job): namedtuple containing information about submitted job
         job_id (string): id of the submitted job
-        app_name (string): name of the app
-        pr (github.PullRequest.PullRequest): instance representing the pull request
+        event_info (EventInfo): event received by event_handler
         symlink (string): symlink from main pr_<ID> dir to job dir
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
-        github.IssueComment.IssueComment instance or None (note, github refers to
-            PyGithub, not the github from the internal connections module)
+        PRComment instance or None
     """
     fn = sys._getframe().f_code.co_name
 
-    # obtain arch from job.arch_target which has the format OS/ARCH
-    arch_name = '-'.join(job.arch_target.split('/')[1:])
+    cfg = config.read_config()
+    app_name = get_app_name(cfg)
 
-    submitted_job_comments_cfg = config.read_config()[config.SECTION_SUBMITTED_JOB_COMMENTS]
+    # Obtain the architecture on which we are building from job.arch_target, which has the format OS/ARCH
+    on_arch = '-'.join(job.arch_target.split('/')[1:])
 
-    # set string for accelerator if job.accelerator is defined/set (e.g., not None)
-    accelerator_spec_str = ''
+    # Obtain the architecture to build for
+    for_arch = build_params[BUILD_PARAM_ARCH]
+
+    submitted_job_comments_cfg = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
+
+    # Set string for accelerator to build on
+    accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
+    on_accelerator_str = ''
     if job.accelerator:
-        accelerator_spec = f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]}"
-        accelerator_spec_str = accelerator_spec.format(accelerator=job.accelerator)
+        on_accelerator_str = accelerator_spec.format(accelerator=job.accelerator)
+
+    # Set string for accelerator to build for
+    for_accelerator_str = ''
+    if BUILD_PARAM_ACCEL in build_params:
+        for_accelerator_str = accelerator_spec.format(accelerator=build_params[BUILD_PARAM_ACCEL])
 
     # get current date and time
     dt = datetime.now(timezone.utc)
 
+    # Get commit SHA from cloned repo
+    commit_sha, _, _ = run_cmd('git rev-parse FETCH_HEAD', 'Get commit SHA', job.working_dir, raise_on_error=False)
+    commit_sha = commit_sha.strip() if commit_sha else ''
+
     # construct initial job comment
-    buildenv = config.read_config()[config.SECTION_BUILDENV]
+    buildenv = cfg[config.SECTION_BUILDENV]
     job_handover_protocol = buildenv.get(config.BUILDENV_SETTING_JOB_HANDOVER_PROTOCOL)
+    new_job_instance_repo = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
+    build_on_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
+    build_for_arch = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
+    jobdir = submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR]
+    commit_sha_fmt = submitted_job_comments_cfg.get(
+        config.SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA, 'Commit SHA: {commit_sha}')
+
+    # Build header lines (1-4)
+    header_lines = (f"{new_job_instance_repo}\n"
+                    f"{build_on_arch}\n"
+                    f"{build_for_arch}\n"
+                    f"{jobdir}\n").format(
+                        app_name=app_name,
+                        on_arch=on_arch,
+                        for_arch=for_arch,
+                        symlink=symlink,
+                        repo_id=job.repo_id,
+                        on_accelerator=on_accelerator_str,
+                        for_accelerator=for_accelerator_str)
+
+    # Build line 5
+    commit_sha_line = ''
+    if commit_sha_fmt:
+        commit_sha_line += f"{commit_sha_fmt.format(commit_sha=commit_sha)}\n"
+
     if job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
         # calculate delay from poll_interval and delay_factor
-        job_manager_cfg = config.read_config()[config.SECTION_JOB_MANAGER]
+        job_manager_cfg = cfg[config.SECTION_JOB_MANAGER]
         poll_interval = int(job_manager_cfg.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL))
         delay_factor = float(buildenv.get(config.BUILDENV_SETTING_JOB_DELAY_BEGIN_FACTOR, 2))
         eligible_in_seconds = int(poll_interval * delay_factor)
-        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                       f"\n|date|job status|comment|\n"
-                       f"|----------|----------|------------------------|\n"
-                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                       f"submitted|"
-                       f"{release_comment_template}|").format(
-                           app_name=app_name,
-                           arch_name=arch_name,
-                           symlink=symlink,
-                           repo_id=job.repo_id,
-                           job_id=job_id,
-                           delay_seconds=eligible_in_seconds,
-                           accelerator_spec=accelerator_spec_str)
+        table = (f"|date|job status|comment|\n"
+                 f"|----------|----------|------------------------|\n"
+                 f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                 f"submitted|"
+                 f"{release_comment_template}|").format(
+                     job_id=job_id,
+                     delay_seconds=eligible_in_seconds)
+        job_comment = header_lines + commit_sha_line + table
     else:
         release_msg_string = config.SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG
         release_comment_template = submitted_job_comments_cfg[release_msg_string]
-        job_comment = (f"{submitted_job_comments_cfg[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]}"
-                       f"\n|date|job status|comment|\n"
-                       f"|----------|----------|------------------------|\n"
-                       f"|{dt.strftime('%b %d %X %Z %Y')}|"
-                       f"submitted|"
-                       f"{release_comment_template}|").format(
-                           app_name=app_name,
-                           arch_name=arch_name,
-                           symlink=symlink,
-                           repo_id=job.repo_id,
-                           job_id=job_id,
-                           accelerator_spec=accelerator_spec_str)
+        table = (f"|date|job status|comment|\n"
+                 f"|----------|----------|------------------------|\n"
+                 f"|{dt.strftime('%b %d %X %Z %Y')}|"
+                 f"submitted|"
+                 f"{release_comment_template}|").format(
+                     job_id=job_id)
+        job_comment = header_lines + commit_sha_line + table
 
     # create comment to pull request
-    repo_name = pr.base.repo.full_name
-    issue_comment = create_comment(repo_name, pr.number, job_comment, ChatLevels.MINIMAL)
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+    issue_comment = create_comment(repo_name, pr_number, job_comment, ChatLevels.MINIMAL)
     if issue_comment:
         log(f"{fn}(): created PR issue comment with id {issue_comment.id}")
         return issue_comment
@@ -968,70 +1259,72 @@ def create_pr_comment(job, job_id, app_name, pr, symlink):
         return None
 
 
-def submit_build_jobs(pr, event_info, action_filter):
+def submit_build_jobs(event_info, action_filter, build_params):
     """
     Create build jobs for a pull request by preparing jobs which match the given
-    filters, submitting them, adding comments to the pull request on GitHub and
-    creating a metadata file in the job's working directory
+    filters, submitting them, adding comments to the pull request and creating a
+    metadata file in the job's working directory
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
         action_filter (EESSIBotActionFilter): used to filter which jobs shall be prepared
+        build_params (EESSIBotBuildParams): dict that contains the build parameters for the job
 
     Returns:
-        (dict): dictionary mapping a job id to a github.IssueComment.IssueComment
-            instance (corresponding to the pull request comment for the submitted
-            job) or an empty dictionary if there were no jobs to be submitted
+        (dict): dictionary mapping a job id to a PRComment instance (corresponding
+                to the pull request comment for the submitted job) or an empty
+                dictionary if there were no jobs to be submitted
     """
     fn = sys._getframe().f_code.co_name
 
     cfg = config.read_config()
-    app_name = cfg[config.SECTION_GITHUB].get(config.GITHUB_SETTING_APP_NAME)
 
     # setup job directories (one per element in product of architecture x repositories)
-    jobs = prepare_jobs(pr, cfg, event_info, action_filter)
+    jobs = prepare_jobs(cfg, event_info, action_filter, build_params)
 
     # return if there are no jobs to be submitted
     if not jobs:
         log(f"{fn}(): no jobs ({len(jobs)}) to be submitted")
         return {}
 
-    # process prepared jobs: submit, create metadata file and add comment to pull
-    # request on GitHub
+    # process prepared jobs: submit job, add comment to pull request and create metadata file
     job_id_to_comment_map = {}
     for job in jobs:
         # submit job
         job_id, symlink = submit_job(job, cfg)
 
         # create pull request comment to report about the submitted job
-        pr_comment = create_pr_comment(job, job_id, app_name, pr, symlink)
+        pr_comment = create_pr_comment(job, job_id, event_info, symlink, build_params)
         job_id_to_comment_map[job_id] = pr_comment
 
-        pr_comment = pr_comments.PRComment(pr.base.repo.full_name, pr.number, pr_comment.id)
+        git_host = get_git_hosting_platform(cfg)
+        repo_name = event_info.repo_name
+        pr_number = event_info.pr_number
+        pr_comment_info = pr_comments.PRCommentInfo(git_host, repo_name, pr_number, pr_comment.id)
 
         # create _bot_job<jobid>.metadata file in the job's working directory
-        job_metadata.create_metadata_file(job, job_id, pr_comment)
+        job_metadata.create_metadata_file(job, job_id, pr_comment_info)
 
     return job_id_to_comment_map
 
 
-def check_build_permission(pr, event_info):
+def check_build_permission(event_info):
     """
-    Check if GitHub account whom's action resulted in an event is authorized to
+    Check if account whose action resulted in an event is authorized to
     trigger a build job
 
     Args:
-        pr (github.PullRequest.PullRequest): instance representing the pull request
-        event_info (dict): event received by event_handler
+        event_info (EventInfo): event received by event_handler
 
     Returns:
-        (bool): True -> GitHub account is authorized, False -> GitHub account is
-            not authorized
+        (bool): True -> account is authorized, False -> account is not authorized
     """
     fn = sys._getframe().f_code.co_name
 
-    log(f"{fn}(): build for PR {pr.number}")
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+
+    log(f"{fn}(): build for PR {pr_number}")
 
     cfg = config.read_config()
 
@@ -1041,26 +1334,97 @@ def check_build_permission(pr, event_info):
 
     log(f"{fn}(): build permission '{build_permission}'")
 
-    build_labeler = event_info['raw_request_body']['sender']['login']
+    build_labeler = event_info.event_triggered_by
     if build_labeler not in build_permission.split():
-        log(f"{fn}(): GH account '{build_labeler}' is not authorized to build")
+        log(f"{fn}(): account '{build_labeler}' is not authorized to build")
         no_build_permission_comment = buildenv.get(config.BUILDENV_SETTING_NO_BUILD_PERMISSION_COMMENT)
-        repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
-                                   pr.number,
+                                   pr_number,
                                    no_build_permission_comment.format(build_labeler=build_labeler),
                                    ChatLevels.MINIMAL)
         return False
     else:
-        log(f"{fn}(): GH account '{build_labeler}' is authorized to build")
+        log(f"{fn}(): account '{build_labeler}' is authorized to build")
         return True
+
+
+def template_to_regex(format_str, with_eol=True):
+    """
+    Converts a formatting string into a regex that can extract all the formatted
+    parts of the string. If with_eol is True, it assumes the formatted string is followed by an end-of-line
+    character. This is a requirement if it has to succesfully match a formatting string that ends with a formatting
+    field.
+
+    Example: if one function creates a formatted string
+    value = "my_field_value"
+    format_str = f"This is my string, with a custom field: {my_field}\n"
+    formatted_string = format_str.format(my_field=value)
+    Another function can then grab the original value of my_field by doing:
+    my_re = template_to_regex(format_str)
+    match_object = re.match(my_re, formatted_string)
+    match_object['my_field'] then contains "my_field_value"
+    This is useful when e.g. one function posts a GitHub comment, and another wants to extract information from that
+
+    Args:
+        format_str (string): a formatting string, with template placeholders.
+        with_eol (bool, optional): a boolean, indicating if the formatting string is expected to be followed by
+                                   an end of line character
+
+    """
+
+    # string.Formatter returns a 4-tuple of literal text, field name, format spec, and conversion
+    # E.g if format_str = "This is my {app} it is currently {status}"
+    # formatter = [
+    #    ("This is my", "app", "", None),
+    #    ("it is currently", "status", "", None),
+    #    ("", None, None, None),
+    # ]
+    formatter = string.Formatter()
+    regex_parts = []
+
+    for literal_text, field_name, _, _ in formatter.parse(format_str):
+        # We use re.escape to escape any special characters in the literal_text, as we want to match those literally
+        regex_parts.append(re.escape(literal_text))
+        if field_name is not None:
+            # Create a non-greedy, named capture group. Note that the {field_name} itself is a format specifier
+            # So we get the actual field name as the name of the capture group
+            # In other words, if our format_str is "My string with {a_field}" then the named capture group will be
+            # called 'a_field'
+            # We match any character, but in a non-greedy way. Thus, as soon as it can match the next
+            # literal text section, it will - thus assuming that that's the end of the field
+            # We use .* to allow for empty fields (such as the optional accelerator fields)
+            regex_parts.append(f"(?P<{field_name}>.*?)")
+
+    # Finally, make sure we append a $ to the regex. This is necessary because of our non-greedy matching
+    # strategy. Otherwise, a formatting string that ends with a formatting item would only match the first letter
+    # of the field, because it doesn't find anything to match after (and it is non-greedy). With the $, it has
+    # something to match after the field, thus making sure it matches the whole field
+    # This does assume that the format_str in the string to be matched is indeed followed by an end-of-line character
+    # I.e. if a function that creates the formatted string does
+    # my_string = f"{format_str}\n"
+    # (i.e. has an end-of-line after the format specifier) it can be matched by another function that does
+    # my_re = template_to_regex(format_str)
+    # re.match(my_re, my_string)
+    full_pattern = ''.join(regex_parts)
+    if with_eol:
+        full_pattern += "$"
+    return re.compile(full_pattern)
+
+
+class PartialFormatDict(dict):
+    """
+    A dictionary class that allows for missing keys - and will just return {key} in that case.
+    This can be used to partially format some, but not all placeholders in a formatting string.
+    """
+    def __missing__(self, key):
+        return "{" + key + "}"
 
 
 def request_bot_build_issue_comments(repo_name, pr_number):
     """
     Query the github API for the issue_comments in a pr.
 
-    Archs:
+    Args:
         repo_name (string): name of the repository (format USER_OR_ORGANISATION/REPOSITORY)
         pr_number (int): number og the pr
 
@@ -1070,69 +1434,324 @@ def request_bot_build_issue_comments(repo_name, pr_number):
     """
     fn = sys._getframe().f_code.co_name
 
-    status_table = {'arch': [], 'date': [], 'status': [], 'url': [], 'result': []}
+    status_table = {'on arch': [], 'for arch': [], 'for repo': [], 'date': [], 'status': [], 'url': [],
+                    'result': [], 'commit sha': []}
     cfg = config.read_config()
+    github_section = cfg[config.SECTION_GITHUB]
+    api_timeout = int(github_section.get(config.GITHUB_SETTING_API_TIMEOUT, 10))
 
     # for loop because github has max 100 items per request.
     # if the pr has more than 100 comments we need to use per_page
     # argument at the moment the for loop is for a max of 400 comments could bump this up
-    for x in range(1, 5):
-        curl_cmd = f'curl -L https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments?per_page=100&page={x}'
-        curl_output, curl_error, curl_exit_code = run_cmd(curl_cmd, "fetch all comments")
 
-        comments = json.loads(curl_output)
+    url = f'https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments'
+    all_comments = []
 
-        for comment in comments:
-            # iterate through the comments to find the one where the status of the build was in
-            submitted_job_comments_section = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
-            initial_comment_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT]
-            if initial_comment_fmt[:20] in comment['body']:
+    # call get_instance() to obtain a (new) token (accessible via github.token().token)
+    #   get_instance ensures that the token is renewed if the current one is no
+    #   longer valid or valid for less than 30 minutes
+    _ = github.get_instance()
+    try:
+        while url:
+            headers = {
+                'Authorization': f'Bearer {github.token().token}',
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28'
+            }
 
-                # get archictecture from comment['body']
-                first_line = comment['body'].split('\n')[0]
-                arch_map = get_architecture_targets(cfg)
-                for arch in arch_map.keys():
-                    # drop the first element in arch (which names the OS type) and join the remaining items with '-'
-                    target_arch = '-'.join(arch.split('/')[1:])
-                    if target_arch in first_line:
-                        status_table['arch'].append(target_arch)
+            response = requests.get(url, headers=headers, params={'per_page': 100}, timeout=api_timeout)
+            response.raise_for_status()
+
+            all_comments.extend(response.json())
+            # get next URL from Link header in response (we are done if that is empty)
+            url = response.links.get('next', {}).get('url')
+            log(f"{fn}(): more comments? {url!r}")
+            reset_time = int(response.headers.get('X-RateLimit-Reset'))
+            utc_time = datetime.fromtimestamp(reset_time, tz=timezone.utc)
+            time_left = int(reset_time - time.time())
+            log(f"{fn}(): limits with token '{github.token().token[:4]}...':\n"
+                f"    rate limit.: {response.headers.get('X-RateLimit-Limit')}\n"
+                f"    remaining..: {response.headers.get('X-RateLimit-Remaining')}\n"
+                f"    reset limit: {utc_time.strftime('%b %d %I:%M:%S %p UTC %Y')} (in {time_left} seconds)\n"
+                )
+
+    except Exception as err:
+        log(f"{fn}(): obtaining comments for PR {pr_number} in repo {repo_name!r} failed: {err}")
+        return status_table
+
+    for comment in all_comments:
+        # iterate through the comments to find the one where the status of the build was in
+        submitted_job_comments_section = cfg[config.SECTION_SUBMITTED_JOB_COMMENTS]
+        accelerator_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR]
+        instance_repo_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO]
+        instance_repo_re = template_to_regex(instance_repo_fmt)
+        comment_body = comment['body'].split('\n')
+        instance_repo_match = re.match(instance_repo_re, comment_body[0])
+        # Check if this body starts with an initial comment from the bot (first item is always the instance + repo
+        # it is building for)
+        # Then, check that it has at least 4 lines so that we can safely index up to that number
+        if instance_repo_match and len(comment_body) >= 4:
+            # Set some defaults
+            repo_id = ""
+            on_arch = ""
+            for_arch = ""
+            date = ""
+            status = ""
+            url = ""
+            result = ""
+
+            log(f"{fn}(): found bot build response in issue, processing...")
+
+            # First, extract the repo_id
+            log(f"{fn}(): found build for repository: {instance_repo_match.group('repo_id')}")
+            repo_id = instance_repo_match.group('repo_id')
+
+            # Then, try to match the architecture we build on.
+            # First try this including accelerator, to see if one was defined
+            on_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH]
+            on_arch_fmt_with_accel = on_arch_fmt.format_map(PartialFormatDict(on_accelerator=accelerator_fmt))
+            on_arch_re_with_accel = template_to_regex(on_arch_fmt_with_accel)
+            on_arch_match = re.match(on_arch_re_with_accel, comment_body[1])
+            if on_arch_match:
+                # Pattern with accelerator matched, append to status_table
+                log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}, "
+                    f"with accelerator {on_arch_match.group('accelerator')}")
+                on_arch = f"`{on_arch_match.group('on_arch')}`, `{on_arch_match.group('accelerator')}`"
+            else:
+                # Pattern with accelerator did not match, retry without accelerator
+                on_arch_re = template_to_regex(on_arch_fmt)
+                on_arch_match = re.match(on_arch_re, comment_body[1])
+                if on_arch_match:
+                    # Pattern without accelerator matched, append to status_table
+                    log(f"{fn}(): found build on architecture: {on_arch_match.group('on_arch')}")
+                    on_arch = f"`{on_arch_match.group('on_arch')}`"
+                else:
+                    # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
+                    msg = "Could not match regular expression for extracting the architecture to build on.\n"
+                    msg += "String to be matched:\n"
+                    msg += f"{comment_body[1]}\n"
+                    msg += "First regex attempted:\n"
+                    msg += f"{on_arch_re_with_accel.pattern}\n"
+                    msg += "Second regex attempted:\n"
+                    msg += f"{on_arch_re.pattern}\n"
+                    raise ValueError(msg)
+
+            # Now, do the same for the architecture we build for. I.e. first, try to match including accelerator
+            for_arch_fmt = submitted_job_comments_section[config.SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH]
+            for_arch_fmt_with_accel = for_arch_fmt.format_map(PartialFormatDict(for_accelerator=accelerator_fmt))
+            for_arch_re_with_accel = template_to_regex(for_arch_fmt_with_accel)
+            for_arch_match = re.match(for_arch_re_with_accel, comment_body[2])
+            if for_arch_match:
+                # Pattern with accelerator matched, append to status_table
+                log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}, "
+                    f"with accelerator {for_arch_match.group('accelerator')}")
+                for_arch = f"`{for_arch_match.group('for_arch')}`, `{for_arch_match.group('accelerator')}`"
+            else:
+                # Pattern with accelerator did not match, retry without accelerator
+                for_arch_re = template_to_regex(for_arch_fmt)
+                for_arch_match = re.match(for_arch_re, comment_body[2])
+                if for_arch_match:
+                    # Pattern without accelerator matched, append to status_table
+                    log(f"{fn}(): found build for architecture: {for_arch_match.group('for_arch')}")
+                    for_arch = f"`{for_arch_match.group('for_arch')}`"
+                else:
+                    # This shouldn't happen: we had an instance_repo_match, but no match for the 'on architecture'
+                    msg = "Could not match regular expression for extracting the architecture to build for.\n"
+                    msg += "String to be matched:\n"
+                    msg += f"{comment_body[2]}\n"
+                    msg += "First regex attempted:\n"
+                    msg += f"{for_arch_re_with_accel.pattern}\n"
+                    msg += "Second regex attempted:\n"
+                    msg += f"{for_arch_re.pattern}\n"
+                    raise ValueError(msg)
+
+            # Extract commit SHA (line 5, index 4)
+            commit_sha = ''
+            commit_sha_fmt = submitted_job_comments_section.get(
+                config.SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA, 'Commit SHA: `{commit_sha}`')
+            if len(comment_body) >= 5:
+                commit_sha_re = template_to_regex(commit_sha_fmt)
+                commit_sha_match = re.match(commit_sha_re, comment_body[4])
+                if commit_sha_match:
+                    commit_sha = commit_sha_match.group('commit_sha')
+                else:
+                    commit_sha = ''
+
+            # get date, status, url and result from the markdown table
+            comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]
+
+            # Convert markdown table to a dictionary
+            lines = comment_table.split('\n')
+            rows = []
+            keys = []
+            for i, row in enumerate(lines):
+                values = {}
+                if i == 0:
+                    for key in row.split('|'):
+                        keys.append(key.strip())
+                elif i == 1:
+                    continue
+                else:
+                    for j, value in enumerate(row.split('|')):
+                        if j > 0 and j < len(keys) - 1:
+                            values[keys[j]] = value.strip()
+                    rows.append(values)
+
+            # add date, status, url to  status_table if
+            for row in rows:
+                if row['job status'] == 'finished':
+                    date = row['date']
+                    status = row['job status']
+                    url = comment['html_url']
+                    if 'FAILURE' in row['comment']:
+                        result = ':cry: FAILURE'
+                    elif 'SUCCESS' in row['comment']:
+                        result = ':grin: SUCCESS'
+                    elif 'UNKNOWN' in row['comment']:
+                        result = ':shrug: UNKNOWN'
                     else:
-                        log(f"{fn}(): target_arch '{target_arch}' not found in first line '{first_line}'")
+                        result = row['comment']
+                elif row['job status'] in ['submitted', 'received', 'running']:
+                    # Make sure that if the job is not finished yet, we also put something useful in these fields
+                    # It is useful to know a job is submitted, running, etc
+                    date = row['date']
+                    status = row['job status']
+                    url = comment['html_url']
+                    result = row['comment']
+                else:
+                    # Don't do anything for the test line for now - we might add an extra entry to the status
+                    # table later to reflect the test result
+                    continue
 
-                # get date, status, url and result from the markdown table
-                comment_table = comment['body'][comment['body'].find('|'):comment['body'].rfind('|')+1]
+            # Add all entries to status_table. We do this at the end of this loop so that the operation is
+            # more or less 'atomic', i.e. all vectors in the status_table dict have the same length
+            status_table['for repo'].append(repo_id)
+            status_table['on arch'].append(on_arch)
+            status_table['for arch'].append(for_arch)
+            status_table['date'].append(date)
+            status_table['status'].append(status)
+            status_table['url'].append(url)
+            status_table['result'].append(result)
+            status_table['commit sha'].append(commit_sha)
 
-                # Convert markdown table to a dictionary
-                lines = comment_table.split('\n')
-                rows = []
-                keys = []
-                for i, row in enumerate(lines):
-                    values = {}
-                    if i == 0:
-                        for key in row.split('|'):
-                            keys.append(key.strip())
-                    elif i == 1:
-                        continue
-                    else:
-                        for j, value in enumerate(row.split('|')):
-                            if j > 0 and j < len(keys) - 1:
-                                values[keys[j]] = value.strip()
-                        rows.append(values)
-
-                # add date, status, url to  status_table if
-                for row in rows:
-                    if row['job status'] == 'finished':
-                        status_table['date'].append(row['date'])
-                        status_table['status'].append(row['job status'])
-                        status_table['url'].append(comment['html_url'])
-                        if 'FAILURE' in row['comment']:
-                            status_table['result'].append(':cry: FAILURE')
-                        elif 'SUCCESS' in row['comment']:
-                            status_table['result'].append(':grin: SUCCESS')
-                        elif 'UNKNOWN' in row['comment']:
-                            status_table['result'].append(':shrug: UNKNOWN')
-                        else:
-                            status_table['result'].append(row['comment'])
-        if len(comments) != 100:
-            break
     return status_table
+
+
+def get_job_ids(action_filter):
+    """
+    Gets and validates 'jobid:' arguments.
+
+    Args:
+        action_filter (EESSIBotActionFilter): Instance containing 'jobid:' arguments
+
+    Returns:
+        job_ids (list): valid 'jobid:' arguments
+    """
+    fn = sys._getframe().f_code.co_name
+
+    # Get 'jobid:' arguments
+    job_filter = action_filter.get_filter_by_component(tools_filter.FILTER_COMPONENT_JOBID)
+    if not job_filter:
+        log(f"{fn}(): 'bot: cancel' command needs at least one 'jobid:' argument.")
+        return []
+
+    # Validate job IDs
+    job_ids = []
+    for job_id in job_filter:
+        try:
+            if int(job_id) > 0:
+                job_ids.append(job_id)
+            else:
+                log(f"{fn}(): Invalid job ID: '{job_id}'")
+        except Exception as err:
+            log(f"{fn}(): Invalid job ID: {err}")
+
+    return job_ids
+
+
+def get_work_dirs(job_ids, cfg):
+    """
+    Gets working directories of build jobs.
+
+    Args:
+        job_ids (list): list of job_ids to check.
+        cfg (ConfigParser): Instance containing full configuration from app.cfg
+
+    Returns:
+        work_dirs (dict): dict mapping each job_id to its work_dir
+    """
+    poll_command = cfg[config.SECTION_JOB_MANAGER][config.JOB_MANAGER_SETTING_POLL_COMMAND]
+
+    # squeue only the given job IDs
+    cs_jobs = ",".join(job_ids)
+    command_line = f"{poll_command} --noheader --Format=JobId:0@,WorkDir:0 --job={cs_jobs}"
+    out, err, exit_code = run_cmd(command_line, "Get WorkDirs of jobs")
+
+    # All output lines are formatted as '{job_id}@{work_dir}'
+    work_dirs = {}
+    for line in out.split("\n"):
+        job = [field.strip() for field in line.split("@")]
+        if len(job) != 2:
+            continue
+        work_dirs[job[0]] = job[1]
+
+    return work_dirs
+
+
+def cancel_jobs(jobs, user, pr, cfg):
+    """
+    Cancels the given build jobs.
+
+    Args:
+        jobs (dict): dictionary mapping each job_id to cancel to its work_dir
+        user (str): The user who sent the 'bot: cancel' command
+        pr (github.PullRequest.PullRequest): instance representing the pull request
+        cfg (ConfigParser): Instance containing full configuration from app.cfg
+
+    Returns:
+        cancelled_jobs (list): job_ids of successfully cancelled jobs
+    """
+    fn = sys._getframe().f_code.co_name
+
+    buildenv = get_build_env_cfg(cfg)
+    cancel_command = buildenv[config.BUILDENV_SETTING_CANCEL_COMMAND]
+
+    cancelled_jobs = []
+    for job_id, work_dir in jobs.items():
+        # Get job owner and PR comment ID from metadata
+        metadata_path = os.path.join(work_dir, f"_bot_job{job_id}.metadata")
+        metadata = job_metadata.get_section_from_file(
+            filepath=metadata_path,
+            section=job_metadata.JOB_PR_SECTION,
+        )
+        job_owner = metadata.get(job_metadata.JOB_PR_JOB_OWNER)
+        pr_comment_id = metadata.get(job_metadata.JOB_PR_PR_COMMENT_ID)
+
+        # Only the job owner should be able to cancel a job
+        if job_owner != user:
+            log(f"{fn}(): User {user} did not start job {job_id} - skipping cancellation")
+            continue
+        log(f"{fn}(): Job {job_id} was started by user {user} - cancelling job")
+
+        # Cancel job
+        command_line = f"{cancel_command} --verbose {job_id}"
+        out, err, exit_code = run_cmd(command_line, f"cancel job {job_id}", raise_on_error=False)
+
+        # Check if command was successful
+        if exit_code != 0:
+            log(f"{fn}(): scancel resulted in a non-zero exit code for job {job_id}.")
+            continue
+        if any([line.startswith("scancel: error: ") for line in err.split("\n")]):
+            log(f"{fn}(): Unable to cancel job {job_id}.")
+            continue
+
+        log(f"{fn}(): Cancelled job {job_id}")
+
+        # Update job status table
+        dt = datetime.now(timezone.utc)
+        update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|finished|job id `{job_id}` was cancelled|"
+        update_comment(int(pr_comment_id), pr, update)
+
+        cancelled_jobs.append(job_id)
+
+    return cancelled_jobs

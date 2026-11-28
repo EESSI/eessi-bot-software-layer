@@ -636,8 +636,8 @@ def test_get_submitted_job_comment_retry(pr_job_get_comment_retry):
 
 #  - pr.get_issue_comment(cmnt_id): 1st None ==> no edit
 #      (patching pr.get_issue_comment via ContextManager to return None)
-def test_update_comment_none(tmpdir):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_none(tmp_path):
+    log_file = os.path.join(tmp_path, "log.txt")
 
     with patch('github.PullRequest.PullRequest') as mock_pr:
         instance = mock_pr.return_value
@@ -652,8 +652,8 @@ def test_update_comment_none(tmpdir):
 
         # log_file should contain error message ""
         expected = f"no comment with id {cmnt_id}, skipping update '{update}'"
-        file = tmpdir.join("log.txt")
-        actual = file.read()
+        file = tmp_path.joinpath("log.txt")
+        actual = file.read_text()
         # actual log message starts with a timestamp, hence we use 'in'
         assert expected in actual
 
@@ -692,8 +692,8 @@ def test_update_comment_second_edit_succeeds(issue_edit_second_call_succeeds):
 #          (edit_raises='N') or
 #          (edit_raises='always_raise')
 #      update_comment called with (str)
-def test_update_comment_five_edit_fail(tmpdir, issue_edit_five_calls_fail):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_five_edit_fail(tmp_path, issue_edit_five_calls_fail):
+    log_file = os.path.join(tmp_path, "log.txt")
     # issue_edit_five_calls_fail provides one comment with "foo"
     os.environ['TEST_RAISE_EXCEPTION'] = '0'
     with pytest.raises(IssueCommentEditException):
@@ -713,8 +713,8 @@ def test_update_comment_five_edit_fail(tmpdir, issue_edit_five_calls_fail):
     assert expected == actual
 
 
-def test_update_comment_all_edit_fail(tmpdir, issue_edit_all_calls_fail):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_all_edit_fail(tmp_path, issue_edit_all_calls_fail):
+    log_file = os.path.join(tmp_path, "log.txt")
     # issue_edit_all_calls_fail provides one comment with "foo"
     os.environ['TEST_RAISE_EXCEPTION'] = '0'
     with pytest.raises(IssueCommentEditException):
@@ -741,8 +741,8 @@ def test_update_comment_all_edit_fail(tmpdir, issue_edit_all_calls_fail):
 #      (TEST_RAISE_EXCEPTION='0')
 #    ==> edit: always fails (err2)
 #      update_comment called with (int)
-# def test_update_comment_edit_type_error(tmpdir, pr_with_any_comment):
-#     log_file = os.path.join(tmpdir, "log.txt")
+# def test_update_comment_edit_type_error(tmp_path, pr_with_any_comment):
+#     log_file = os.path.join(tmp_path, "log.txt")
 #     # pr_with_any_comment provides one comment with "foo"
 #     os.environ['TEST_RAISE_EXCEPTION'] = '0'
 #     #with pytest.raises(Exception) as err:
@@ -763,8 +763,8 @@ def test_update_comment_all_edit_fail(tmpdir, issue_edit_all_calls_fail):
 
 #  - pr.get_issue_comment(cmnt_id): 1st-Nth fail(err0) ==> no edit
 #      (TEST_RAISE_EXCEPTION='N')
-def test_update_comment_five_get_issue_comment_fail(tmpdir, issue_edit_five_calls_fail):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_five_get_issue_comment_fail(tmp_path, issue_edit_five_calls_fail):
+    log_file = os.path.join(tmp_path, "log.txt")
     # issue_edit_five_calls_fail just provides retry testing for
     # get_issue_comment
     # since all calls to this shall fail, we don't use the edit part here
@@ -788,8 +788,8 @@ def test_update_comment_five_get_issue_comment_fail(tmpdir, issue_edit_five_call
 
 #  - pr.get_issue_comment(cmnt_id): 1st-Nth fail(err0) ==> no edit
 #      (TEST_RAISE_EXCEPTION='always_raise')
-def test_update_comment_all_get_issue_comment_fail(tmpdir, issue_edit_all_calls_fail):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_all_get_issue_comment_fail(tmp_path, issue_edit_all_calls_fail):
+    log_file = os.path.join(tmp_path, "log.txt")
     # issue_edit_all_calls_fail just provides retry testing for
     # get_issue_comment
     # since all calls to this shall fail, we don't use the edit part here
@@ -816,8 +816,8 @@ def test_update_comment_all_get_issue_comment_fail(tmpdir, issue_edit_all_calls_
 #    ==> edit: 1st succeeds
 #          (edit_raises='0')
 #      update_comment called with (str)
-def test_update_comment_second_get_call_first_edit(tmpdir, issue_edit_first_call_succeeds):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_second_get_call_first_edit(tmp_path, issue_edit_first_call_succeeds):
+    log_file = os.path.join(tmp_path, "log.txt")
     os.environ['TEST_RAISE_EXCEPTION'] = '1'
     update_comment(0, issue_edit_first_call_succeeds, "-update", log_file=log_file)
 
@@ -845,8 +845,8 @@ def test_update_comment_second_get_call_first_edit(tmpdir, issue_edit_first_call
 #    ==> edit: 1st-(N-1)th fail(err1), 2nd-Nth succeeds
 #          (edit_raises='1')
 #      update_comment called with (str)
-def test_update_comment_second_get_call_second_edit(tmpdir, issue_edit_second_call_succeeds):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_second_get_call_second_edit(tmp_path, issue_edit_second_call_succeeds):
+    log_file = os.path.join(tmp_path, "log.txt")
     os.environ['TEST_RAISE_EXCEPTION'] = '1'
     update_comment(0, issue_edit_second_call_succeeds, "-update", log_file=log_file)
 
@@ -874,8 +874,8 @@ def test_update_comment_second_get_call_second_edit(tmpdir, issue_edit_second_ca
 #    ==> edit: 1st-Nth fail(err1)
 #          (edit_raises='N') or
 #      update_comment called with (str)
-def test_update_comment_second_get_call_five_edits_fail(tmpdir, issue_edit_five_calls_fail):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_second_get_call_five_edits_fail(tmp_path, issue_edit_five_calls_fail):
+    log_file = os.path.join(tmp_path, "log.txt")
     os.environ['TEST_RAISE_EXCEPTION'] = '1'
     with pytest.raises(IssueCommentEditException):
         update_comment(0, issue_edit_five_calls_fail, "-update", log_file=log_file)
@@ -904,8 +904,8 @@ def test_update_comment_second_get_call_five_edits_fail(tmpdir, issue_edit_five_
 #    ==> edit: 1st-Nth fail(err1)
 #          (edit_raises='always_raise')
 #      update_comment called with (str)
-def test_update_comment_second_get_call_all_edits_fail(tmpdir, issue_edit_all_calls_fail):
-    log_file = os.path.join(tmpdir, "log.txt")
+def test_update_comment_second_get_call_all_edits_fail(tmp_path, issue_edit_all_calls_fail):
+    log_file = os.path.join(tmp_path, "log.txt")
     os.environ['TEST_RAISE_EXCEPTION'] = '1'
     with pytest.raises(IssueCommentEditException):
         update_comment(0, issue_edit_all_calls_fail, "-update", log_file=log_file)

@@ -34,7 +34,9 @@ JOB_CFG_PREVIOUS_TMP = "previous_tmp"
 JOB_CFG_UPLOAD_STEP = "upload_step"
 
 # JWD/cfg/$JOB_CFG_FILENAME
+
 JOB_CFG_ARCHITECTURE_SECTION = "architecture"
+JOB_CFG_ARCHITECTURE_NODE_TYPE = "node_type"
 JOB_CFG_ARCHITECTURE_OS_TYPE = "os_type"
 JOB_CFG_ARCHITECTURE_SOFTWARE_SUBDIR = "software_subdir"
 JOB_CFG_ARCHITECTURE_ACCELERATOR = "accelerator"
@@ -58,9 +60,11 @@ JOB_CFG_SITE_CONFIG_SITE_CONFIG_SCRIPT = "site_config_script"
 
 # JWD/_bot_jobJOBID.metadata
 JOB_PR_SECTION = "PR"
+JOB_PR_GIT_HOST = "git_host"
 JOB_PR_REPO = "repo"
 JOB_PR_PR_NUMBER = "pr_number"
 JOB_PR_PR_COMMENT_ID = "pr_comment_id"
+JOB_PR_JOB_OWNER = "job_owner"
 
 # JWD/_bot_jobJOBID.result
 JOB_RESULT_SECTION = "RESULT"
@@ -87,22 +91,26 @@ def create_metadata_file(job, job_id, pr_comment):
     Args:
         job (named tuple): key data about job that has been submitted
         job_id (string): id of submitted job
-        pr_comment (PRComment): contains repo_name, pr_number and pr_comment_id
+        pr_comment (PRCommentInfo): contains git_host, repo_name, pr_number and pr_comment_id
 
     Returns:
         None (implicitly)
     """
     fn = sys._getframe().f_code.co_name
 
+    git_host = pr_comment.git_host
     repo_name = pr_comment.repo_name
     pr_number = pr_comment.pr_number
     pr_comment_id = pr_comment.pr_comment_id
+    job_owner = job.owner
 
     # create _bot_job<jobid>.metadata file in the job's working directory
     bot_jobfile = configparser.ConfigParser()
-    bot_jobfile[JOB_PR_SECTION] = {'repo': repo_name,
+    bot_jobfile[JOB_PR_SECTION] = {'git_host': git_host,
+                                   'repo': repo_name,
                                    'pr_number': pr_number,
-                                   'pr_comment_id': pr_comment_id}
+                                   'pr_comment_id': pr_comment_id,
+                                   'job_owner': job_owner}
     bot_jobfile_path = os.path.join(job.working_dir, f'_bot_job{job_id}.metadata')
     with open(bot_jobfile_path, 'w') as bjf:
         bot_jobfile.write(bjf)

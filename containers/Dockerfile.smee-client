@@ -1,0 +1,18 @@
+# pin base image to specific hash (corresponding to lts-alpine)
+FROM node@sha256:f36fed0b2129a8492535e2853c64fbdbd2d29dc1219ee3217023ca48aebd3787
+
+# create app dir for locked installation
+WORKDIR /app
+
+# copy lockfile and manifest
+COPY containers/package.json containers/package-lock.json ./
+
+# install exactly what's in the lockfile (change version in package.json and update
+# lockfile via 'npm install --package-lock-only')
+RUN npm ci --omit=dev
+
+# expose CLI by symlinking
+RUN ln -sf /app/node_modules/.bin/smee /usr/local/bin/smee
+
+ENTRYPOINT ["smee"]
+CMD ["--help"]

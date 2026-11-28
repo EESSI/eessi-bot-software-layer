@@ -23,6 +23,7 @@ import sys
 # (none yet)
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
+from .git import get_git_hosting_platform, SUPPORTED_GIT_HOSTS
 from .logging import error
 
 # define configuration constants
@@ -30,7 +31,8 @@ from .logging import error
 #   sectionname_SETTING_settingname for any setting with name settingname in
 #     section sectionname
 SECTION_ARCHITECTURETARGETS = 'architecturetargets'
-ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP = 'arch_target_map'
+ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP = 'arch_target_map'  # Obsolete, replaced by NODE_TYPE_MAP
+NODE_TYPE_MAP = 'node_type_map'
 
 SECTION_BOT_CONTROL = 'bot_control'
 BOT_CONTROL_SETTING_COMMAND_PERMISSION = 'command_permission'
@@ -39,10 +41,14 @@ BOT_CONTROL_SETTING_CHATLEVEL = 'chatlevel'
 
 SECTION_BUILDENV = 'buildenv'
 BUILDENV_SETTING_ALLOWED_EXPORTVARS = 'allowed_exportvars'
+BUILDENV_SETTING_ALLOWED_JOB_ENV_VARS = 'allowed_job_env_vars'
+BUILDENV_SETTING_ALLOWED_SUBMIT_ARGS = 'allowed_submit_args'
 BUILDENV_SETTING_ALLOW_UPDATE_SUBMIT_OPTS = 'allow_update_submit_opts'
 BUILDENV_SETTING_BUILD_JOB_SCRIPT = 'build_job_script'
 BUILDENV_SETTING_BUILD_LOGS_DIR = 'build_logs_dir'
 BUILDENV_SETTING_BUILD_PERMISSION = 'build_permission'
+BUILDENV_SETTING_CANCEL_COMMAND = 'cancel_command'
+BUILDENV_SETTING_CLONE_GIT_REPO_VIA = 'clone_git_repo_via'
 BUILDENV_SETTING_CONTAINER_CACHEDIR = 'container_cachedir'
 BUILDENV_SETTING_CVMFS_CUSTOMIZATIONS = 'cvmfs_customizations'
 BUILDENV_SETTING_HTTPS_PROXY = 'https_proxy'
@@ -74,14 +80,16 @@ DEPLOYCFG_SETTING_SIGNING_SCRIPT = 'script'
 DEPLOYCFG_SETTING_UPLOAD_POLICY = 'upload_policy'
 
 SECTION_DOWNLOAD_PR_COMMENTS = 'download_pr_comments'
-DOWNLOAD_PR_COMMENTS_SETTING_CURL_FAILURE = 'curl_failure'
-DOWNLOAD_PR_COMMENTS_SETTING_CURL_TIP = 'curl_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_FAILURE = 'git_apply_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_APPLY_TIP = 'git_apply_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_FAILURE = 'git_checkout_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CHECKOUT_TIP = 'git_checkout_tip'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_FAILURE = 'git_clone_failure'
 DOWNLOAD_PR_COMMENTS_SETTING_GIT_CLONE_TIP = 'git_clone_tip'
+DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_FAILURE = 'make_dirs_failure'
+DOWNLOAD_PR_COMMENTS_SETTING_MAKE_DIRS_TIP = 'make_dirs_tip'
+DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_FAILURE = 'pr_diff_failure'
+DOWNLOAD_PR_COMMENTS_SETTING_PR_DIFF_TIP = 'pr_diff_tip'
 
 SECTION_EVENT_HANDLER = 'event_handler'
 EVENT_HANDLER_SETTING_LOG_PATH = 'log_path'
@@ -90,11 +98,20 @@ SECTION_FINISHED_JOB_COMMENTS = 'finished_job_comments'
 FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT = 'job_result_unknown_fmt'
 FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT = 'job_test_unknown_fmt'
 
+SECTION_GIT = 'git'
+GIT_SETTING_HOSTING_PLATFORM = 'hosting_platform'
+
 SECTION_GITHUB = 'github'
+GITHUB_SETTING_API_TIMEOUT = 'api_timeout'
 GITHUB_SETTING_APP_ID = 'app_id'
 GITHUB_SETTING_APP_NAME = 'app_name'
 GITHUB_SETTING_INSTALLATION_ID = 'installation_id'
 GITHUB_SETTING_PRIVATE_KEY = 'private_key'
+
+SECTION_GITLAB = 'gitlab'
+GITLAB_SETTING_API_TIMEOUT = 'api_timeout'
+GITLAB_SETTING_BOT_NAME = 'bot_name'
+GITLAB_SETTING_INSTANCE_URL = 'instance_url'
 
 SECTION_JOB_MANAGER = 'job_manager'
 JOB_MANAGER_SETTING_LOG_PATH = 'log_path'
@@ -118,8 +135,13 @@ SECTION_SUBMITTED_JOB_COMMENTS = 'submitted_job_comments'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE = 'awaits_release'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_DELAYED_BEGIN_MSG = 'awaits_release_delayed_begin_msg'
 SUBMITTED_JOB_COMMENTS_SETTING_AWAITS_RELEASE_HOLD_RELEASE_MSG = 'awaits_release_hold_release_msg'
+SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO = 'new_job_instance_repo'
+SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH = 'build_on_arch'
+SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH = 'build_for_arch'
+SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR = 'jobdir'
 SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT = 'initial_comment'
 SUBMITTED_JOB_COMMENTS_SETTING_WITH_ACCELERATOR = 'with_accelerator'
+SUBMITTED_JOB_COMMENTS_SETTING_COMMIT_SHA = 'commit_sha'
 
 SECTION_CLEAN_UP = 'clean_up'
 CLEAN_UP_SETTING_TRASH_BIN_ROOT_DIR = 'trash_bin_dir'
@@ -131,6 +153,33 @@ JOB_HANDOVER_PROTOCOL_HOLD_RELEASE = 'hold_release'
 JOB_HANDOVER_PROTOCOLS_SET = {
     JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN,
     JOB_HANDOVER_PROTOCOL_HOLD_RELEASE
+}
+
+# Allows us to error on config items that were removed
+FORBIDDEN_CONFIG = {
+    SECTION_ARCHITECTURETARGETS: [
+        (
+            ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP,
+            f"Config invalid: '{ARCHITECTURETARGETS_SETTING_ARCH_TARGET_MAP}' was removed and replaced by "
+            f"'{NODE_TYPE_MAP}'. See app.cfg.example for details."
+        )
+    ],
+    SECTION_REPO_TARGETS: [
+        (
+            REPO_TARGETS_SETTING_REPO_TARGET_MAP,
+            f"Config invalid: '{REPO_TARGETS_SETTING_REPO_TARGET_MAP} was removed. Repository targets can now be "
+            f"specified within the '{NODE_TYPE_MAP}' dictionary. See app.cfg.example for details."
+        )
+    ],
+    SECTION_SUBMITTED_JOB_COMMENTS: [
+        (
+            SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT,
+            f"Config invalid: '{SUBMITTED_JOB_COMMENTS_SETTING_INITIAL_COMMENT}' was removed and replaced by "
+            f"'{SUBMITTED_JOB_COMMENTS_SETTING_INSTANCE_REPO}', '{SUBMITTED_JOB_COMMENTS_SETTING_BUILD_ON_ARCH}', "
+            f"'{SUBMITTED_JOB_COMMENTS_SETTING_BUILD_FOR_ARCH}' and '{SUBMITTED_JOB_COMMENTS_SETTING_JOBDIR}'. "
+            "See app.cfg.example for details."
+        )
+    ]
 }
 
 
@@ -156,10 +205,10 @@ def read_config(path='app.cfg'):
     return config
 
 
-def check_required_cfg_settings(req_settings, path="app.cfg"):
+def check_cfg_settings(req_settings, path="app.cfg"):
     """
-    Reads the config file, checks if it contains the required settings,
-    if not logs an error message and exits.
+    Reads the config file, checks if it contains the required settings, and if it does not contain forbidden
+    (i.e. removed) settings. If the check fails, logs an error message and exits.
 
     Args:
         req_settings (dict (str, list)): required settings
@@ -170,13 +219,27 @@ def check_required_cfg_settings(req_settings, path="app.cfg"):
     """
     # TODO argument path is not being used
     cfg = read_config()
+    git_host = get_git_hosting_platform(cfg)
     # iterate over keys in req_settings which correspond to sections ([name])
     # in the configuration file (.ini format)
     for section in req_settings.keys():
+        # Skip checking the GitLab section if the bot is configured for GitHub and vice versa
+        if git_host and (section in SUPPORTED_GIT_HOSTS) and (section != git_host):
+            continue
         if section not in cfg:
             error(f'Missing section "{section}" in configuration file {path}.')
         # iterate over list elements required for the current section
         for item in req_settings[section]:
             if item not in cfg[section]:
                 error(f'Missing configuration item "{item}" in section "{section}" of configuration file {path}.')
+
+    # Check for forbidden arguments
+    for section in FORBIDDEN_CONFIG:
+        if section in cfg:
+            for item in FORBIDDEN_CONFIG[section]:
+                # First element of the tuple is the forbidden config item, check if its in the section
+                if item[0] in cfg[section]:
+                    # Item 1 contains a specific error message
+                    error(item[1])
+
     return True

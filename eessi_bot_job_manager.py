@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 #
-# (Slurm) job manager for the GitHub App for the EESSI project
+# (Slurm) job manager component of the EESSI bot
 #
 # This tool monitors EESSI build jobs and acts on state changes of
 # these jobs. It releases jobs initially held, it processes running and
 # finished jobs and reports status changes/results back to the
-# corresponding GitHub pull request to a target software-layer repository.
+# corresponding pull request to a target software-layer repository.
 #
 # EESSI build jobs are recognised by
 #  - being submitted in JobUserHeld status (sbatch parameter --hold)
@@ -27,6 +27,7 @@
 # author: Lara Ramona Peeters (@laraPPr)
 # author: Richard Topouchian (@TopRichard)
 # author: Thomas Roeblitz (@trz42)
+# author: Sondre Bergsvaag Risanger (@sondrebr)
 #
 # license: GPLv2
 #
@@ -42,10 +43,10 @@ import time
 from pyghee.utils import log
 
 # Local application imports (anything from EESSI/eessi-bot-software-layer)
-from connections import github
-from tools import config, job_metadata, run_cmd
+from tools import config, git, job_metadata, run_cmd
 from tools.args import job_manager_parse
-from tools.pr_comments import get_submitted_job_comment, update_comment
+from tools.pr_comments import create_pr_comment_instance
+from tasks.build import check_allowed_args_config
 
 
 # settings that are required in 'app.cfg'
@@ -56,11 +57,18 @@ REQUIRED_CONFIG = {
     config.SECTION_FINISHED_JOB_COMMENTS: [
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_RESULT_UNKNOWN_FMT,  # required
         config.FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT],   # required
+    config.SECTION_GIT: [
+        config.GIT_SETTING_HOSTING_PLATFORM],                         # required
     config.SECTION_GITHUB: [
-        config.GITHUB_SETTING_APP_ID,                                 # required
+        # config.GITHUB_SETTING_API_TIMEOUT,                            # unused
+        config.GITHUB_SETTING_APP_ID,                                 # required for github
         # config.GITHUB_SETTING_APP_NAME,                               # unused
-        config.GITHUB_SETTING_INSTALLATION_ID,                        # required
-        config.GITHUB_SETTING_PRIVATE_KEY],                           # required
+        config.GITHUB_SETTING_INSTALLATION_ID,                        # required for github
+        config.GITHUB_SETTING_PRIVATE_KEY],                           # required for github
+    config.SECTION_GITLAB: [
+        config.GITLAB_SETTING_API_TIMEOUT,                            # required for gitlab
+        # config.GITLAB_SETTING_BOT_NAME,                               # unused
+        config.GITLAB_SETTING_INSTANCE_URL],                          # required for gitlab
     config.SECTION_JOB_MANAGER: [
         config.JOB_MANAGER_SETTING_LOG_PATH,                          # required
         config.JOB_MANAGER_SETTING_JOB_IDS_DIR,                       # required
@@ -118,6 +126,8 @@ class EESSIBotSoftwareLayerJobManager:
         squeue_cmd = "%s --long --noheader --user=%s" % (self.poll_command, username)
         if self.job_name:
             squeue_cmd += " --name='%s'" % self.job_name
+        # Format the output of SLURM
+        squeue_cmd += " --Format JobId:100@,Cluster:100@,Partition:100@,State:100@,Reason:100"
         squeue_output, squeue_err, squeue_exitcode = run_cmd(
             squeue_cmd,
             "get_current_jobs(): squeue command",
@@ -138,18 +148,23 @@ class EESSIBotSoftwareLayerJobManager:
         # get job info, logging any Slurm issues
         # Note, all output lines of squeue are processed because we run it with
         # --noheader.
-        for line in lines:
-            job = line.rstrip().split()
-            if len(job) >= 9:
-                job_id = job[0]
-                state = job[4]
-                current_jobs[job_id] = {
-                    "jobid": job_id,
-                    "state": state,
-                    "reason": job[8],
-                }
-                if state in bad_state_messages:
-                    log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
+        if lines != ['']:
+            for line in lines:
+                job = [x.rstrip() for x in line.rstrip().split('@')]
+                if len(job) == 5:
+                    job_id = job[0]
+                    state = job[3]
+                    current_jobs[job_id] = {
+                        "jobid": job_id,
+                        "cluster": job[1],
+                        "partition": job[2],
+                        "state": state,
+                        "reason": job[4],
+                    }
+                    if state in bad_state_messages:
+                        log("Job {} in state {}: {}".format(job_id, state, bad_state_messages[state]))
+                else:
+                    raise Exception(f"The output of {squeue_cmd} does not have 5 job parameters")
 
         return current_jobs
 
@@ -264,6 +279,9 @@ class EESSIBotSoftwareLayerJobManager:
         """
         The output of 'scontrol --oneliner show job' is a list of key=value pairs
         separated by whitespaces.
+        Note that with newer Slurm versions (25.11), some values can also contain whitespaces
+        (e.g. for SubmitLine), making it complex to distinguish between keys and values.
+        To solve this, we assume that all Slurm keys start with an uppercase letter.
 
         Args:
             output (string): the output of the scontrol command
@@ -273,8 +291,20 @@ class EESSIBotSoftwareLayerJobManager:
         """
         job_info = {}
         stripped_output = output.strip()
-        for pair in stripped_output.split():
-            key, value = pair.split('=', 1)
+
+        # Match keys that start with uppercase and continue until '='
+        key_pattern = re.compile(r'([A-Z][A-Za-z0-9:/_]*)=')
+
+        keys_matches = list(key_pattern.finditer(stripped_output))
+
+        for idx, key_match in enumerate(keys_matches):
+            # The key is what actually got matched by the regex
+            key = key_match.group(1)
+            # The value starts where the key ends...
+            value_start = key_match.end()
+            # and it ends where the next key starts (or, if it's the last one, where the string ends)
+            value_end = keys_matches[idx+1].start() if (idx + 1) < len(keys_matches) else len(stripped_output)
+            value = stripped_output[value_start:value_end].strip()
             job_info[key] = value
 
         return job_info
@@ -294,34 +324,30 @@ class EESSIBotSoftwareLayerJobManager:
             (bool): True if method completed the tasks described, False if job
                 is not a bot job
         """
+        fn = sys._getframe().f_code.co_name
+
         job_id = new_job["jobid"]
 
-        scontrol_cmd = "%s --oneliner show jobid %s" % (
-            self.scontrol_command,
-            job_id,
-        )
-        scontrol_output, scontrol_err, scontrol_exitcode = run_cmd(
-            scontrol_cmd,
-            "process_new_job(): scontrol command",
-            log_file=self.logfile,
-        )
+        # processing placeholders in scontrol command which is defined in the bot's app.cfg (setting `scontrol_command`)
+        try:
+            templated_scontrol_command = self.scontrol_command % new_job
+        except KeyError:
+            msg = f"{fn}(): Failed to process {self.scontrol_command}. "
+            msg += f"Information on placeholder is not collected in new_job: {new_job}."
+            log(msg, self.logfile)
+            raise
 
-        # parse output of 'scontrol_cmd'
+        cmd = f"{templated_scontrol_command} --oneliner show jobid {job_id}"
+        scontrol_output, _, _ = run_cmd(cmd, f"{fn}(): scontrol command", log_file=self.logfile)
+
+        # parse output of scontrol command that fetches job info
         job_info = self.parse_scontrol_show_job_output(str(scontrol_output))
 
-        # check if job_info contains 'WorkDir', if not we cannot process the job
-        # further
+        # check if job_info contains 'WorkDir', if not we cannot process the job further
         if 'WorkDir' in job_info:
-            log(
-                "process_new_job(): work dir of job %s: '%s'"
-                % (job_id, job_info['WorkDir']),
-                self.logfile,
-            )
+            log(f"{fn}(): work dir of job {job_id}: '{job_info['WorkDir']}'", self.logfile)
 
-            job_metadata_path = "%s/_bot_job%s.metadata" % (
-                job_info['WorkDir'],
-                job_id,
-            )
+            job_metadata_path = os.path.join(job_info['WorkDir'], f"_bot_job{job_id}.metadata")
 
             # assuming that a bot job's working directory contains a metadata
             # file, its existence is used to check if the job belongs to the bot
@@ -330,16 +356,24 @@ class EESSIBotSoftwareLayerJobManager:
                                                              self.logfile)
 
             if metadata_pr is None:
-                log(f"No metadata file found at {job_metadata_path} for job {job_id}, so skipping it",
+                log(f"{fn}(): No metadata file found at {job_metadata_path} for job {job_id}, so skipping it",
                     self.logfile)
                 return False
 
+            cfg = config.read_config()
+
+            # Do not process the job further if it was started from a different
+            # Git hosting platform than the job manager is configured for
+            job_git_host = metadata_pr.get(job_metadata.JOB_PR_GIT_HOST)
+            manager_git_host = git.get_git_hosting_platform(cfg)
+            if job_git_host != manager_git_host:
+                msg = f"{fn}(): git_host '{job_git_host}' of job {job_id} differs from "
+                msg += f"the job manager's configured git_host '{manager_git_host}', so skipping it"
+                log(msg, self.logfile)
+                return False
+
             symlink_source = os.path.join(self.submitted_jobs_dir, job_id)
-            log(
-                "process_new_job(): create a symlink: %s -> %s"
-                % (symlink_source, job_info['WorkDir']),
-                self.logfile,
-            )
+            log(f"{fn}(): create a symlink: {symlink_source} -> {job_info['WorkDir']}", self.logfile)
             os.symlink(job_info['WorkDir'], symlink_source)
 
             # handle different job handover protocols
@@ -350,135 +384,97 @@ class EESSIBotSoftwareLayerJobManager:
             job_status = ''
             extra_info = ''
             if self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_HOLD_RELEASE:
-                release_cmd = "%s release %s" % (
-                    self.scontrol_command,
-                    job_id,
-                )
-
-                release_output, release_err, release_exitcode = run_cmd(
-                    release_cmd,
-                    "process_new_job(): scontrol command",
-                    log_file=self.logfile,
-                )
+                release_cmd = f"{templated_scontrol_command} release {job_id}"
+                run_cmd(release_cmd, f"{fn}(): scontrol command", log_file=self.logfile)
                 job_status = 'released'
                 extra_info = ''
             elif self.job_handover_protocol == config.JOB_HANDOVER_PROTOCOL_DELAYED_BEGIN:
                 job_status = 'received'
-                extra_info = " (eligible to start from {job_info['EligibleTime'})"
+                extra_info = f" (eligible to start from {job_info['EligibleTime']})"
 
-            # update PR defined by repo and pr_number stored in the job's
-            # metadata file
-            repo_name = metadata_pr.get("repo", "")
-            pr_number = metadata_pr.get("pr_number", None)
+            # update PR comment defined by 'repo', 'pr_number', and 'pr_comment_id' stored in the job's metadata file
+            repo_name = metadata_pr.get(job_metadata.JOB_PR_REPO, "")
+            pr_number = metadata_pr.get(job_metadata.JOB_PR_PR_NUMBER, "")
+            pr_comment_id = metadata_pr.get(job_metadata.JOB_PR_PR_COMMENT_ID, "")
 
-            gh = github.get_instance()
-
-            repo = gh.get_repo(repo_name)
-            pr = repo.get_pull(int(pr_number))
-
-            # find & get comment for this job
-            # only get comment if we don't know its id yet
-            if "comment_id" not in new_job:
-                new_job_cmnt = get_submitted_job_comment(pr, new_job['jobid'])
-
-                if new_job_cmnt:
-                    log(
-                        "process_new_job(): found comment with id %s"
-                        % new_job_cmnt.id,
-                        self.logfile,
-                    )
-                    new_job["comment_id"] = new_job_cmnt.id
-
-            # update status table if we found a comment
-            if "comment_id" in new_job:
-                new_job_comments_cfg = config.read_config()[config.SECTION_NEW_JOB_COMMENTS]
+            # update status table if all job metadata fields required to update the PR comment were non-empty
+            if "" not in (repo_name, pr_number, pr_comment_id):
+                new_job_comments_cfg = cfg[config.SECTION_NEW_JOB_COMMENTS]
                 dt = datetime.now(timezone.utc)
-                update = "\n|%s|%s|" % (dt.strftime("%b %d %X %Z %Y"), job_status)
+                update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|{job_status}|"
                 description_col_fmt = new_job_comments_cfg[config.NEW_JOB_COMMENTS_SETTING_AWAITS_LAUNCH]
                 update += f"{description_col_fmt.format(extra_info=extra_info)}|"
-                update_comment(new_job["comment_id"], pr, update)
+                pr_comment = create_pr_comment_instance(repo_name, int(pr_number), id=int(pr_comment_id))
+                pr_comment.append(update)
             else:
-                log(
-                    "process_new_job(): did not obtain/find a comment"
-                    " for job '%s'" % job_id,
-                    self.logfile,
-                )
+                msg = f"{fn}(): Fields required for updating PR comment ('repo', 'pr_number', 'pr_comment_id') "
+                msg += f"are missing or empty in metadata for job {job_id}"
+                log(msg, self.logfile)
         else:
-            log(
-                "process_new_job(): did not find work dir for job '%s'"
-                % job_id,
-                self.logfile,
-            )
+            log(f"{fn}(): did not find work dir for job {job_id}", self.logfile)
 
         return True
 
     def process_running_jobs(self, running_job):
         """
         Process a running job by verifying that it is a bot job and if so
-        - determines the PR comment body and id corresponding to the job,
-        - updates the PR comment (if found)
+        - tries to retrieve the PR comment info for the job from its metadata and if found,
+        - adds a formatted running_msg to the comment if it is not already present
 
         Args:
             running_job (dict): dictionary containing data of the running jobs
 
         Returns:
             None (implicitly)
-
-        Raises:
-            Exception: if there is no metadata file or reading it failed
         """
+        fn = sys._getframe().f_code.co_name
 
-        gh = github.get_instance()
+        job_id = running_job["jobid"]
 
-        # set variable for accessing the working directory of the job
-        job_dir = os.path.join(self.submitted_jobs_dir, running_job["jobid"])
-
-        metadata_file = "_bot_job%s.metadata" % running_job["jobid"]
-        job_metadata_path = os.path.join(job_dir, metadata_file)
-
-        # check if metadata file exist
+        # Check if metadata file exists
+        job_metadata_path = os.path.join(self.submitted_jobs_dir, job_id, f"_bot_job{job_id}.metadata")
         metadata_pr = job_metadata.get_section_from_file(job_metadata_path,
                                                          job_metadata.JOB_PR_SECTION,
                                                          self.logfile)
         if metadata_pr is None:
-            raise Exception("Unable to find metadata file")
+            log(f"{fn}(): Unable to find metadata file for job {job_id}, skipping...", self.logfile)
+            return
 
-        repo_name = metadata_pr.get("repo", "")
-        pr_number = metadata_pr.get("pr_number", None)
+        cfg = config.read_config()
 
-        repo = gh.get_repo(repo_name)
-        pullrequest = repo.get_pull(int(pr_number))
+        # Do not process the job further if it was started from a different
+        # Git hosting platform than the job manager is configured for
+        job_git_host = metadata_pr.get(job_metadata.JOB_PR_GIT_HOST)
+        manager_git_host = git.get_git_hosting_platform(cfg)
+        if job_git_host != manager_git_host:
+            msg = f"{fn}(): git_host '{job_git_host}' of job {job_id} differs from "
+            msg += f"the job manager's configured git_host '{manager_git_host}', so skipping it"
+            log(msg, self.logfile)
+            return
 
-        # determine comment to be updated
-        if "comment_id" not in running_job:
-            running_job_cmnt = get_submitted_job_comment(pullrequest, running_job['jobid'])
+        # Retrieve PR comment info from the job's metadata file
+        repo_name = metadata_pr.get(job_metadata.JOB_PR_REPO, "")
+        pr_number = metadata_pr.get(job_metadata.JOB_PR_PR_NUMBER, "")
+        pr_comment_id = metadata_pr.get(job_metadata.JOB_PR_PR_COMMENT_ID, "")
 
-            if running_job_cmnt:
-                log(
-                    "process_running_job(): found comment with id %s"
-                    % running_job_cmnt.id,
-                    self.logfile,
-                )
-                running_job["comment_id"] = running_job_cmnt.id
-                running_job["comment_body"] = running_job_cmnt.body
+        if "" not in (repo_name, pr_number, pr_comment_id):
+            # Retrieve PR comment
+            pr_comment = create_pr_comment_instance(repo_name, int(pr_number), id=int(pr_comment_id))
+            pr_comment.get()
 
-        if "comment_id" in running_job:
             dt = datetime.now(timezone.utc)
-            running_job_comments_cfg = config.read_config()[config.SECTION_RUNNING_JOB_COMMENTS]
+            running_job_comments_cfg = cfg[config.SECTION_RUNNING_JOB_COMMENTS]
             running_msg_fmt = running_job_comments_cfg[config.RUNNING_JOB_COMMENTS_SETTING_RUNNING_JOB]
-            running_msg = running_msg_fmt.format(job_id=running_job['jobid'])
-            if "comment_body" in running_job and running_msg in running_job["comment_body"]:
-                log("Not updating comment, '%s' already found" % running_msg)
+            running_msg = running_msg_fmt.format(job_id=job_id)
+
+            if running_msg in pr_comment.body:
+                log(f"{fn}(): Not updating comment, '{running_msg}' already found", self.logfile)
             else:
-                update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|running|"
-                update += f"{running_msg}|"
-                update_comment(running_job["comment_id"], pullrequest, update)
+                pr_comment.append(f"\n|{dt.strftime('%b %d %X %Z %Y')}|running|{running_msg}|")
         else:
-            log(
-                "process_running_job(): did not obtain/find a comment"
-                " for job '%s'" % running_job['jobid'],
-                self.logfile,
-            )
+            msg = f"{fn}(): Fields required for updating PR comment ('repo', 'pr_number', 'pr_comment_id') "
+            msg += f"are missing or empty in metadata for job {job_id}"
+            log(msg, self.logfile)
 
     def process_finished_job(self, finished_job):
         """
@@ -492,17 +488,33 @@ class EESSIBotSoftwareLayerJobManager:
 
         Returns:
             None (implicitly)
-
-        Raises:
-            Exception: if there is no metadata file or reading it failed
         """
         fn = sys._getframe().f_code.co_name
 
-        job_id = finished_job['jobid']
-
-        # move symlink from job_ids_dir/submitted to jobs_ids_dir/finished
+        cfg = config.read_config()
+        job_id = finished_job["jobid"]
         old_symlink = os.path.join(self.submitted_jobs_dir, job_id)
 
+        metadata_file = f"_bot_job{job_id}.metadata"
+        job_metadata_path = os.path.join(old_symlink, metadata_file)
+        metadata_pr = job_metadata.get_section_from_file(job_metadata_path,
+                                                         job_metadata.JOB_PR_SECTION,
+                                                         self.logfile)
+        if metadata_pr is None:
+            log(f"{fn}(): Unable to find metadata file for job {job_id}, skipping...", self.logfile)
+            return
+
+        # Do not process the job further if it was started from a different
+        # Git hosting platform than the job manager is configured for
+        job_git_host = metadata_pr.get(job_metadata.JOB_PR_GIT_HOST)
+        manager_git_host = git.get_git_hosting_platform(cfg)
+        if job_git_host != manager_git_host:
+            msg = f"{fn}(): git_host '{job_git_host}' of job {job_id} differs from "
+            msg += f"the job manager's configured git_host '{manager_git_host}', so skipping it"
+            log(msg, self.logfile)
+            return
+
+        # move symlink from job_ids_dir/submitted to job_ids_dir/finished
         finished_jobs_dir = os.path.join(self.job_ids_dir, "finished")
         os.makedirs(finished_jobs_dir, exist_ok=True)
 
@@ -529,9 +541,9 @@ class EESSIBotSoftwareLayerJobManager:
         #      status = {SUCCESS,FAILURE,UNKNOWN}
 
         # obtain format templates from app.cfg
-        finished_job_comments_cfg = config.read_config()[config.SECTION_FINISHED_JOB_COMMENTS]
+        finished_job_comments_cfg = cfg[config.SECTION_FINISHED_JOB_COMMENTS]
 
-        # check if _bot_jobJOBID.result exits
+        # check if _bot_jobJOBID.result exists
         job_result_file = f"_bot_job{job_id}.result"
         job_result_file_path = os.path.join(new_symlink, job_result_file)
         job_results = job_metadata.get_section_from_file(job_result_file_path,
@@ -553,19 +565,15 @@ class EESSIBotSoftwareLayerJobManager:
             f"########\n", self.logfile)
 
         dt = datetime.now(timezone.utc)
+        comment_update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|finished|{comment_description}|"
 
-        comment_update = f"\n|{dt.strftime('%b %d %X %Z %Y')}|finished|"
-        comment_update += f"{comment_description}|"
-
-        # check if _bot_jobJOBID.test exits
+        # check if _bot_jobJOBID.test exists
         # TODO if not found, assume test was not run (or failed, or ...) and add
         # a message noting that ('not tested' + 'test suite not run or failed')
         # --> bot/test.sh and bot/check-test.sh scripts are run in job script used by bot for 'build' action
         job_test_file = f"_bot_job{job_id}.test"
         job_test_file_path = os.path.join(new_symlink, job_test_file)
-        job_tests = job_metadata.get_section_from_file(job_test_file_path,
-                                                       job_metadata.JOB_TEST_SECTION,
-                                                       self.logfile)
+        job_tests = job_metadata.get_section_from_file(job_test_file_path, job_metadata.JOB_TEST_SECTION, self.logfile)
 
         job_test_unknown_fmt = finished_job_comments_cfg[config.FINISHED_JOB_COMMENTS_SETTING_JOB_TEST_UNKNOWN_FMT]
         # set fallback comment_description in case no test file was found
@@ -582,32 +590,21 @@ class EESSIBotSoftwareLayerJobManager:
             f"########\n", self.logfile)
 
         dt = datetime.now(timezone.utc)
+        comment_update += f"\n|{dt.strftime('%b %d %X %Z %Y')}|test result|{comment_description}|"
 
-        comment_update += f"\n|{dt.strftime('%b %d %X %Z %Y')}|test result|"
-        comment_update += f"{comment_description}|"
+        # Retrieve PR comment info from the job's metadata file
+        repo_name = metadata_pr.get(job_metadata.JOB_PR_REPO, "")
+        pr_number = metadata_pr.get(job_metadata.JOB_PR_PR_NUMBER, "")
+        pr_comment_id = metadata_pr.get(job_metadata.JOB_PR_PR_COMMENT_ID, "")
 
-        # obtain id of PR comment to be updated (from file '_bot_jobID.metadata')
-        metadata_file = f"_bot_job{job_id}.metadata"
-        job_metadata_path = os.path.join(new_symlink, metadata_file)
-        metadata_pr = job_metadata.get_section_from_file(job_metadata_path,
-                                                         job_metadata.JOB_PR_SECTION,
-                                                         self.logfile)
-        if metadata_pr is None:
-            raise Exception("Unable to find metadata file ... skip updating PR comment")
-
-        repo_name = metadata_pr.get("repo", None)
-        pr_number = metadata_pr.get("pr_number", -1)
-        pr_comment_id = metadata_pr.get("pr_comment_id", -1)
-        log(f"{fn}(): pr comment id {pr_comment_id}", self.logfile)
-
-        gh = github.get_instance()
-
-        repo = gh.get_repo(repo_name)
-        pull_request = repo.get_pull(int(pr_number))
-
-        update_comment(int(pr_comment_id), pull_request, comment_update)
-
-        return
+        if "" not in (repo_name, pr_number, pr_comment_id):
+            log(f"{fn}(): PR comment ID {pr_comment_id}", self.logfile)
+            pr_comment = create_pr_comment_instance(repo_name, int(pr_number), id=int(pr_comment_id))
+            pr_comment.append(comment_update)
+        else:
+            msg = f"{fn}(): Fields required for updating PR comment ('repo', 'pr_number', 'pr_comment_id') "
+            msg += f"are missing or empty in metadata for job {job_id}"
+            log(msg, self.logfile)
 
 
 def main():
@@ -623,28 +620,32 @@ def main():
 
     # config is read and checked for settings to raise an exception early when
     # the job_manager runs
-    if config.check_required_cfg_settings(REQUIRED_CONFIG):
+    if config.check_cfg_settings(REQUIRED_CONFIG):
         print("Configuration check: PASSED")
     else:
         print("Configuration check: FAILED")
         sys.exit(1)
-    github.connect()
+    # Verify that allowed_job_env_vars/submit_args/exportvars settings are valid JSON
+    cfg = config.read_config()
+    if not check_allowed_args_config(cfg):
+        print("Configuration check: FAILED (invalid allowed_{job_env_vars,submit_args} settings)")
+        sys.exit(1)
+    git.connect_to_git_hosting_platform()
 
     job_manager = EESSIBotSoftwareLayerJobManager()
     job_manager.job_filter = {}
     if opts.jobs is not None:
-        job_manager.job_filter = {jobid: None
-                                  for jobid in opts.jobs.split(",")}
+        job_manager.job_filter = {jobid: None for jobid in opts.jobs.split(",")}
 
-    log(
-        "job manager just started, logging to '%s', processing job ids '%s'"
-        % (job_manager.logfile, ",".join(job_manager.job_filter.keys())),
-        job_manager.logfile,
-    )
-    print(
-        "job manager just started, logging to '%s', processing job ids '%s'"
-        % (job_manager.logfile, ",".join(job_manager.job_filter.keys()))
-    )
+    job_filter_str = ','.join(job_manager.job_filter.keys())
+    msg = f"job manager just started, logging to '{job_manager.logfile}', processing job ids '{job_filter_str}'"
+    log(msg, job_manager.logfile)
+    print(msg)
+
+    # Return early if not running loop
+    max_iter = int(opts.max_manager_iterations)
+    if max_iter == 0:
+        return
 
     # before main loop, get list of known jobs (stored on disk)
     # main loop
@@ -659,26 +660,18 @@ def main():
     #  set known jobs to list of current jobs
     #  wait configurable period before next iteration begins
 
-    max_iter = int(opts.max_manager_iterations)
     # retrieve some settings from app.cfg
-    job_manager.job_ids_dir = ""
-    job_manager.submitted_jobs_dir = ""
-    job_manager.poll_command = "false"
-    poll_interval = 0
-    job_manager.scontrol_command = ""
-    if max_iter != 0:
-        cfg = config.read_config()
-        job_mgr = cfg[config.SECTION_JOB_MANAGER]
-        job_manager.job_ids_dir = job_mgr.get(config.JOB_MANAGER_SETTING_JOB_IDS_DIR)
-        job_manager.submitted_jobs_dir = os.path.join(
-            job_manager.job_ids_dir, "submitted"
-        )
-        job_manager.poll_command = job_mgr.get(config.JOB_MANAGER_SETTING_POLL_COMMAND) or False
-        poll_interval = int(job_mgr.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL) or 0)
-        if poll_interval <= 0:
-            poll_interval = 60
-        job_manager.scontrol_command = job_mgr.get(config.JOB_MANAGER_SETTING_SCONTROL_COMMAND) or False
-        os.makedirs(job_manager.submitted_jobs_dir, exist_ok=True)
+    job_mgr = cfg[config.SECTION_JOB_MANAGER]
+    job_manager.job_ids_dir = job_mgr.get(config.JOB_MANAGER_SETTING_JOB_IDS_DIR)
+    job_manager.submitted_jobs_dir = os.path.join(job_manager.job_ids_dir, "submitted")
+    job_manager.poll_command = job_mgr.get(config.JOB_MANAGER_SETTING_POLL_COMMAND) or False
+    poll_interval = int(job_mgr.get(config.JOB_MANAGER_SETTING_POLL_INTERVAL) or 0)
+    if poll_interval <= 0:
+        log("The poll_interval setting is unset or non-positive. Falling back to the default value (60).",
+            job_manager.logfile)
+        poll_interval = 60
+    job_manager.scontrol_command = job_mgr.get(config.JOB_MANAGER_SETTING_SCONTROL_COMMAND) or False
+    os.makedirs(job_manager.submitted_jobs_dir, exist_ok=True)
 
     # max_iter
     #   < 0: run loop indefinitely
@@ -686,22 +679,15 @@ def main():
     #   > 0: run loop max_iter times
     # processing may be limited to a list of job ids (see parameter -j --jobs)
     i = 0
-    if max_iter != 0:
-        known_jobs = job_manager.get_known_jobs()
+    known_jobs = job_manager.get_known_jobs()
     while max_iter < 0 or i < max_iter:
         # sleep poll_interval seconds (not for the first iteration)
         if i != 0:
-            log(
-                "job manager main loop: sleep %d seconds" % poll_interval,
-                job_manager.logfile,
-            )
+            log(f"job manager main loop: sleep {poll_interval} seconds", job_manager.logfile)
             time.sleep(poll_interval)
-        log("job manager main loop: iteration %d" % i, job_manager.logfile)
-        log(
-            "job manager main loop: known_jobs='%s'" % ",".join(
-                known_jobs.keys()),
-            job_manager.logfile,
-        )
+        log(f"job manager main loop: iteration {i}", job_manager.logfile)
+        known_jobs_str = ','.join(known_jobs.keys())
+        log(f"job manager main loop: known_jobs='{known_jobs_str}'", job_manager.logfile)
 
         try:
             current_jobs = job_manager.get_current_jobs()
@@ -709,17 +695,12 @@ def main():
             i = i + 1
             continue
 
-        log(
-            "job manager main loop: current_jobs='%s'" % ",".join(
-                current_jobs.keys()),
-            job_manager.logfile,
-        )
+        current_jobs_str = ','.join(current_jobs.keys())
+        log(f"job manager main loop: current_jobs='{current_jobs_str}'", job_manager.logfile)
 
         new_jobs = job_manager.determine_new_jobs(known_jobs, current_jobs)
-        log(
-            "job manager main loop: new_jobs='%s'" % ",".join(new_jobs),
-            job_manager.logfile,
-        )
+        new_jobs_str = ','.join(new_jobs)
+        log(f"job manager main loop: new_jobs='{new_jobs_str}'", job_manager.logfile)
         # process new jobs
         non_bot_jobs = []
         for nj in new_jobs:
@@ -737,24 +718,17 @@ def main():
             current_jobs.pop(job)
 
         running_jobs = job_manager.determine_running_jobs(current_jobs)
-        log(
-            "job manager main loop: running_jobs='%s'" %
-            ",".join(running_jobs),
-            job_manager.logfile,
-        )
+        running_jobs_str = ','.join(running_jobs)
+        log(f"job manager main loop: running_jobs='{running_jobs_str}'", job_manager.logfile)
 
         for rj in running_jobs:
             # apply filtering of job ids
             if not job_manager.job_filter or rj in job_manager.job_filter:
                 job_manager.process_running_jobs(current_jobs[rj])
 
-        finished_jobs = job_manager.determine_finished_jobs(
-                        known_jobs, current_jobs)
-        log(
-            "job manager main loop: finished_jobs='%s'" %
-            ",".join(finished_jobs),
-            job_manager.logfile,
-        )
+        finished_jobs = job_manager.determine_finished_jobs(known_jobs, current_jobs)
+        finished_jobs_str = ','.join(finished_jobs)
+        log(f"job manager main loop: finished_jobs='{finished_jobs_str}'", job_manager.logfile)
         # process finished jobs
         for fj in finished_jobs:
             # apply filtering of job ids

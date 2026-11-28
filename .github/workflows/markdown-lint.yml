@@ -1,0 +1,34 @@
+# This file is part of the EESSI build-and-deploy bot,
+# see https://github.com/EESSI/eessi-bot-software-layer
+#
+# The bot helps with requests to add software installations to the
+# EESSI software layer, see https://github.com/EESSI/software-layer
+#
+# author: Thomas Roeblitz (@trz42)
+#
+# license: GPLv2
+#
+
+name: Markdown Lint
+on: [push, pull_request, workflow_dispatch]
+# Declare default permissions as read only.
+permissions: read-all
+
+jobs:
+  markdown-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.0
+        with:
+          node-version: '20'
+
+      - name: Install markdownlint-cli
+        run: npm install -g igorshubovych/markdownlint-cli#192ad822316c3a22fb3d3cc8aa6eafa0b8488360 # v0.45.0
+        # SHA from https://github.com/igorshubovych/markdownlint-cli/commit/192ad822316c3a22fb3d3cc8aa6eafa0b8488360
+
+      - name: Run markdownlint
+        run: markdownlint "**/*.md" --ignore .git 

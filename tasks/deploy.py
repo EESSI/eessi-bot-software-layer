@@ -236,15 +236,14 @@ def append_artefact_to_upload_log(artefact, job_dir):
         upload_log.write(f"{job_plus_artefact}\n")
 
 
-def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_comment_id):
+def upload_artefact(job_dir, artefact, repo_name, pr_number, pr_comment_id):
     """
     Upload artefact to an S3 bucket.
 
     Args:
         job_dir (string): path to the job directory
-        payload (string): can be any name describing the payload, e.g., for
-            EESSI it could have the format eessi-VERSION-COMPONENT-OS-ARCH
-        timestamp (int): timestamp of the artefact
+        artefact (string): can be any filename that contains the payload, e.g., for
+            EESSI it could have the format eessi-VERSION-COMPONENT-OS-ARCH-TIMESTAMP.tar.zstd
         repo_name (string): repository of the pull request
         pr_number (int): number of the pull request
         pr_comment_id (int): id of the pull request comment
@@ -254,7 +253,6 @@ def upload_artefact(job_dir, payload, timestamp, repo_name, pr_number, pr_commen
     """
     funcname = sys._getframe().f_code.co_name
 
-    artefact = f"{payload}-{timestamp}.tar.gz"
     abs_path = os.path.join(job_dir, artefact)
     log(f"{funcname}(): uploading '{abs_path}'")
 
@@ -518,6 +516,33 @@ def determine_successful_jobs(job_dirs):
     return successes
 
 
+def parse_artefact_filename(filename):
+    """
+    Determines components of an artefact's filename: prefix, timestamp, suffix
+
+    Args:
+        filename (string): name of artefact with format A-B-C-...-N-TIMESTAMP.tar(.gz|.zstd|...)
+
+    Returns:
+        tuple: (prefix, timestamp, suffix) or None if pattern doesn't match
+    """
+    funcname = sys._getframe().f_code.co_name
+
+    # capture everything before the last dash, then unix timestamp, then suffix
+    pattern = r'^(.+)-(\d{10,})(\..+)$'
+
+    match = re.match(pattern, filename)
+    if match:
+        log(f"{funcname}(): parsing '{filename}' matched")
+        prefix = match.group(1)
+        timestamp = match.group(2)
+        suffix = match.group(3)
+        return prefix, timestamp, suffix
+
+    log(f"{funcname}(): parsing '{filename}' did NOT match")
+    return None
+
+
 def determine_artefacts_to_deploy(successes, upload_policy):
     """
     Determine artefacts to deploy depending on upload policy
@@ -552,21 +577,25 @@ def determine_artefacts_to_deploy(successes, upload_policy):
         artefact_base = os.path.basename(artefact)
         log(f"{funcname}(): artefact filename: '{artefact_base}'")
 
-        # artefact name format: PAYLOAD-TIMESTAMP.tar.gz
-        # remove "-TIMESTAMP.tar.gz" (last element when splitting along '-')
-        payload = "-".join(artefact_base.split("-")[:-1])
-        log(f"{funcname}(): artefact payload '{payload}'")
+        # artefact name format: PAYLOAD-TIMESTAMP.tar(.gz|.zstd|...)
+        parse_result = parse_artefact_filename(artefact_base)
+        if parse_result:
+            prefix, timestamp, suffix = parse_result
+            payload = prefix
+            timestamp_int = int(timestamp)
 
-        # timestamp in the filename
-        timestamp = int(artefact_base.split("-")[-1][:-7])
-        log(f"{funcname}(): artefact timestamp {timestamp}")
+            log(f"{funcname}(): artefact '{artefact_base}' parsed successfully")
+            log(f"{funcname}(): payload={payload}, timestamp={timestamp_int}, suffix={suffix}")
+        else:
+            log(f"{funcname}(): artefact '{artefact_base}' parsing failed")
+            continue
 
         deploy = False
         if upload_policy == "all":
             deploy = True
         elif upload_policy == "latest":
             if payload in to_be_deployed:
-                if to_be_deployed[payload]["timestamp"] < timestamp:
+                if to_be_deployed[payload]["timestamp"] < timestamp_int:
                     # current one will be replaced
                     deploy = True
             else:
@@ -583,46 +612,49 @@ def determine_artefacts_to_deploy(successes, upload_policy):
         if deploy:
             to_be_deployed[payload] = {"job_dir": job["job_dir"],
                                        "pr_comment_id": job["pr_comment_id"],
-                                       "timestamp": timestamp}
+                                       "artefact": artefact,
+                                       "payload": payload,
+                                       "timestamp": timestamp_int,
+                                       "suffix": suffix}
 
     return to_be_deployed
 
 
-def deploy_built_artefacts(pr, event_info):
+def deploy_built_artefacts(event_info):
     """
     Deploy built artefacts.
 
     Args:
-        pr (github.PullRequest.PullRequest): PyGithub instance for the pull request
-        event_info (dict): dictionary containing event information
+        event_info (EventInfo): dictionary containing event information
 
     Returns:
         None (implicitly)
     """
     funcname = sys._getframe().f_code.co_name
 
-    log(f"{funcname}(): deploy for PR {pr.number}")
+    repo_name = event_info.repo_name
+    pr_number = event_info.pr_number
+    labeler = event_info.event_triggered_by
+
+    log(f"{funcname}(): deploy for PR {pr_number}")
 
     cfg = config.read_config()
     deploy_cfg = cfg[config.SECTION_DEPLOYCFG]
     deploy_permission = deploy_cfg.get(config.DEPLOYCFG_SETTING_DEPLOY_PERMISSION, '')
     log(f"{funcname}(): deploy permission '{deploy_permission}'")
 
-    labeler = event_info['raw_request_body']['sender']['login']
-
-    # verify that the GitHub account that set label bot:deploy has the
+    # verify that the account that set label bot:deploy has the
     # permission to trigger the deployment
     if labeler not in deploy_permission.split():
-        log(f"{funcname}(): GH account '{labeler}' is not authorized to deploy")
+        log(f"{funcname}(): account '{labeler}' is not authorized to deploy")
         no_deploy_permission_comment = deploy_cfg.get(config.DEPLOYCFG_SETTING_NO_DEPLOY_PERMISSION_COMMENT)
-        repo_name = event_info["raw_request_body"]["repository"]["full_name"]
         pr_comments.create_comment(repo_name,
-                                   pr.number,
+                                   pr_number,
                                    no_deploy_permission_comment.format(deploy_labeler=labeler),
                                    ChatLevels.CHATTY)
         return
     else:
-        log(f"{funcname}(): GH account '{labeler}' is authorized to deploy")
+        log(f"{funcname}(): account '{labeler}' is authorized to deploy")
 
     # get upload policy from config
     upload_policy = deploy_cfg.get(config.DEPLOYCFG_SETTING_UPLOAD_POLICY)
@@ -637,7 +669,7 @@ def deploy_built_artefacts(pr, event_info):
     # 4) call function to deploy a single artefact per software subdir
 
     # 1) determine the jobs that have been run for the PR
-    job_dirs = determine_job_dirs(pr.number)
+    job_dirs = determine_job_dirs(pr_number)
     log(f"{funcname}(): job_dirs = {','.join(job_dirs)}")
 
     # 2) for each job, check its status (SUCCESS or FAILURE)
@@ -648,10 +680,8 @@ def deploy_built_artefacts(pr, event_info):
     to_be_deployed = determine_artefacts_to_deploy(successes, upload_policy)
 
     # 4) call function to deploy a single artefact per software subdir
-    repo_name = pr.base.repo.full_name
-
-    for payload, job in to_be_deployed.items():
+    for job in to_be_deployed.values():
         job_dir = job['job_dir']
-        timestamp = job['timestamp']
         pr_comment_id = job['pr_comment_id']
-        upload_artefact(job_dir, payload, timestamp, repo_name, pr.number, pr_comment_id)
+        artefact = job['artefact']
+        upload_artefact(job_dir, artefact, repo_name, pr_number, pr_comment_id)
